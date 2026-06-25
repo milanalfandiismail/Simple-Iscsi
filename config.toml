@@ -1,0 +1,12 @@
+[server]
+address = "0.0.0.0"
+port = 3260
+target_iqn = "iqn.2024-01.com.gameserver:gamedisk"
+
+[storage]
+physical_disk = '\\.\PhysicalDrive1'
+cache_dir = 'E:\gamedisk-cache'
+block_size = 512
+
+[cache]
+max_cache_per_client_gb = 50
