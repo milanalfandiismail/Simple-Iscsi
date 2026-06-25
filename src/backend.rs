@@ -1,9 +1,11 @@
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use tracing::{info, error};
 
 pub struct Backend {
-    file: std::sync::Mutex<File>,
+    file: Arc<Mutex<BufReader<File>>>,
     block_size: u64,
     total_size: u64,
 }
@@ -11,14 +13,13 @@ pub struct Backend {
 impl Backend {
     pub fn new(path: &str, block_size: u64) -> io::Result<Self> {
         info!("Membuka storage backend: {}", path);
-        
+
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
-        
+
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            // FILE_SHARE_READ = 1, FILE_SHARE_WRITE = 2
             options.share_mode(1 | 2);
         }
 
@@ -31,12 +32,9 @@ impl Backend {
             }
         };
 
-        // Dapatkan ukuran drive/file
         let total_size = match file.metadata().map(|m| m.len()) {
             Ok(len) if len > 0 => len,
             _ => {
-                // Pada Windows, raw block device tidak mendukung seek ke akhir untuk ukuran.
-                // Kita gunakan DeviceIoControl.
                 #[cfg(windows)]
                 {
                     match get_windows_drive_size(&file) {
@@ -70,8 +68,10 @@ impl Backend {
             total_size / block_size
         );
 
+        let reader = BufReader::with_capacity(2 * 1024 * 1024, file);
+
         Ok(Backend {
-            file: std::sync::Mutex::new(file),
+            file: Arc::new(Mutex::new(reader)),
             block_size,
             total_size,
         })
@@ -88,7 +88,7 @@ impl Backend {
     pub fn read_blocks(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> io::Result<()> {
         let offset = lba * self.block_size;
         let read_len = (num_blocks as u64) * self.block_size;
-        
+
         if buf.len() < read_len as usize {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -96,7 +96,8 @@ impl Backend {
             ));
         }
 
-        let mut file = self.file.lock().unwrap();
+        let mut reader = self.file.lock();
+        let file = reader.get_mut();
         file.seek(SeekFrom::Start(offset))?;
         file.read_exact(&mut buf[..read_len as usize])?;
         Ok(())
