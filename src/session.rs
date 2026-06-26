@@ -595,7 +595,6 @@ impl Session {
             data_sn += 1;
         }
 
-        self.stream.flush().await?;
         Ok(())
     }
 
