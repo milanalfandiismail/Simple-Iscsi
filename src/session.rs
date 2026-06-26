@@ -11,7 +11,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 pub struct Session {
     stream: TcpStream,
@@ -37,8 +37,44 @@ impl Session {
         cache_dir: String,
         max_cache_gb: u64,
     ) -> Self {
-        // Konfigurasi TCP: disable Nagle + besar buffer via std::net
+        // Konfigurasi TCP: disable Nagle
         let _ = stream.set_nodelay(true);
+
+        // Set SO_SNDBUF = 512KB via raw socket (stdlib set_send_buffer_size requires
+        // into_std which consumes the stream — raw FFI avoids the ownership dance)
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawSocket;
+
+            type SOCKET = u64;
+            #[allow(non_camel_case_types)]
+            type c_int = i32;
+
+            const SOL_SOCKET: c_int = 0xFFFF;   // SOL_SOCKET on Windows
+            const SO_SNDBUF: c_int = 0x1001;    // SO_SNDBUF on Windows
+
+            extern "system" {
+                fn setsockopt(
+                    s: SOCKET,
+                    level: c_int,
+                    optname: c_int,
+                    optval: *const std::ffi::c_void,
+                    optlen: c_int,
+                ) -> c_int;
+            }
+
+            let socket = stream.as_raw_socket() as SOCKET;
+            let val: u32 = 512 * 1024;
+            unsafe {
+                setsockopt(
+                    socket,
+                    SOL_SOCKET,
+                    SO_SNDBUF,
+                    &val as *const u32 as *const std::ffi::c_void,
+                    std::mem::size_of::<u32>() as c_int,
+                );
+            }
+        }
 
         Session {
             stream,
@@ -304,7 +340,7 @@ impl Session {
     async fn handle_scsi_cmd(&mut self, req: Pdu) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
         let opcode = cdb[0];
-        info!("Menerima SCSI Command opcode: 0x{:02X}, CDB: {:02X?}", opcode, cdb);
+        trace!("Menerima SCSI Command opcode: 0x{:02X}, CDB: {:02X?}", opcode, cdb);
 
         // Jika ini sesi normal, pastikan cache telah diinisialisasi
         if self.client_cache.is_none() && !self.is_discovery {
@@ -316,18 +352,18 @@ impl Session {
         if opcode == 0x2A {
             // WRITE (10)
             let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap());
-            info!("Mulai WRITE (10) LBA: {}", lba);
+            trace!("Mulai WRITE (10) LBA: {}", lba);
             self.handle_write10(req).await?;
         } else {
             // Perintah SCSI lainnya disalurkan ke handler scsi.rs
             let result = scsi::handle_scsi_command(&cdb, &self.backend, self.client_cache.as_ref(), self.backend.block_size());
             match result {
                 ScsiResult::Status { status } => {
-                    info!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
+                    trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
                     self.send_scsi_response(req.initiator_task_tag, status, 0, req.expected_data_len, 0).await?;
                 }
                 ScsiResult::Data { data, status } => {
-                    info!("SCSI Command 0x{:02X} selesai dengan data len: {}, status: 0x{:02X}", opcode, data.len(), status);
+                    trace!("SCSI Command 0x{:02X} selesai dengan data len: {}, status: 0x{:02X}", opcode, data.len(), status);
                     self.send_scsi_data_in(req.initiator_task_tag, data, status, req.expected_data_len).await?;
                 }
                 ScsiResult::CheckCondition { key, asc, ascq } => {
@@ -453,55 +489,68 @@ impl Session {
             let chunk_len = (total_len - offset).min(max_chunk);
             let is_last = offset + chunk_len >= total_len;
 
-            let mut data_in = Pdu::default();
-            data_in.opcode = OP_DATA_IN;
-
-            let mut flags = 0;
+            // Build DATA_IN BHS on stack — zero alloc, zero copy
+            let mut bhs = [0u8; 48];
+            bhs[0] = OP_DATA_IN;
             if is_last {
-                flags |= 0x80; // F (Final)
+                bhs[1] = 0x80; // F (Final)
             }
-            data_in.flags = flags;
-            data_in.initiator_task_tag = itt;
-            data_in.cmd_sn = 0; // StatSN = 0 untuk DATA_IN tanpa S bit
-            data_in.exp_stat_sn = self.exp_cmd_sn;
-            data_in.max_cmd_sn = self.max_cmd_sn;
-            data_in.custom_bhs[4..8].copy_from_slice(&(data_sn as u32).to_be_bytes());
-            data_in.custom_bhs[8..12].copy_from_slice(&(offset as u32).to_be_bytes());
-            data_in.data = data[offset..offset + chunk_len].to_vec();
+            bhs[16..20].copy_from_slice(&itt.to_be_bytes());
+            bhs[20..24].copy_from_slice(&0xFFFFFFFFu32.to_be_bytes()); // TTT
+            bhs[24..28].copy_from_slice(&0u32.to_be_bytes()); // StatSN = 0 (no S bit)
+            bhs[28..32].copy_from_slice(&self.exp_cmd_sn.to_be_bytes());
+            bhs[32..36].copy_from_slice(&self.max_cmd_sn.to_be_bytes());
+            bhs[36..40].copy_from_slice(&(data_sn as u32).to_be_bytes()); // DataSN
+            bhs[40..44].copy_from_slice(&(offset as u32).to_be_bytes()); // Buffer Offset
+            // Data Segment Length (24-bit)
+            bhs[5] = ((chunk_len >> 16) & 0xFF) as u8;
+            bhs[6] = ((chunk_len >> 8) & 0xFF) as u8;
+            bhs[7] = (chunk_len & 0xFF) as u8;
 
-            let packet_data_in = pdu::builder::build_pdu(&data_in);
+            let pad = (4 - (chunk_len % 4)) % 4;
+            let total_data_in_len = 48 + chunk_len + pad;
 
             if is_last {
-                // Batch terakhir: kirim DATA_IN + SCSI_RESPONSE dalam 1 write
-                let mut resp = Pdu::default();
-                resp.opcode = OP_SCSI_RESP;
-                let mut resp_flags = 0x80; // F (Final)
+                // Build SCSI_RESPONSE BHS on stack
+                let mut resp = [0u8; 48];
+                resp[0] = OP_SCSI_RESP;
+                let mut flags = 0x80; // F (Final)
                 if total_len < expected_len as usize {
-                    resp_flags |= 0x04; // U (Underflow)
+                    flags |= 0x04; // U (Underflow)
                 }
-                resp.flags = resp_flags;
-                resp.opcode_specific[0] = 0x00;
-                resp.opcode_specific[1] = status;
-                resp.initiator_task_tag = itt;
-                resp.cmd_sn = self.stat_sn;
+                resp[1] = flags;
+                resp[2] = 0x00; // Response: Command completed
+                resp[3] = status;
+                resp[16..20].copy_from_slice(&itt.to_be_bytes());
+                resp[20..24].copy_from_slice(&0xFFFFFFFFu32.to_be_bytes()); // TTT
+                resp[24..28].copy_from_slice(&self.stat_sn.to_be_bytes()); // StatSN
                 self.stat_sn = self.stat_sn.wrapping_add(1);
-                resp.exp_stat_sn = self.exp_cmd_sn;
-                resp.max_cmd_sn = self.max_cmd_sn;
-                resp.custom_bhs[4..8].copy_from_slice(&(data_sn as u32).to_be_bytes());
+                resp[28..32].copy_from_slice(&self.exp_cmd_sn.to_be_bytes());
+                resp[32..36].copy_from_slice(&self.max_cmd_sn.to_be_bytes());
+                resp[36..40].copy_from_slice(&(data_sn as u32).to_be_bytes()); // ExpDataSN
                 if total_len < expected_len as usize {
                     let residual = expected_len as usize - total_len;
-                    resp.custom_bhs[12..16].copy_from_slice(&(residual as u32).to_be_bytes());
+                    resp[44..48].copy_from_slice(&(residual as u32).to_be_bytes());
                 }
 
-                let packet_resp = pdu::builder::build_pdu(&resp);
-
-                // Satu write_all untuk kedua PDU
-                let mut combined = Vec::with_capacity(packet_data_in.len() + packet_resp.len());
-                combined.extend_from_slice(&packet_data_in);
-                combined.extend_from_slice(&packet_resp);
+                // Satu write: DATA_IN BHS + data + pad + RESP BHS
+                let mut combined = Vec::with_capacity(total_data_in_len + 48);
+                combined.extend_from_slice(&bhs);
+                combined.extend_from_slice(&data[offset..offset + chunk_len]);
+                if pad > 0 {
+                    combined.extend_from_slice(&[0u8; 3][..pad]);
+                }
+                combined.extend_from_slice(&resp);
                 self.stream.write_all(&combined).await?;
             } else {
-                self.stream.write_all(&packet_data_in).await?;
+                // Satu write: DATA_IN BHS + data + pad
+                let mut combined = Vec::with_capacity(total_data_in_len);
+                combined.extend_from_slice(&bhs);
+                combined.extend_from_slice(&data[offset..offset + chunk_len]);
+                if pad > 0 {
+                    combined.extend_from_slice(&[0u8; 3][..pad]);
+                }
+                self.stream.write_all(&combined).await?;
             }
 
             offset += chunk_len;
