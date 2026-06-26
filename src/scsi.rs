@@ -49,10 +49,13 @@ pub fn handle_scsi_command(
                         response_data.push(0x00); // Peripheral Device Type
                         response_data.push(0x00); // Page Code: 0x00
                         response_data.push(0x00); // Reserved
-                        response_data.push(2);    // Page Length
+                        response_data.push(5);    // Page Length (5 pages)
 
                         response_data.push(0x00); // Supported VPD Pages
                         response_data.push(0x83); // Device Identification
+                        response_data.push(0xB0); // Block Limits VPD
+                        response_data.push(0xB1); // Block Device Characteristics VPD
+                        response_data.push(0xB2); // Thin Provisioning VPD
                     }
                     0x83 => {
                         // Device Identification
@@ -70,6 +73,35 @@ pub fn handle_scsi_command(
                             // NAA IEEE Registered Extended
                             0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
                         ]);
+                    }
+                    0xB0 => {
+                        // Block Limits VPD — minimal valid response
+                        response_data.push(0x00); // Device Type
+                        response_data.push(0xB0); // Page Code
+                        response_data.push(0x00); // Reserved
+                        response_data.push(0x3C); // Page Length (60 bytes)
+                        response_data.extend_from_slice(&[0u8; 60]); // Semua zero = default/no special limits
+                    }
+                    0xB1 => {
+                        // Block Device Characteristics VPD — SSD detection
+                        // Windows cek byte 4-5: 0x0001 = Non-rotating (SSD)
+                        response_data.push(0x00); // Device Type
+                        response_data.push(0xB1); // Page Code
+                        response_data.push(0x00); // Reserved
+                        response_data.push(0x3C); // Page Length (60 bytes)
+                        // Medium Rotation Rate = 0x0001 (Non-rotating medium / SSD)
+                        response_data.push(0x00);
+                        response_data.push(0x01);
+                        response_data.extend_from_slice(&[0u8; 58]); // Sisanya zeros
+                    }
+                    0xB2 => {
+                        // Thin Provisioning VPD — inform client
+                        response_data.push(0x00); // Device Type
+                        response_data.push(0xB2); // Page Code
+                        response_data.push(0x00); // Reserved
+                        response_data.push(0x04); // Page Length (4 bytes)
+                        // Threshold exponent (0) + flags: no unmap, no write same, etc.
+                        response_data.extend_from_slice(&[0u8; 4]);
                     }
                     _ => {
                         return ScsiResult::CheckCondition {

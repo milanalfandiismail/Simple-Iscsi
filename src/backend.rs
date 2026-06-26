@@ -4,8 +4,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tracing::{info, error};
 
-/// 256KB read-ahead buffer — cukup untuk 4× 64KB sequential read, ikutin demand client.
-const RA_SIZE: usize = 256 * 1024;
+/// 1MB read-ahead buffer — cukup untuk 16× 64KB sequential read, sweet spot untuk peak READ.
+const RA_SIZE: usize = 1024 * 1024;
 
 struct BackendInner {
     file: File,
@@ -107,9 +107,9 @@ impl Backend {
 
     pub fn read_blocks(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> io::Result<()> {
         let bs = self.block_size;
-        let read_len = (num_blocks as u64) * bs;
+        let _read_len = (num_blocks as u64) * bs;
 
-        if buf.len() < read_len as usize {
+        if buf.len() < _read_len as usize {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Buffer target terlalu kecil dibanding request baca",
@@ -165,6 +165,7 @@ impl Backend {
 
         Ok(())
     }
+
 }
 
 #[cfg(windows)]

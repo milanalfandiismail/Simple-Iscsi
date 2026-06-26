@@ -556,16 +556,6 @@ impl Session {
 
             let pad = (4 - (chunk_len % 4)) % 4;
 
-            // Single vectored write: BHS + data (1 syscall instead of 2-3)
-            let iov = [
-                std::io::IoSlice::new(&bhs),
-                std::io::IoSlice::new(&data[offset..offset + chunk_len]),
-            ];
-            self.stream.write_vectored(&iov).await?;
-            if pad > 0 {
-                self.stream.write_all(&pad_arr[..pad]).await?;
-            }
-
             if is_last {
                 // Build SCSI_RESPONSE BHS on stack
                 let mut resp = [0u8; 48];
@@ -588,7 +578,26 @@ impl Session {
                     let residual = expected_len as usize - total_len;
                     resp[44..48].copy_from_slice(&(residual as u32).to_be_bytes());
                 }
+
+                // write_vectored BHS + data, lalu pad, baru RESP
+                let iov = [
+                    std::io::IoSlice::new(&bhs),
+                    std::io::IoSlice::new(&data[offset..offset + chunk_len]),
+                ];
+                self.stream.write_vectored(&iov).await?;
+                if pad > 0 {
+                    self.stream.write_all(&pad_arr[..pad]).await?;
+                }
                 self.stream.write_all(&resp).await?;
+            } else {
+                let iov = [
+                    std::io::IoSlice::new(&bhs),
+                    std::io::IoSlice::new(&data[offset..offset + chunk_len]),
+                ];
+                self.stream.write_vectored(&iov).await?;
+                if pad > 0 {
+                    self.stream.write_all(&pad_arr[..pad]).await?;
+                }
             }
 
             offset += chunk_len;
