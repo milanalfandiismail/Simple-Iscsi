@@ -29,7 +29,7 @@ struct ServerConfig {
 #[derive(Deserialize)]
 struct StorageConfig {
     physical_disk: String,
-    cache_dir: String,
+    writeback_dirs: Vec<String>,
     block_size: u64,
 }
 
@@ -77,18 +77,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Buat direktori cache jika belum ada
-    if let Err(e) = fs::create_dir_all(&config.storage.cache_dir) {
-        error!("Gagal membuat direktori cache {:?}: {}", config.storage.cache_dir, e);
-        std::process::exit(1);
+    // Buat semua direktori writeback
+    for dir in &config.storage.writeback_dirs {
+        if let Err(e) = fs::create_dir_all(dir) {
+            error!("Gagal membuat direktori writeback {:?}: {}", dir, e);
+            std::process::exit(1);
+        }
     }
+    info!("Writeback dirs: {} ({:?})",
+        config.storage.writeback_dirs.len(),
+        config.storage.writeback_dirs);
 
     // Mulai server TCP iSCSI
     if let Err(e) = server::start_server(
         &config.server.address,
         config.server.port,
         backend,
-        config.storage.cache_dir,
+        config.storage.writeback_dirs,
         config.cache.max_cache_per_client_gb,
     )
     .await

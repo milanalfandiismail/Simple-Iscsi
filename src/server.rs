@@ -1,6 +1,7 @@
 use crate::backend::Backend;
 use crate::session::Session;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::net::TcpListener;
 use tracing::{info, error};
 
@@ -9,12 +10,14 @@ pub async fn start_server(
     address: &str,
     port: u16,
     backend: Arc<Backend>,
-    cache_dir: String,
+    writeback_dirs: Vec<String>,
     max_cache_gb: u64,
 ) -> Result<(), std::io::Error> {
     let bind_addr = format!("{}:{}", address, port);
     let listener = TcpListener::bind(&bind_addr).await?;
     info!("Server iSCSI berjalan di: iSCSI://{}", bind_addr);
+
+    static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
 
     loop {
         let (stream, peer) = match listener.accept().await {
@@ -31,14 +34,15 @@ pub async fn start_server(
         }
 
         let backend_clone = Arc::clone(&backend);
-        let cache_dir_clone = cache_dir.clone();
-        
+        let idx = NEXT_DIR.fetch_add(1, Ordering::Relaxed) % writeback_dirs.len();
+        let assigned_dir = writeback_dirs[idx].clone();
+
         tokio::spawn(async move {
             let session = Session::new(
                 stream,
                 peer.ip(),
                 backend_clone,
-                cache_dir_clone,
+                assigned_dir,
                 max_cache_gb,
             );
             if let Err(e) = session.run().await {
