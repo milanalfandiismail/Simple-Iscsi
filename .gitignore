@@ -22,3 +22,9 @@
 
 # Logs
 *.log
+
+# AI Agent
+.agent/
+.skills/
+skills/
+iscsi-server-planning.md
