@@ -12,7 +12,8 @@ pub async fn start_server(
     backend: Arc<Backend>,
     writeback_dirs: Vec<String>,
     max_cache_gb: u64,
-) -> Result<(), std::io::Error> {
+    target_iqn: String,
+) -> Result<(), Box<dyn std::error::Error>> {
     let bind_addr = format!("{}:{}", address, port);
     let listener = TcpListener::bind(&bind_addr).await?;
     info!("Server iSCSI berjalan di: iSCSI://{}", bind_addr);
@@ -37,6 +38,7 @@ pub async fn start_server(
         let idx = NEXT_DIR.fetch_add(1, Ordering::Relaxed) % writeback_dirs.len();
         let assigned_dir = writeback_dirs[idx].clone();
 
+        let iqn = target_iqn.clone();
         tokio::spawn(async move {
             let session = Session::new(
                 stream,
@@ -44,6 +46,7 @@ pub async fn start_server(
                 backend_clone,
                 assigned_dir,
                 max_cache_gb,
+                iqn,
             );
             if let Err(e) = session.run().await {
                 error!("Error terjadi pada sesi client {}: {}", peer, e);

@@ -95,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         backend,
         config.storage.writeback_dirs,
         config.cache.max_cache_per_client_gb,
+        config.server.target_iqn.clone(),
     )
     .await
     {
