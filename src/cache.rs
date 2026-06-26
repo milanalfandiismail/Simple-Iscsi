@@ -62,6 +62,7 @@ impl ClientCache {
         }
 
         let mut writer = self.file.lock();
+        writer.flush().ok()?; // ⚠️ flush BufWriter sebelum read biar data latest
         let file = writer.get_mut();
 
         let mut span_start = 0;
@@ -82,6 +83,19 @@ impl ClientCache {
             span_start = span_end;
         }
         Some(Ok(()))
+    }
+
+    /// Cek apakah seluruh range LBA (first_lba..first_lba+n) ada di cache
+    /// dengan offset berurutan (contiguous). Cukup cek 2 blocks: pertama & terakhir.
+    pub fn contains_range(&self, first_lba: u64, n: u32) -> bool {
+        if n == 0 { return false; }
+        if n == 1 { return self.block_map.contains_key(&first_lba); }
+        let last_lba = first_lba + n as u64 - 1;
+        // Cek apakah first & last ada di cache
+        let first_off = match self.block_map.get(&first_lba) { Some(v) => *v, None => return false };
+        let last_off  = match self.block_map.get(&last_lba)  { Some(v) => *v, None => return false };
+        // Kalau contiguous, offset last harus = first + (n-1) * block_size
+        last_off == first_off + (n as u64 - 1) * self.block_size
     }
 
     pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
@@ -108,6 +122,7 @@ impl ClientCache {
             let mut writer = self.file.lock();
             writer.get_mut().seek(SeekFrom::Start(base))?;
             writer.write_all(data)?;
+            writer.flush()?; // ⚠️ flush ke disk sebelum unlock!
             return Ok(());
         }
 
@@ -146,6 +161,7 @@ impl ClientCache {
 
             span_start = span_end;
         }
+        writer.flush()?; // ⚠️ flush ke disk sebelum unlock!
         Ok(())
     }
 

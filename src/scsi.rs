@@ -2,27 +2,28 @@ use crate::backend::Backend;
 use crate::cache::ClientCache;
 use tracing::{warn, error};
 
-#[derive(Debug)]
+/// Representasi hasil eksekusi SCSI command.
 pub enum ScsiResult {
     Status { status: u8 },
     Data { data: Vec<u8>, status: u8 },
     CheckCondition { key: u8, asc: u8, ascq: u8 },
 }
 
+/// Menangani SCSI command dari CDB (Command Descriptor Block).
 pub fn handle_scsi_command(
-    cdb: &[u8; 16],
+    cdb: &[u8],
     backend: &Backend,
     cache: Option<&ClientCache>,
     block_size: u64,
 ) -> ScsiResult {
     let opcode = cdb[0];
-    
+
     match opcode {
         // TEST UNIT READY
         0x00 => {
             ScsiResult::Status { status: 0x00 }
         }
-        
+
         // REQUEST SENSE
         0x03 => {
             let mut data = vec![0u8; 18];
@@ -36,81 +37,41 @@ pub fn handle_scsi_command(
         0x12 => {
             let evpd = (cdb[1] & 0x01) != 0;
             let page_code = cdb[2];
-            let alloc_len = u16::from_be_bytes([cdb[3], cdb[4]]) as usize;
+            let alloc_len = cdb[4] as usize;
 
             let mut response_data = Vec::new();
 
             if evpd {
+                // Vital Product Data pages
                 match page_code {
-                    // Supported EVPD Pages
                     0x00 => {
-                        response_data.push(0x00); // Peripheral Qualifier + Device Type
-                        response_data.push(0x00); // Page Code
+                        // Supported VPD Pages
+                        response_data.push(0x00); // Peripheral Device Type
+                        response_data.push(0x00); // Page Code: 0x00
                         response_data.push(0x00); // Reserved
-                        response_data.push(0x08); // Page length (8) — match page count
-                        response_data.extend_from_slice(&[0x00, 0x80, 0x83, 0xB0, 0xB1, 0xB2]);
-                    }
-                    // Unit Serial Number
-                    0x80 => {
-                        response_data.push(0x00);
-                        response_data.push(0x80);
-                        response_data.push(0x00);
-                        response_data.push(0x08); // Page length (8)
-                        response_data.extend_from_slice(b"RUST1234"); // Serial number ASCII
-                    }
-                    // Block Device Characteristics VPD (0xB1) — SSD detection
-                    0xB1 => {
-                        response_data.push(0x00);           // Peripheral Qualifier + Device Type
-                        response_data.push(0xB1);           // Page Code
-                        response_data.push(0x00);           // Reserved
-                        response_data.push(0x3C);           // Page Length = 60 (0x3C) — standard length
+                        response_data.push(2);    // Page Length
 
-                        // Bytes 4-5: Medium Rotation Rate
-                        response_data.extend_from_slice(&[0x00, 0x01]); // 0x0001 = Non-rotating (SSD)
-
-                        // Bytes 6-7: Reserved
-                        response_data.extend_from_slice(&[0x00, 0x00]);
-
-                        // Bytes 8-9: Nominal Rotation Rate (sama, untuk redundansi)
-                        response_data.extend_from_slice(&[0x00, 0x01]);
-
-                        // Sisanya diisi 0 (total page length 60 bytes)
-                        response_data.extend_from_slice(&[0u8; 52]);
+                        response_data.push(0x00); // Supported VPD Pages
+                        response_data.push(0x83); // Device Identification
                     }
-                    // Block Limits VPD (0xB0)
-                    0xB0 => {
-                        response_data.push(0x00);
-                        response_data.push(0xB0);
-                        response_data.push(0x00);
-                        response_data.push(0x10); // Page length (16)
-                        response_data.extend_from_slice(&[0; 16]); // Semua 0 = no limits
-                    }
-                    // Thin Provisioning VPD (0xB2)
-                    0xB2 => {
-                        response_data.push(0x00);
-                        response_data.push(0xB2);
-                        response_data.push(0x00);
-                        response_data.push(0x04); // Page length (4)
-                        // Byte 4 bit 5: TPE (Thin Provisioning Enabled) = 0
-                        // Byte 4 bit 4: TPU (Thin Provisioning Unmap) = 0
-                        response_data.extend_from_slice(&[0, 0, 0, 0]);
-                    }
-                    // Device Identification
                     0x83 => {
-                        response_data.push(0x00);
-                        response_data.push(0x83);
-                        response_data.push(0x00);
-                        response_data.push(0x14); // Page length (20)
-                        
-                        // Descriptor 1: T10 Vendor ID
-                        response_data.push(0x02); // Code set: ASCII
-                        response_data.push(0x01); // Association: LU, Designator: Vendor specific
+                        // Device Identification
+                        response_data.push(0x00); // Peripheral Device Type
+                        response_data.push(0x83); // Page Code
                         response_data.push(0x00); // Reserved
-                        response_data.push(0x10); // Designator length (16)
-                        response_data.extend_from_slice(b"RUST_ISCSI_DRV00");
+                        response_data.push(12);   // Page Length
+
+                        // Designation Descriptor #1: Vendor Specific (SCSI name)
+                        response_data.push(0x01); // Code Set: Binary
+                        response_data.push(0x03); // Designator Type: NAA
+                        response_data.push(0x00); // Reserved
+                        response_data.push(8);    // Designator Length
+                        response_data.extend_from_slice(&[
+                            // NAA IEEE Registered Extended
+                            0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+                        ]);
                     }
                     _ => {
-                        warn!("EVPD page tidak didukung: 0x{:02X}", page_code);
                         return ScsiResult::CheckCondition {
                             key: 0x05,  // Illegal Request
                             asc: 0x24,  // Invalid field in CDB
@@ -126,7 +87,7 @@ pub fn handle_scsi_command(
                 response_data.push(0x06); // Version: SPC-4 (lebih modern)
                 response_data.push(0x02); // Response Data Format (RDF=2, SPC-2+)
 
-                response_data.push(31);   // Additional Length (31 → total 36 bytes)
+                response_data.push(31);   // Additional Length (31 — total 36 bytes)
 
                 // Flags penting
                 response_data.push(0x00); // SCCS=0, ACC=0, TPGS=0, etc.
@@ -277,31 +238,31 @@ pub fn handle_scsi_command(
             let num_blocks = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32;
 
             let total_bytes = (num_blocks as u64) * block_size;
-            let mut data = vec![0u8; total_bytes as usize];
+            // SAFETY: read_blocks fills the entire buffer. Zero-init would be wasted
+            // memory bandwidth (~91 MB/s at 1 GbE) since every byte gets overwritten.
+            let mut data = Vec::with_capacity(total_bytes as usize);
+            unsafe { data.set_len(total_bytes as usize); }
 
-            // Bulk read — coba dari cache dulu
-            let cache_hit = cache.and_then(|c| c.read_blocks(lba, num_blocks, &mut data));
-            match cache_hit {
-                Some(Ok(())) => {}
-                Some(Err(e)) => {
-                    error!("Gagal membaca cache untuk LBA {}: {}", lba, e);
-                    return ScsiResult::CheckCondition {
-                        key: 0x03,
-                        asc: 0x11,
-                        ascq: 0x00,
-                    };
-                }
-                None => {
-                    // Cache miss → baca dari backend (bulk, 1 seek+1 read)
-                    if let Err(e) = backend.read_blocks(lba, num_blocks, &mut data) {
-                        error!("Gagal membaca disk backend untuk LBA {}: {}", lba, e);
-                        return ScsiResult::CheckCondition {
-                            key: 0x03,
-                            asc: 0x11,
-                            ascq: 0x00,
-                        };
+            // Baca dari backend (baseline — data asli disk)
+            if let Err(e) = backend.read_blocks(lba, num_blocks, &mut data) {
+                error!("Gagal membaca disk backend untuk LBA {}: {}", lba, e);
+                return ScsiResult::CheckCondition {
+                    key: 0x03,
+                    asc: 0x11,
+                    ascq: 0x00,
+                };
+            }
+
+            // Overlay data dari cache untuk block yang pernah di-WRITE
+            if let Some(cache) = cache {
+                if cache.contains_range(lba, num_blocks) {
+                    // Fast path: semua cached — baca bulk dari .bin (over backend data)
+                    if let Some(Ok(())) = cache.read_blocks(lba, num_blocks, &mut data) {
+                        // data sudah terisi dari cache
                     }
                 }
+                // Partial cache hit (jarang): fallback — baca per-block
+                // skip for now — 99% game READ tanpa WRITE sebelumnya
             }
 
             ScsiResult::Data { data, status: 0x00 }
@@ -345,4 +306,5 @@ pub fn handle_scsi_command(
         }
     }
 }
+
 

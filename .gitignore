@@ -24,7 +24,7 @@
 *.log
 
 # AI Agent
-.agent/
+.agents/
 .skills/
 skills/
 iscsi-server-planning.md

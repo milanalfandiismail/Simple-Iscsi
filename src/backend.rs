@@ -4,9 +4,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tracing::{info, error};
 
-/// 256KB read-ahead buffer — matched to typical game file access patterns.
-/// Sequential reads hit cache after first miss. Random reads bypass cleanly.
-const RA_SIZE: usize = 256 * 1024;
+/// 4MB read-ahead buffer — ~34ms buffer at 1 Gbps, tolerate disk latency spikes.
+const RA_SIZE: usize = 8 * 1024 * 1024;
 
 struct BackendInner {
     file: File,
@@ -144,17 +143,14 @@ impl Backend {
                 return Ok(());
             }
 
-            // Miss: do 256KB read-ahead
+            // Miss: read directly into ra_buf — no tmp alloc
             let offset = lba * bs;
             inner.file.seek(SeekFrom::Start(offset))?;
 
             let max_readable = (total_blocks - lba) * bs;
             let ra_bytes = (RA_SIZE as u64).min(max_readable) as usize;
-            // Can't borrow inner.file & inner.ra_buf simultaneously through MutexGuard.
-            // Read into temp buf, then copy to ra_buf — only on cache miss, fine.
-            let mut tmp = vec![0u8; ra_bytes];
-            inner.file.read_exact(&mut tmp)?;
-            inner.ra_buf[..ra_bytes].copy_from_slice(&tmp);
+            let ra_slice = unsafe { &mut *std::ptr::addr_of_mut!(inner.ra_buf[..ra_bytes]) };
+            inner.file.read_exact(ra_slice)?;
             inner.ra_lba = lba;
             inner.ra_blocks = (ra_bytes / bs as usize) as u32;
 
