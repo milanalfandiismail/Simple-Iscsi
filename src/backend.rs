@@ -4,8 +4,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tracing::{info, error};
 
-/// 4MB read-ahead buffer — ~34ms buffer at 1 Gbps, tolerate disk latency spikes.
-const RA_SIZE: usize = 8 * 1024 * 1024;
+/// 256KB read-ahead buffer — cukup untuk 4× 64KB sequential read, ikutin demand client.
+const RA_SIZE: usize = 256 * 1024;
 
 struct BackendInner {
     file: File,
