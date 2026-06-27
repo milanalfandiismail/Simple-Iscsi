@@ -1,24 +1,18 @@
-use crate::backend::Backend;
-use crate::session::Session;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::net::TcpListener;
 use tracing::{info, error};
+use std::sync::Arc;
+use crate::backend::Backend;
+use crate::session::Session;
+use crate::config::Config;
+use std::collections::HashMap;
 
-/// Memulai listener TCP server iSCSI dan meng-accept koneksi secara asinkron.
 pub async fn start_server(
-    address: &str,
-    port: u16,
-    backend: Arc<Backend>,
-    writeback_dirs: Vec<String>,
-    max_cache_gb: u64,
-    target_iqn: String,
+    config: Arc<Config>,
+    gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bind_addr = format!("{}:{}", address, port);
+    let bind_addr = format!("{}:{}", config.server.address, config.server.port);
     let listener = TcpListener::bind(&bind_addr).await?;
     info!("Server iSCSI berjalan di: iSCSI://{}", bind_addr);
-
-    static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
 
     loop {
         let (stream, peer) = match listener.accept().await {
@@ -34,22 +28,21 @@ pub async fn start_server(
             error!("Gagal mengaktifkan TCP_NODELAY untuk {}: {}", peer, e);
         }
 
-        let backend_clone = Arc::clone(&backend);
-        let idx = NEXT_DIR.fetch_add(1, Ordering::Relaxed) % writeback_dirs.len();
-        let assigned_dir = writeback_dirs[idx].clone();
+        let gamedisk_backends_clone = Arc::clone(&gamedisk_backends);
+        let config_clone = Arc::clone(&config);
 
-        let iqn = target_iqn.clone();
         tokio::spawn(async move {
             let session = Session::new(
                 stream,
                 peer.ip(),
-                backend_clone,
-                assigned_dir,
-                max_cache_gb,
-                iqn,
+                gamedisk_backends_clone,
+                config_clone,
             );
+            
             if let Err(e) = session.run().await {
-                error!("Error terjadi pada sesi client {}: {}", peer, e);
+                error!("Sesi iSCSI client {} terputus dengan error: {}", peer.ip(), e);
+            } else {
+                info!("Sesi iSCSI client {} ditutup dengan normal.", peer.ip());
             }
         });
     }

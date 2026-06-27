@@ -4,39 +4,15 @@ mod pdu;
 mod scsi;
 mod server;
 mod session;
+mod config;
+mod vhd;
 
 use backend::Backend;
-use serde::Deserialize;
 use std::fs;
 use std::sync::Arc;
 use tracing::{info, error, Level};
 use tracing_subscriber::FmtSubscriber;
-
-#[derive(Deserialize)]
-struct Config {
-    server: ServerConfig,
-    storage: StorageConfig,
-    cache: CacheConfig,
-}
-
-#[derive(Deserialize)]
-struct ServerConfig {
-    address: String,
-    port: u16,
-    target_iqn: String,
-}
-
-#[derive(Deserialize)]
-struct StorageConfig {
-    physical_disk: String,
-    writeback_dirs: Vec<String>,
-    block_size: u64,
-}
-
-#[derive(Deserialize)]
-struct CacheConfig {
-    max_cache_per_client_gb: u64,
-}
+use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -49,53 +25,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Memulai Rust iSCSI Server...");
 
     // Membaca file konfigurasi config.toml
-    let config_content = match fs::read_to_string("config.toml") {
-        Ok(content) => content,
-        Err(e) => {
-            error!("Gagal membaca config.toml di root directory: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let config: Config = match toml::from_str(&config_content) {
+    let config = match config::load_config("config.toml") {
         Ok(cfg) => cfg,
         Err(e) => {
-            error!("Gagal parsing config.toml: {}", e);
+            error!("Gagal meload config: {}", e);
             std::process::exit(1);
         }
     };
 
-    info!("Target IQN dikonfigurasi: {}", config.server.target_iqn);
+    info!("Server dikonfigurasi untuk listen di {}:{}", config.server.address, config.server.port);
 
-    // Inisialisasi storage backend (HDD game read-only)
-    let backend = match Backend::new(&config.storage.physical_disk, config.storage.block_size) {
-        Ok(b) => Arc::new(b),
-        Err(e) => {
-            error!("Fatal: Gagal menginisialisasi storage backend: {}", e);
-            error!("Pastikan path physical_disk ada dan dapat diakses (Hak Administrator diperlukan untuk raw drive).");
-            std::process::exit(1);
-        }
-    };
+    // TODO: Panggil fungsi pemeliharaan Super Client (merge/discard) secara offline disini nanti
 
-    // Buat semua direktori writeback
-    for dir in &config.storage.writeback_dirs {
-        if let Err(e) = fs::create_dir_all(dir) {
-            error!("Gagal membuat direktori writeback {:?}: {}", dir, e);
-            std::process::exit(1);
+    // Inisialisasi storage backend untuk seluruh Gamedisk
+    let mut gamedisk_backends = HashMap::new();
+    for (i, gd_cfg) in config.gamedisk.iter().enumerate() {
+        let lun_id = i as u8;
+        match Backend::new_raw(
+            &gd_cfg.physical_disk, 
+            gd_cfg.block_size,
+            &gd_cfg.vendor_id,
+            &gd_cfg.product_id,
+            &gd_cfg.product_revision,
+        ) {
+            Ok(b) => {
+                gamedisk_backends.insert(lun_id, Arc::new(b));
+                info!("Berhasil memuat Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
+            }
+            Err(e) => {
+                error!("Fatal: Gagal menginisialisasi storage backend gamedisk ({}): {}", gd_cfg.physical_disk, e);
+                error!("Pastikan path physical_disk ada dan dapat diakses (Hak Administrator diperlukan untuk raw drive).");
+                std::process::exit(1);
+            }
         }
     }
-    info!("Writeback dirs: {} ({:?})",
-        config.storage.writeback_dirs.len(),
-        config.storage.writeback_dirs);
+
+    // Buat direktori writeback/cache utama
+    if let Err(e) = fs::create_dir_all(&config.cache.cache_dir) {
+        error!("Gagal membuat direktori cache {:?}: {}", config.cache.cache_dir, e);
+        std::process::exit(1);
+    }
+    info!("Cache dir siap di: {}", config.cache.cache_dir);
 
     // Mulai server TCP iSCSI
     if let Err(e) = server::start_server(
-        &config.server.address,
-        config.server.port,
-        backend,
-        config.storage.writeback_dirs,
-        config.cache.max_cache_per_client_gb,
-        config.server.target_iqn.clone(),
+        Arc::new(config),
+        Arc::new(gamedisk_backends),
     )
     .await
     {

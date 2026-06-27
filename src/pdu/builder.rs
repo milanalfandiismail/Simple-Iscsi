@@ -1,5 +1,4 @@
 use crate::pdu::Pdu;
-use std::collections::HashMap;
 
 /// Serializes PDU header (BHS) into a fixed 48-byte buffer. Zero-alloc.
 /// Returns the data segment length for padding calculation.
@@ -72,7 +71,7 @@ pub fn build_pdu(pdu: &Pdu) -> Vec<u8> {
 }
 
 /// Membuat data segment berisi parameter text key-value dalam format `Key=Value\0`.
-pub fn build_text_parameters(params: &HashMap<String, String>) -> Vec<u8> {
+pub fn build_text_parameters(params: &[(String, String)]) -> Vec<u8> {
     let mut data = Vec::new();
     for (k, v) in params {
         data.extend_from_slice(k.as_bytes());

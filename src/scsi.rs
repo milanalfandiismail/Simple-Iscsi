@@ -15,6 +15,7 @@ pub fn handle_scsi_command(
     backend: &Backend,
     cache: Option<&ClientCache>,
     block_size: u64,
+    active_luns: &[u8],
 ) -> ScsiResult {
     let opcode = cdb[0];
 
@@ -127,13 +128,25 @@ pub fn handle_scsi_command(
                 response_data.push(0x00); // BQUE=0, VS=0, etc. (byte 7)
                 
                 // Vendor ID (8 bytes)
-                response_data.extend_from_slice(b"RUSTISCS");
+                let mut vendor = vec![b' '; 8];
+                let v_bytes = backend.vendor_id.as_bytes();
+                let v_len = std::cmp::min(8, v_bytes.len());
+                vendor[..v_len].copy_from_slice(&v_bytes[..v_len]);
+                response_data.extend_from_slice(&vendor);
                 
                 // Product ID (16 bytes)
-                response_data.extend_from_slice(b"GameDiskCache   ");
+                let mut product = vec![b' '; 16];
+                let p_bytes = backend.product_id.as_bytes();
+                let p_len = std::cmp::min(16, p_bytes.len());
+                product[..p_len].copy_from_slice(&p_bytes[..p_len]);
+                response_data.extend_from_slice(&product);
                 
                 // Product Revision Level (4 bytes)
-                response_data.extend_from_slice(b"1.00");
+                let mut rev = vec![b' '; 4];
+                let r_bytes = backend.product_revision.as_bytes();
+                let r_len = std::cmp::min(4, r_bytes.len());
+                rev[..r_len].copy_from_slice(&r_bytes[..r_len]);
+                response_data.extend_from_slice(&rev);
             }
 
             // Potong sesuai allocation length yang diminta oleh initiator
@@ -322,9 +335,25 @@ pub fn handle_scsi_command(
 
         // REPORT LUNS
         0xA0 => {
-            let mut data = vec![0u8; 16];
-            data[3] = 8; // LUN list length = 8 bytes
-            // LUN 0 = 0 (data[8..16] tetap 0)
+            let lun_list_len = (active_luns.len() * 8) as u32;
+            let mut data = vec![0u8; 8 + active_luns.len() * 8];
+            data[0..4].copy_from_slice(&lun_list_len.to_be_bytes()); // LUN list length
+
+            for (i, &lun_id) in active_luns.iter().enumerate() {
+                let offset = 8 + i * 8;
+                // Single Level LUN Format
+                // Address Method = 00b (Peripheral device addressing method), BUS Identifier = 0
+                // LUN is placed in the second byte.
+                data[offset] = 0;
+                data[offset + 1] = lun_id;
+                // rest of 6 bytes are zero
+            }
+
+            let alloc_len = u32::from_be_bytes(cdb[6..10].try_into().unwrap()) as usize;
+            if data.len() > alloc_len {
+                data.truncate(alloc_len);
+            }
+
             ScsiResult::Data { data, status: 0x00 }
         }
 
