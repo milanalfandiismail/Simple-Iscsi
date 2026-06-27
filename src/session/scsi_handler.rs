@@ -3,7 +3,6 @@ use crate::scsi::ScsiResult;
 use crate::session::Session;
 use tracing::{debug, error, info, trace, warn};
 use tokio::io::AsyncWriteExt;
-use std::collections::HashMap;
 use std::time::Instant;
 use crate::scsi;
 
@@ -44,7 +43,7 @@ impl Session {
     pub(super) async fn handle_text_req(&mut self, req: Pdu) -> Result<(), std::io::Error> {
         let params = pdu::parser::parse_text_parameters(&req.data);
         info!("Menerima Text Request parameters: {:?}", params);
-        let mut resp_params = HashMap::new();
+        let mut resp_params = Vec::new();
 
         if params.get("SendTargets").map(|s| s.as_str()) == Some("All") {
             let local_addr = self.stream.local_addr()?;
@@ -53,8 +52,8 @@ impl Session {
             
             let target_address = format!("{}:{},1", ip, port);
             info!("Discovery mengembalikan target portal: {} di {}", self.target_iqn, target_address);
-            resp_params.insert("TargetName".to_string(), self.target_iqn.clone());
-            resp_params.insert("TargetAddress".to_string(), target_address);
+            resp_params.push(("TargetName".to_string(), self.target_iqn.clone()));
+            resp_params.push(("TargetAddress".to_string(), target_address));
         }
         info!("Mengirim Text Response parameters: {:?}", resp_params);
 
@@ -77,11 +76,21 @@ impl Session {
     pub(super) async fn handle_scsi_cmd(&mut self, req: Pdu) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
         let opcode = cdb[0];
-        trace!("Menerima SCSI Command opcode: 0x{:02X}, CDB: {:02X?}", opcode, cdb);
+        let lun_id = ((req.lun >> 48) & 0xFF) as u8;
+        trace!("Menerima SCSI Command opcode: 0x{:02X}, LUN: {}, CDB: {:02X?}", opcode, lun_id, cdb);
 
-        // Jika ini sesi normal, pastikan cache telah diinisialisasi
-        if self.client_cache.is_none() && !self.is_discovery {
-            warn!("Normal SCSI Command diterima tanpa inisialisasi cache!");
+        let backend = match self.backends.get(&lun_id) {
+            Some(b) => b,
+            None => {
+                warn!("SCSI Command untuk LUN {} yang tidak ada. Mengirim Check Condition.", lun_id);
+                self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
+                return Ok(());
+            }
+        };
+
+        let cache_opt = self.client_caches.get(&lun_id);
+        if cache_opt.is_none() && !self.is_discovery {
+            warn!("Normal SCSI Command diterima untuk LUN {} tanpa inisialisasi cache!", lun_id);
             self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
             return Ok(());
         }
@@ -90,7 +99,7 @@ impl Session {
             // READ (10) — inline untuk menghindari Vec alloc
             let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64;
             let num_blocks = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32;
-            let block_size = self.backend.block_size();
+            let block_size = backend.block_size();
             let total_bytes = (num_blocks as u64 * block_size) as usize;
 
             let t0 = Instant::now();
@@ -100,14 +109,14 @@ impl Session {
                 self.read_buf.resize(total_bytes, 0);
             }
 
-            if let Err(e) = self.backend.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
-                error!("Gagal membaca disk backend untuk LBA {}: {}", lba, e);
+            if let Err(e) = backend.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
+                error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
                 self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
                 return Ok(());
             }
 
             // Overlay cache jika perlu
-            if let Some(ref cache) = self.client_cache {
+            if let Some(cache) = cache_opt {
                 if cache.contains_range(lba, num_blocks) {
                     if let Some(Ok(())) = cache.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
                         // data sudah dikoreksi dari cache
@@ -120,15 +129,16 @@ impl Session {
             let ptr = self.read_buf.as_ptr();
             let data = unsafe { std::slice::from_raw_parts(ptr, total_bytes) };
             self.send_scsi_data_in(req.initiator_task_tag, data, 0x00, req.expected_data_len).await?;
-            debug!("READ10 LBA={}: send_data_in {}µs", lba, t0.elapsed().as_micros());
+            debug!("READ10 LUN={} LBA={}: send_data_in {}µs", lun_id, lba, t0.elapsed().as_micros());
         } else if opcode == 0x2A {
             // WRITE (10)
             let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap());
-            trace!("Mulai WRITE (10) LBA: {}", lba);
-            self.handle_write10(req).await?;
+            trace!("Mulai WRITE (10) LUN: {}, LBA: {}", lun_id, lba);
+            self.handle_write10(req, lun_id).await?;
         } else {
             // Perintah SCSI lainnya disalurkan ke handler scsi.rs
-            let result = scsi::handle_scsi_command(&cdb, &self.backend, self.client_cache.as_ref(), self.backend.block_size());
+            let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
+            let result = scsi::handle_scsi_command(&cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns);
             match result {
                 ScsiResult::Status { status } => {
                     trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
@@ -154,11 +164,13 @@ impl Session {
         Ok(())
     }
 
-    pub(super) async fn handle_write10(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_write10(&mut self, req: Pdu, lun_id: u8) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
         let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64;
         let num_blocks = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32;
-        let block_size = self.backend.block_size();
+        
+        let backend = self.backends.get(&lun_id).unwrap();
+        let block_size = backend.block_size();
         let expected_len = (num_blocks as usize) * (block_size as usize);
 
         let mut bytes_received = 0;
@@ -166,11 +178,11 @@ impl Session {
         // Tulis immediate data (unsolicited) ke cache langsung
         let immediate_len = req.data.len();
         if immediate_len > 0 {
-            if let Some(ref cache) = self.client_cache {
+            if let Some(cache) = self.client_caches.get(&lun_id) {
                 cache.write_stream(lba, 0, &req.data)?;
                 bytes_received = req.data.len();
             } else {
-                error!("Client cache tidak tersedia untuk immediate write!");
+                error!("Client cache tidak tersedia untuk immediate write LUN {}!", lun_id);
                 self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
                 return Ok(());
             }
@@ -179,7 +191,7 @@ impl Session {
         // Kalo masih kurang, kirim R2T
         if bytes_received < expected_len {
             let remaining = (expected_len - bytes_received) as u32;
-            info!("WRITE10 LBA {} ({} blocks): kirim R2T offset={} desired={}", lba, num_blocks, bytes_received, remaining);
+            info!("WRITE10 LUN {} LBA {} ({} blocks): kirim R2T offset={} desired={}", lun_id, lba, num_blocks, bytes_received, remaining);
             self.send_r2t(
                 req.initiator_task_tag,
                 req.lun,
@@ -208,7 +220,7 @@ impl Session {
             let buf_offset = data_out.exp_stat_sn as u64;
             let chunk = data_out.data;
 
-            if let Some(ref cache) = self.client_cache {
+            if let Some(cache) = self.client_caches.get(&lun_id) {
                 cache.write_stream(lba, buf_offset, &chunk)?;
             } else {
                 self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
@@ -218,7 +230,7 @@ impl Session {
             bytes_received += data_len;
         }
 
-        info!("WRITE10 LBA {} sukses ({} bytes)", lba, expected_len);
+        info!("WRITE10 LUN {} LBA {} sukses ({} bytes)", lun_id, lba, expected_len);
         self.send_scsi_response(req.initiator_task_tag, 0x00, 0, 0, 0).await?;
         Ok(())
     }

@@ -4,16 +4,61 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tracing::{info, error};
 
-/// 1MB read-ahead buffer — cukup untuk 16× 64KB sequential read, sweet spot untuk peak READ.
+use crate::vhd::VhdBackend;
+
+/// 1MB read-ahead buffer
 const RA_SIZE: usize = 1024 * 1024;
 
+enum BackendType {
+    RawDisk(File),
+    Vhd(VhdBackend),
+}
+
+impl BackendType {
+    fn read_exact_at(&mut self, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+        match self {
+            BackendType::RawDisk(ref mut file) => {
+                let offset = lba * block_size;
+                file.seek(SeekFrom::Start(offset))?;
+                file.read_exact(buf)
+            }
+            BackendType::Vhd(ref mut vhd) => {
+                let mut buf_offset = 0;
+                let mut current_byte_offset = lba * block_size;
+                
+                while buf_offset < buf.len() {
+                    let vhd_block_idx = current_byte_offset / (vhd.vhd_block_size as u64);
+                    let offset_in_vhd_block = current_byte_offset % (vhd.vhd_block_size as u64);
+                    
+                    let bytes_to_read = std::cmp::min(
+                        buf.len() - buf_offset,
+                        (vhd.vhd_block_size as u64 - offset_in_vhd_block) as usize
+                    );
+
+                    let bat_val = *vhd.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                    if bat_val == 0xFFFFFFFF {
+                        // Unallocated block -> zeros
+                        for i in 0..bytes_to_read {
+                            buf[buf_offset + i] = 0;
+                        }
+                    } else {
+                        let physical_offset = (bat_val as u64) * 512 + (vhd.sector_bitmap_size as u64) + offset_in_vhd_block;
+                        vhd.file.seek(SeekFrom::Start(physical_offset))?;
+                        vhd.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                    }
+                    buf_offset += bytes_to_read;
+                    current_byte_offset += bytes_to_read as u64;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 struct BackendInner {
-    file: File,
-    /// Read-ahead buffer: holds raw bytes from last miss + prefetched data.
+    backend: BackendType,
     ra_buf: Vec<u8>,
-    /// Starting LBA of the read-ahead cache window.
     ra_lba: u64,
-    /// Number of blocks currently held in ra_buf.
     ra_blocks: u32,
 }
 
@@ -22,23 +67,24 @@ pub struct Backend {
     block_size: u64,
     total_size: u64,
     total_blocks: u64,
+    pub vendor_id: String,
+    pub product_id: String,
+    pub product_revision: String,
 }
 
 impl Backend {
-    pub fn new(path: &str, block_size: u64) -> io::Result<Self> {
-        info!("Membuka storage backend: {}", path);
-
+    pub fn new_raw(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
+        info!("Membuka storage backend raw: {}", path);
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
 
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            options.share_mode(1 | 2);
         }
 
-        #[allow(unused_mut)]
-        let mut file = match options.open(path) {
+        let file = match options.open(path) {
             Ok(f) => f,
             Err(e) => {
                 error!("Gagal membuka storage backend di {:?}: {}", path, e);
@@ -54,36 +100,26 @@ impl Backend {
                     match get_windows_drive_size(&file) {
                         Ok(len) => len,
                         Err(e) => {
-                            error!("Gagal menentukan ukuran target drive menggunakan DeviceIoControl: {}", e);
+                            error!("Gagal menentukan ukuran drive: {}", e);
                             return Err(e);
                         }
                     }
                 }
                 #[cfg(not(windows))]
                 {
-                    match file.seek(SeekFrom::End(0)) {
-                        Ok(pos) => {
-                            let _ = file.seek(SeekFrom::Start(0));
-                            pos
-                        }
-                        Err(e) => {
-                            error!("Gagal menentukan ukuran target drive menggunakan seek: {}", e);
-                            return Err(e);
-                        }
-                    }
+                    // Fallback using seek
+                    let mut f = file.try_clone()?;
+                    let pos = f.seek(SeekFrom::End(0))?;
+                    f.seek(SeekFrom::Start(0))?;
+                    pos
                 }
             }
         };
 
-        info!(
-            "Storage backend berhasil dibuka. Ukuran: {} byte ({:.2} GB, {} block)",
-            total_size,
-            (total_size as f64) / 1024.0 / 1024.0 / 1024.0,
-            total_size / block_size
-        );
+        info!("Storage raw dibuka. Ukuran: {} byte", total_size);
 
         let inner = BackendInner {
-            file,
+            backend: BackendType::RawDisk(file),
             ra_buf: vec![0u8; RA_SIZE],
             ra_lba: u64::MAX,
             ra_blocks: 0,
@@ -94,6 +130,51 @@ impl Backend {
             block_size,
             total_size,
             total_blocks: total_size / block_size,
+            vendor_id: vendor.to_string(),
+            product_id: product.to_string(),
+            product_revision: rev.to_string(),
+        })
+    }
+
+    pub fn new_vhd(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
+        info!("Membuka storage backend VHD: {}", path);
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.share_mode(1 | 2);
+        }
+
+        let file = match options.open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                error!("Gagal membuka VHD di {:?}: {}", path, e);
+                return Err(e);
+            }
+        };
+
+        let vhd = VhdBackend::open(file)?;
+        let total_size = vhd.current_size;
+
+        info!("VHD backend dibuka. Ukuran: {} byte", total_size);
+
+        let inner = BackendInner {
+            backend: BackendType::Vhd(vhd),
+            ra_buf: vec![0u8; RA_SIZE],
+            ra_lba: u64::MAX,
+            ra_blocks: 0,
+        };
+
+        Ok(Backend {
+            inner: Arc::new(Mutex::new(inner)),
+            block_size,
+            total_size,
+            total_blocks: total_size / block_size,
+            vendor_id: vendor.to_string(),
+            product_id: product.to_string(),
+            product_revision: rev.to_string(),
         })
     }
 
@@ -110,29 +191,20 @@ impl Backend {
         let _read_len = (num_blocks as u64) * bs;
 
         if buf.len() < _read_len as usize {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Buffer target terlalu kecil dibanding request baca",
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil"));
         }
 
         let mut inner = self.inner.lock();
         let total_blocks = self.total_blocks;
 
-        // Guard: clamp to disk boundary (os error 27 jika baca melewati akhir disk)
         if lba >= total_blocks {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "LBA melebihi total blocks disk",
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "LBA melebihi batas"));
         }
         let max_blocks = (total_blocks - lba) as u32;
         let num = num_blocks.min(max_blocks);
         let actual_len = (num as u64) * bs;
 
-        // Small request: try read-ahead cache
         if actual_len <= RA_SIZE as u64 {
-            // Cache hit?
             if lba >= inner.ra_lba
                 && (lba - inner.ra_lba) < inner.ra_blocks as u64
                 && (lba - inner.ra_lba + num as u64) <= inner.ra_blocks as u64
@@ -143,29 +215,23 @@ impl Backend {
                 return Ok(());
             }
 
-            // Miss: read directly into ra_buf — no tmp alloc
-            let offset = lba * bs;
-            inner.file.seek(SeekFrom::Start(offset))?;
-
             let max_readable = (total_blocks - lba) * bs;
             let ra_bytes = (RA_SIZE as u64).min(max_readable) as usize;
+            
+            // Read into read-ahead cache
             let ra_slice = unsafe { &mut *std::ptr::addr_of_mut!(inner.ra_buf[..ra_bytes]) };
-            inner.file.read_exact(ra_slice)?;
+            inner.backend.read_exact_at(lba, bs, ra_slice)?;
             inner.ra_lba = lba;
-            inner.ra_blocks = (ra_bytes / bs as usize) as u32;
+            inner.ra_blocks = (ra_bytes as u64 / bs) as u32;
 
             buf[..actual_len as usize]
                 .copy_from_slice(&inner.ra_buf[..actual_len as usize]);
         } else {
-            // Read larger than RA_SIZE: bypass cache, direct I/O
-            let offset = lba * bs;
-            inner.file.seek(SeekFrom::Start(offset))?;
-            inner.file.read_exact(&mut buf[..actual_len as usize])?;
+            inner.backend.read_exact_at(lba, bs, &mut buf[..actual_len as usize])?;
         }
 
         Ok(())
     }
-
 }
 
 #[cfg(windows)]
@@ -191,7 +257,6 @@ fn get_windows_drive_size(file: &std::fs::File) -> std::io::Result<u64> {
         ) -> BOOL;
     }
 
-    // IOCTL_DISK_GET_LENGTH_INFO
     const IOCTL_DISK_GET_LENGTH_INFO: DWORD = 0x0007405C;
 
     let handle = file.as_raw_handle() as HANDLE;

@@ -12,40 +12,76 @@ const BUFFER_SIZE: usize = 2 * 1024 * 1024; // 2MB buffer
 
 pub struct ClientCache {
     file_path: PathBuf,
+    map_path: PathBuf,
     file: Arc<Mutex<BufWriter<std::fs::File>>>,
     block_map: DashMap<u64, u64>,
     next_write_offset: AtomicU64,
     block_size: u64,
     max_cache_size: u64,
+    is_super: bool,
 }
 
 impl ClientCache {
-    pub fn new(cache_dir: &str, client_ip: &str, block_size: u64, max_cache_gb: u64) -> io::Result<Self> {
+    pub fn new(
+        cache_dir: &str,
+        client_ip: &str,
+        target_name: &str,
+        block_size: u64,
+        max_cache_gb: u64,
+        is_super: bool,
+    ) -> io::Result<Self> {
         let dir_path = Path::new(cache_dir);
         fs::create_dir_all(dir_path)?;
 
         let safe_ip = client_ip.chars()
             .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
             .collect::<String>();
+            
+        let safe_target = target_name.chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect::<String>();
 
-        let file_path = dir_path.join(format!("{}-gamedisk.bin", safe_ip));
+        let file_path = dir_path.join(format!("{}-{}.bin", safe_ip, safe_target));
+        let map_path = dir_path.join(format!("{}-{}.map", safe_ip, safe_target));
+
+        let mut next_write_offset = 0;
+        let block_map = DashMap::new();
+
+        // Load existing map if super client and file exists
+        if is_super && file_path.exists() && map_path.exists() {
+            if let Ok(map_content) = std::fs::read_to_string(&map_path) {
+                for line in map_content.lines() {
+                    let parts: Vec<&str> = line.split(':').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(lba), Ok(offset)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                            block_map.insert(lba, offset);
+                            if offset + block_size > next_write_offset {
+                                next_write_offset = offset + block_size;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .truncate(false)
+            .truncate(!is_super) // Hanya truncate jika bukan super_client
             .open(&file_path)?;
 
         let buffered = BufWriter::with_capacity(BUFFER_SIZE, file);
 
         Ok(ClientCache {
             file_path,
+            map_path,
             file: Arc::new(Mutex::new(buffered)),
-            block_map: DashMap::new(),
-            next_write_offset: AtomicU64::new(0),
+            block_map,
+            next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
             max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
+            is_super,
         })
     }
 
@@ -169,10 +205,27 @@ impl ClientCache {
         let mut writer = self.file.lock();
         writer.flush()?;
         writer.get_mut().sync_all()?;
+        
+        if self.is_super {
+            // Save map to file
+            let mut map_content = String::new();
+            for entry in self.block_map.iter() {
+                map_content.push_str(&format!("{}:{}\n", entry.key(), entry.value()));
+            }
+            if let Err(e) = std::fs::write(&self.map_path, map_content) {
+                warn!("Gagal menyimpan block map {:?}: {}", self.map_path, e);
+            }
+        }
+        
         Ok(())
     }
 
     pub fn cleanup(&self) {
+        if self.is_super {
+            info!("Sesi Super Client ditutup, cache dipertahankan di disk.");
+            return; // Jangan hapus cache jika super client
+        }
+        
         if self.file_path.exists() {
             info!("Menghapus file cache {:?}", self.file_path);
             if let Err(e) = fs::remove_file(&self.file_path) {
@@ -180,6 +233,9 @@ impl ClientCache {
             } else {
                 info!("File cache {:?} berhasil dihapus.", self.file_path);
             }
+        }
+        if self.map_path.exists() {
+            let _ = fs::remove_file(&self.map_path);
         }
     }
 }

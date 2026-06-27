@@ -4,23 +4,23 @@ use crate::pdu::{
     self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
     OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, STAGE_FULL_FEATURE_PHASE,
 };
-use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 pub mod scsi_handler;
 pub mod pdu_io;
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 
 pub struct Session {
     stream: TcpStream,
     client_ip: String,
-    backend: Arc<Backend>,
-    cache_dir: String,
-    max_cache_gb: u64,
-    client_cache: Option<ClientCache>,
+    gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
+    backends: HashMap<u8, Arc<Backend>>,
+    config: Arc<crate::config::Config>,
+    client_caches: HashMap<u8, ClientCache>,
 
     target_iqn: String,
     initiator_iqn: String,
@@ -29,7 +29,7 @@ pub struct Session {
     exp_cmd_sn: u32,
     max_cmd_sn: u32,
     max_recv_data_segment_len: usize,
-    /// Reusable read buffer �?k?eliminate alloc per READ10.
+    /// Reusable read buffer – eliminate alloc per READ10.
     read_buf: Vec<u8>,
 }
 
@@ -37,10 +37,8 @@ impl Session {
     pub fn new(
         stream: TcpStream,
         client_ip: IpAddr,
-        backend: Arc<Backend>,
-        cache_dir: String,
-        max_cache_gb: u64,
-        target_iqn: String,
+        gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
+        config: Arc<crate::config::Config>,
     ) -> Self {
         // Konfigurasi TCP: disable Nagle
         let _ = stream.set_nodelay(true);
@@ -84,11 +82,11 @@ impl Session {
         Session {
             stream,
             client_ip: client_ip.to_string(),
-            backend,
-            cache_dir,
-            max_cache_gb,
-            target_iqn,
-            client_cache: None,
+            gamedisk_backends,
+            backends: HashMap::new(),
+            config,
+            client_caches: HashMap::new(),
+            target_iqn: String::new(),
             initiator_iqn: String::new(),
             is_discovery: false,
             stat_sn: 1,
@@ -127,6 +125,9 @@ impl Session {
             if let Some(st) = params.get("SessionType") {
                 self.is_discovery = st == "Discovery";
             }
+            if let Some(tn) = params.get("TargetName") {
+                self.target_iqn = tn.clone();
+            }
             if let Some(val) = params.get("MaxRecvDataSegmentLength") {
                 if let Ok(len) = val.parse::<usize>() {
                     self.max_recv_data_segment_len = len.min(16 * 1024 * 1024);
@@ -134,62 +135,61 @@ impl Session {
             }
 
             // Siapkan parameter negosiasi
-            let mut resp_params = HashMap::new();
+            let mut resp_params = Vec::new();
             if params.contains_key("AuthMethod") {
-                resp_params.insert("AuthMethod".to_string(), "None".to_string());
+                resp_params.push(("AuthMethod".to_string(), "None".to_string()));
             }
             if params.contains_key("HeaderDigest") {
-                resp_params.insert("HeaderDigest".to_string(), "None".to_string());
+                resp_params.push(("HeaderDigest".to_string(), "None".to_string()));
             }
             if params.contains_key("DataDigest") {
-                resp_params.insert("DataDigest".to_string(), "None".to_string());
+                resp_params.push(("DataDigest".to_string(), "None".to_string()));
             }
             if !self.is_discovery && csg == pdu::STAGE_SECURITY_NEGOTIATION {
-                resp_params.insert("TargetPortalGroupTag".to_string(), "1".to_string());
+                resp_params.push(("TargetPortalGroupTag".to_string(), "1".to_string()));
             }
             
             // Negosiasikan opsi iSCSI standard jika di-request oleh client
             if let Some(val) = params.get("ImmediateData") {
-                resp_params.insert("ImmediateData".to_string(), val.clone());
+                resp_params.push(("ImmediateData".to_string(), val.clone()));
             }
             if params.contains_key("InitialR2T") {
                 // Force No supaya initiator kirim unsolicited data seluas FirstBurstLength
-                resp_params.insert("InitialR2T".to_string(), "No".to_string());
+                resp_params.push(("InitialR2T".to_string(), "No".to_string()));
             }
             if params.contains_key("MaxOutstandingR2T") {
                 // Kita hanya mendukung 1 outstanding R2T
-                resp_params.insert("MaxOutstandingR2T".to_string(), "1".to_string());
+                resp_params.push(("MaxOutstandingR2T".to_string(), "1".to_string()));
             }
             if params.contains_key("MaxConnections") {
                 // 4 koneksi per sesi
-                resp_params.insert("MaxConnections".to_string(), "4".to_string());
+                resp_params.push(("MaxConnections".to_string(), "4".to_string()));
             }
             if params.contains_key("ErrorRecoveryLevel") {
                 // Kita hanya mendukung level 0
-                resp_params.insert("ErrorRecoveryLevel".to_string(), "0".to_string());
+                resp_params.push(("ErrorRecoveryLevel".to_string(), "0".to_string()));
             }
             if let Some(val) = params.get("DefaultTime2Wait") {
-                resp_params.insert("DefaultTime2Wait".to_string(), val.clone());
+                resp_params.push(("DefaultTime2Wait".to_string(), val.clone()));
             }
             if let Some(val) = params.get("DefaultTime2Retain") {
-                resp_params.insert("DefaultTime2Retain".to_string(), val.clone());
+                resp_params.push(("DefaultTime2Retain".to_string(), val.clone()));
             }
             if let Some(val) = params.get("DataPDUInOrder") {
-                resp_params.insert("DataPDUInOrder".to_string(), val.clone());
+                resp_params.push(("DataPDUInOrder".to_string(), val.clone()));
             }
             if let Some(val) = params.get("DataSequenceInOrder") {
-                resp_params.insert("DataSequenceInOrder".to_string(), val.clone());
+                resp_params.push(("DataSequenceInOrder".to_string(), val.clone()));
             }
             if params.contains_key("MaxRecvDataSegmentLength") {
-                resp_params.insert("MaxRecvDataSegmentLength".to_string(), "16777216".to_string()); // 1MB
+                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "16777216".to_string())); // 1MB
             }
             if let Some(val) = params.get("FirstBurstLength") {
-                resp_params.insert("FirstBurstLength".to_string(), val.clone());
+                resp_params.push(("FirstBurstLength".to_string(), val.clone()));
             }
             if let Some(val) = params.get("MaxBurstLength") {
-                resp_params.insert("MaxBurstLength".to_string(), val.clone());
+                resp_params.push(("MaxBurstLength".to_string(), val.clone()));
             }
-
 
             let mut resp = Pdu::default();
             resp.opcode = OP_LOGIN_RESP;
@@ -226,16 +226,56 @@ impl Session {
 
         info!("Transisi login sukses. Client masuk ke FFP (Full Feature Phase).");
 
+        let is_super = self.client_ip == self.config.windows.super_client_ip;
+        let target_name: String;
+
+        if self.target_iqn == self.config.gamedisk_target.target_iqn {
+            target_name = "gamedisk".to_string();
+            // Gamedisk target -> muat semua LUN gamedisk
+            for (lun_id, backend) in self.gamedisk_backends.iter() {
+                self.backends.insert(*lun_id, Arc::clone(backend));
+            }
+        } else if self.target_iqn.starts_with(&self.config.windows.target_iqn_prefix) {
+            let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
+            target_name = suffix.to_string();
+            
+            // Buka VHD Dinamis
+            let vhd_path = format!("{}\\{}.vhd", self.config.windows.vhd_dir, suffix);
+            match Backend::new_vhd(
+                &vhd_path,
+                self.config.windows.block_size,
+                &self.config.windows.vendor_id,
+                &self.config.windows.product_id,
+                &self.config.windows.product_revision,
+            ) {
+                Ok(vhd_backend) => {
+                    self.backends.insert(0, Arc::new(vhd_backend)); // VHD selalu LUN 0
+                }
+                Err(e) => {
+                    error!("Gagal membuka VHD {}: {}", vhd_path, e);
+                    return Ok(()); // Putuskan koneksi jika VHD gagal dibuka
+                }
+            }
+        } else {
+            error!("Target IQN tidak valid atau tidak dikenali: {}", self.target_iqn);
+            return Ok(()); // Putuskan koneksi
+        }
+
         // 2. Inisialisasi Cache jika ini sesi normal (bukan discovery)
         if !self.is_discovery {
-            info!("Membuat cache writeback untuk IQN: {}", self.initiator_iqn);
-            let cache = ClientCache::new(
-                &self.cache_dir,
-                &self.client_ip,
-                self.backend.block_size(),
-                self.max_cache_gb,
-            )?;
-            self.client_cache = Some(cache);
+            for (lun_id, backend) in self.backends.iter() {
+                let cache_name = format!("{}_lun{}", target_name, lun_id);
+                info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
+                let cache = ClientCache::new(
+                    &self.config.cache.cache_dir,
+                    &self.client_ip,
+                    &cache_name,
+                    backend.block_size(),
+                    self.config.cache.max_cache_per_client_gb,
+                    is_super,
+                )?;
+                self.client_caches.insert(*lun_id, cache);
+            }
         }
 
         // 3. FFP Message Loop
