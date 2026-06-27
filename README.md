@@ -78,7 +78,15 @@ Set RSS queue ke maksimum di driver NIC (Properti NIC → Advanced → RSS Queue
 - **Nonaktifkan antrian QoS level lain** jika ada
 - **Nonaktifkan semua metering/bandwidth limiter** di NIC
 
-### 6. 🧠 Server-side code (done)
+### 6. 💾 Cluster Size (Format Disk)
+
+Untuk mendapatkan performa baca/tulis (I/O) yang paling optimal, sangat disarankan untuk melakukan format disk dengan **Cluster Size minimal 32KB atau 64KB**.
+Pastikan aturan ini diterapkan di semua disk yang terlibat:
+- Disk Writeback (Cache)
+- Gamedisk (Tempat penyimpanan game)
+- Imagedisk / VHD OS
+
+### 7. 🧠 Server-side code (done)
 
 - `set_nodelay(true)` — disable Nagle
 - `SO_SNDBUF = 512KB` — TCP send buffer besar
