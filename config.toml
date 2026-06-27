@@ -3,25 +3,25 @@ address = "0.0.0.0"
 port = 3300
 
 [gamedisk_target]
-target_iqn = "iqn.2024-01.com.gameserver:gamedisks"
+target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"
 discovery = true
 
 [[gamedisk]]
 physical_disk = '\\.\PhysicalDrive1'
 block_size = 512
-vendor_id = "RUSTISCS"
+vendor_id = "TM"
 product_id = "GameDisk-1"
 product_revision = "1.00"
 
 [[gamedisk]]
 physical_disk = '\\.\PhysicalDrive2'
 block_size = 512
-vendor_id = "RUSTISCS"
+vendor_id = "TM"
 product_id = "GameDisk-2"
 product_revision = "1.00"
 
 [windows]
-target_iqn_prefix = "iqn.2024-01.com.gameserver:vhd-"
+target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
 vhd_dir = 'E:\vhd'
 block_size = 512
 vendor_id = "RUSTISCS"

@@ -229,7 +229,10 @@ impl Session {
         let is_super = self.client_ip == self.config.windows.super_client_ip;
         let target_name: String;
 
-        if self.target_iqn == self.config.gamedisk_target.target_iqn {
+        if self.is_discovery {
+            target_name = "discovery".to_string();
+            info!("Sesi adalah Discovery Session. Melewati inisialisasi backend.");
+        } else if self.target_iqn == self.config.gamedisk_target.target_iqn {
             target_name = "gamedisk".to_string();
             // Gamedisk target -> muat semua LUN gamedisk
             for (lun_id, backend) in self.gamedisk_backends.iter() {

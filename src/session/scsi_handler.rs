@@ -51,9 +51,19 @@ impl Session {
             let port = local_addr.port();
             
             let target_address = format!("{}:{},1", ip, port);
-            info!("Discovery mengembalikan target portal: {} di {}", self.target_iqn, target_address);
-            resp_params.push(("TargetName".to_string(), self.target_iqn.clone()));
-            resp_params.push(("TargetAddress".to_string(), target_address));
+            
+            if self.config.gamedisk_target.discovery {
+                info!("Discovery mengembalikan target portal: {} di {}", self.config.gamedisk_target.target_iqn, target_address);
+                resp_params.push(("TargetName".to_string(), self.config.gamedisk_target.target_iqn.clone()));
+                resp_params.push(("TargetAddress".to_string(), target_address.clone()));
+            }
+            
+            if self.config.windows.discovery {
+                // If we had a list of specific VHDs we could list them, but for now just list the prefix
+                // Since Windows usually connects directly to a specific target_iqn for boot,
+                // discovery for Windows targets might not be needed, but if enabled we can return a generic one or skip.
+                // Usually gamedisk is the main one discovered.
+            }
         }
         info!("Mengirim Text Response parameters: {:?}", resp_params);
 
