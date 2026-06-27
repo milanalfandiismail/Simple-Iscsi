@@ -14,7 +14,7 @@ product_id = "GameDisk-1"
 product_revision = "1.00"
 
 [[gamedisk]]
-physical_disk = '\\.\PhysicalDrive2'
+physical_disk = '\\.\PhysicalDrive0'
 block_size = 512
 vendor_id = "TM"
 product_id = "GameDisk-2"
