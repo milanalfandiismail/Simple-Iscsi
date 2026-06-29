@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.35", features = ["full", "time"] }
 bytes = "1.5"
 dashmap = "6.0"
 parking_lot = "0.12"
