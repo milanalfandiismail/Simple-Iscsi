@@ -2,6 +2,16 @@
 address = "0.0.0.0"
 port = 3300
 
+[dhcp]
+enabled = true
+start_ip = "192.168.56.100"
+end_ip = "192.168.56.200"
+subnet_mask = "255.255.255.0"
+router = "192.168.56.1"
+dns = "8.8.8.8"
+next_server = "192.168.56.1"
+tftp_dir = "pxe"
+
 [gamedisk_target]
 target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"
 discovery = true

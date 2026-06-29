@@ -1,0 +1,21 @@
+#!ipxe
+
+clear screen
+echo    ==========================================
+echo    =          Antigravity PXE Boot          =
+echo    ==========================================
+echo
+echo    [ Informasi Klien DHCP ]
+echo    Hostname    : ${hostname}
+echo    MAC Address : ${net0/mac}
+echo    IP Address  : ${net0/ip}
+echo    Subnet Mask : ${net0/netmask}
+echo    Gateway     : ${net0/gateway}
+echo    DNS Server  : ${dns}
+echo    Next Server : ${next-server}
+echo    Bootfile    : ${filename}
+echo    Platform    : ${platform}
+echo
+echo    ==========================================
+echo    Masuk ke mode shell interaktif...
+shell
