@@ -6,6 +6,7 @@ mod server;
 mod session;
 mod config;
 mod vhd;
+mod netboot;
 
 use backend::Backend;
 use std::fs;
@@ -35,7 +36,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Server dikonfigurasi untuk listen di {}:{}", config.server.address, config.server.port);
 
-    // TODO: Panggil fungsi pemeliharaan Super Client (merge/discard) secara offline disini nanti
+    let config = Arc::new(config);
+
+    // Jalankan service Netboot (DHCP, dsb) secara background
+    netboot::start_netboot(config.clone()).await;
 
     // Inisialisasi storage backend untuk seluruh Gamedisk
     let mut gamedisk_backends = HashMap::new();
@@ -69,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Mulai server TCP iSCSI
     if let Err(e) = server::start_server(
-        Arc::new(config),
+        config.clone(),
         Arc::new(gamedisk_backends),
     )
     .await
