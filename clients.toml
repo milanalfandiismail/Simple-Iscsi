@@ -1,0 +1,36 @@
+[[client]]
+hostname = "PC-01"
+mac = "08:00:27:85:8A:D9"
+ip = "192.168.56.101"
+gateway = "192.168.56.1"
+dns = "8.8.8.8"
+pxe = "sb-custom"
+next_server = "192.168.56.1"
+
+[[client]]
+hostname = "PC-02"
+mac = "04:7C:16:EE:00:B0"
+ip = "192.168.56.102"
+gateway = "192.168.56.1"
+dns = "8.8.8.8"
+pxe = "sb-custom2"
+next_server = "192.168.56.1"
+
+[[client]]
+hostname = "PC-03"
+mac = "08:00:27:51:C8:2B"
+ip = "192.168.56.100"
+gateway = "192.168.56.1"
+dns = "8.8.8.8"
+pxe = "sb-custom"
+bootfile_uefi = "sb-custom/ipxe-shim.efi"
+next_server = "192.168.56.1"
+
+[[client]]
+hostname = "PC-04"
+mac = "FC:9D:05:29:32:73"
+ip = "192.168.56.100"
+gateway = "192.168.56.1"
+dns = "8.8.8.8"
+pxe = "sb-custom"
+next_server = "192.168.56.1"
