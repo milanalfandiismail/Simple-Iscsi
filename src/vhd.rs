@@ -120,7 +120,16 @@ impl VhdBackend {
             parent_options.share_mode(1 | 2);
         }
 
-        let parent_file = parent_options.open(parent_path)?;
+        let mut parent_file = parent_options.open(parent_path)?;
+
+        // Read parent's OWN UUID from footer (offset 68-84) BEFORE opening VhdBackend
+        let parent_uuid: [u8; 16] = {
+            let mut uuid_buf = [0u8; 16];
+            parent_file.seek(SeekFrom::Start(68))?;
+            parent_file.read_exact(&mut uuid_buf)?;
+            uuid_buf
+        };
+
         let parent = VhdBackend::open(parent_file)?;
 
         let max_table_entries = parent.bat.len() as u32;
@@ -157,10 +166,8 @@ impl VhdBackend {
         header[16..24].copy_from_slice(&table_offset.to_be_bytes());
         header[28..32].copy_from_slice(&max_table_entries.to_be_bytes());
         header[32..36].copy_from_slice(&parent.vhd_block_size.to_be_bytes());
-        // Parent UUID + Name
-        if let Some(ref puuid) = parent.parent_uuid {
-            header[40..56].copy_from_slice(puuid);
-        }
+        // Parent UUID (own UUID, from footer)
+        header[40..56].copy_from_slice(&parent_uuid);
         header[64..576].copy_from_slice(&parent_name_bytes);
 
         // Parent locator entry (platform code W2ku = Windows, at offset 576)
