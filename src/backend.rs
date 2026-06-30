@@ -92,6 +92,19 @@ impl BackendType {
         let mut current_byte_offset = lba * block_size;
         let vhd_block_size = child.vhd_block_size as u64;
 
+        // Debug: first read trace
+        if lba == 0 {
+            info!("diff_read LBA=0: child_bat[0]={:08X}, parent_present={}, parent_bat_len={}",
+                child.bat.first().copied().unwrap_or(0),
+                parent.is_some(),
+                parent.as_ref().map(|p| p.bat.len()).unwrap_or(0));
+            if let Some(ref p) = parent {
+                info!("diff_read LBA=0: parent_bat[0]={:08X}, parent_bat[1]={:08X}",
+                    p.bat.first().copied().unwrap_or(0),
+                    p.bat.get(1).copied().unwrap_or(0));
+            }
+        }
+
         while buf_offset < buf.len() {
             let vhd_block_idx = current_byte_offset / vhd_block_size;
             let offset_in_vhd_block = current_byte_offset % vhd_block_size;
