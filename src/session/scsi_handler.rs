@@ -99,7 +99,7 @@ impl Session {
         };
 
         let cache_opt = self.client_caches.get(&lun_id);
-        if cache_opt.is_none() && !self.is_discovery {
+        if cache_opt.is_none() && !self.is_discovery && !self.is_imagedisk {
             warn!("Normal SCSI Command diterima untuk LUN {} tanpa inisialisasi cache!", lun_id);
             self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
             return Ok(());
@@ -258,8 +258,13 @@ impl Session {
             bytes_received += data_out.data.len();
         }
 
-        // Satu kali write_stream — tanpa flush di dalamnya (periodic flush via maybe_flush)
-        if let Some(cache) = self.client_caches.get(&lun_id) {
+        // Satu kali write — untuk imagedisk: langsung ke backend, untuk gamedisk: ke cache
+        if self.is_imagedisk {
+            // Write langsung ke differencing VHD backend
+            let backend = self.backends.get(&lun_id).unwrap();
+            backend.write_blocks(lba, num_blocks, &write_buf)?;
+            info!("WRITE10 (ImageDisk) LUN {} LBA {} sukses ({} bytes) → child VHD", lun_id, lba, expected_len);
+        } else if let Some(cache) = self.client_caches.get(&lun_id) {
             cache.write_stream(lba, 0, &write_buf)?;
         } else {
             self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;

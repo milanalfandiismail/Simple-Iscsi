@@ -1,17 +1,22 @@
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 use parking_lot::Mutex;
-use tracing::{info, error};
+use tracing::{info, warn, error};
 
 use crate::vhd::VhdBackend;
 
 /// 1MB read-ahead buffer
 const RA_SIZE: usize = 1024 * 1024;
 
+#[allow(dead_code)]
 enum BackendType {
     RawDisk(File),
     Vhd(VhdBackend),
+    VhdDiff {
+        child: VhdBackend,
+        parent: Option<VhdBackend>,
+    },
 }
 
 impl BackendType {
@@ -23,35 +28,164 @@ impl BackendType {
                 file.read_exact(buf)
             }
             BackendType::Vhd(ref mut vhd) => {
-                let mut buf_offset = 0;
-                let mut current_byte_offset = lba * block_size;
-                
-                while buf_offset < buf.len() {
-                    let vhd_block_idx = current_byte_offset / (vhd.vhd_block_size as u64);
-                    let offset_in_vhd_block = current_byte_offset % (vhd.vhd_block_size as u64);
-                    
-                    let bytes_to_read = std::cmp::min(
-                        buf.len() - buf_offset,
-                        (vhd.vhd_block_size as u64 - offset_in_vhd_block) as usize
-                    );
-
-                    let bat_val = *vhd.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
-                    if bat_val == 0xFFFFFFFF {
-                        // Unallocated block -> zeros
-                        for i in 0..bytes_to_read {
-                            buf[buf_offset + i] = 0;
-                        }
-                    } else {
-                        let physical_offset = (bat_val as u64) * 512 + (vhd.sector_bitmap_size as u64) + offset_in_vhd_block;
-                        vhd.file.seek(SeekFrom::Start(physical_offset))?;
-                        vhd.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
-                    }
-                    buf_offset += bytes_to_read;
-                    current_byte_offset += bytes_to_read as u64;
-                }
-                Ok(())
+                Self::vhd_read_blocks(vhd, lba, block_size, buf)
+            }
+            BackendType::VhdDiff { ref mut child, ref mut parent } => {
+                Self::vhd_diff_read_blocks(child, parent, lba, block_size, buf)
             }
         }
+    }
+
+    fn write_at(&mut self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+        match self {
+            BackendType::RawDisk(ref mut file) => {
+                let offset = lba * block_size;
+                file.seek(SeekFrom::Start(offset))?;
+                file.write_all(buf)?;
+                file.sync_all()?;
+                Ok(())
+            }
+            BackendType::Vhd(ref mut vhd) => {
+                Self::vhd_write_blocks(vhd, lba, block_size, buf)
+            }
+            BackendType::VhdDiff { ref mut child, .. } => {
+                // Write always goes to child
+                Self::vhd_write_blocks(child, lba, block_size, buf)
+            }
+        }
+    }
+
+    /// Read from single VHD (dynamic or simple)
+    fn vhd_read_blocks(vhd: &mut VhdBackend, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+        let mut buf_offset = 0;
+        let mut current_byte_offset = lba * block_size;
+        let vhd_block_size = vhd.vhd_block_size as u64;
+
+        while buf_offset < buf.len() {
+            let vhd_block_idx = current_byte_offset / vhd_block_size;
+            let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+
+            let bytes_to_read = std::cmp::min(
+                buf.len() - buf_offset,
+                (vhd_block_size - offset_in_vhd_block) as usize
+            );
+
+            let bat_val = *vhd.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+            if bat_val == 0xFFFFFFFF {
+                for i in 0..bytes_to_read {
+                    buf[buf_offset + i] = 0;
+                }
+            } else {
+                let physical_offset = (bat_val as u64) * 512 + (vhd.sector_bitmap_size as u64) + offset_in_vhd_block;
+                vhd.file.seek(SeekFrom::Start(physical_offset))?;
+                vhd.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
+            }
+            buf_offset += bytes_to_read;
+            current_byte_offset += bytes_to_read as u64;
+        }
+        Ok(())
+    }
+
+    /// Read from differencing disk: child first, fallback to parent, fallback to zeros
+    fn vhd_diff_read_blocks(child: &mut VhdBackend, parent: &mut Option<VhdBackend>, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+        let mut buf_offset = 0;
+        let mut current_byte_offset = lba * block_size;
+        let vhd_block_size = child.vhd_block_size as u64;
+
+        while buf_offset < buf.len() {
+            let vhd_block_idx = current_byte_offset / vhd_block_size;
+            let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+
+            let bytes_to_read = std::cmp::min(
+                buf.len() - buf_offset,
+                (vhd_block_size - offset_in_vhd_block) as usize
+            );
+
+            let child_bat = *child.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+            if child_bat != 0xFFFFFFFF {
+                // Read from child
+                let physical_offset = (child_bat as u64) * 512 + (child.sector_bitmap_size as u64) + offset_in_vhd_block;
+                child.file.seek(SeekFrom::Start(physical_offset))?;
+                child.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
+            } else if let Some(ref mut parent) = parent {
+                let parent_bat = *parent.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                if parent_bat != 0xFFFFFFFF {
+                    // Read from parent
+                    let physical_offset = (parent_bat as u64) * 512 + (parent.sector_bitmap_size as u64) + offset_in_vhd_block;
+                    parent.file.seek(SeekFrom::Start(physical_offset))?;
+                    parent.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                } else {
+                    for i in 0..bytes_to_read {
+                        buf[buf_offset + i] = 0;
+                    }
+                }
+            } else {
+                for i in 0..bytes_to_read {
+                    buf[buf_offset + i] = 0;
+                }
+            }
+            buf_offset += bytes_to_read;
+            current_byte_offset += bytes_to_read as u64;
+        }
+        Ok(())
+    }
+
+    /// Write blocks to VHD — allocate new BAT entries, update sector bitmap
+    fn vhd_write_blocks(vhd: &mut VhdBackend, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+        let vhd_block_size = vhd.vhd_block_size as u64;
+        let bitmap_size = vhd.sector_bitmap_size as u64;
+        let start_block = (lba * block_size) / vhd_block_size;
+        let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
+
+        // Allocate new blocks for any BAT entries that are 0xFFFFFFFF
+        for block_idx in start_block..end_block.min(vhd.bat.len() as u64) {
+            if vhd.bat[block_idx as usize] == 0xFFFFFFFF {
+                // Append to EOF: bitmap + data block
+                let eof = vhd.file.seek(SeekFrom::End(0))?;
+                let bat_entry = (eof / 512) as u32;
+
+                // Write sector bitmap (all zeros = all sectors dirty)
+                let zero_bitmap = vec![0u8; bitmap_size as usize];
+                vhd.file.write_all(&zero_bitmap)?;
+
+                // Write zeroed data block
+                let zero_block = vec![0u8; vhd_block_size as usize];
+                vhd.file.write_all(&zero_block)?;
+
+                // Update BAT in-memory
+                vhd.bat[block_idx as usize] = bat_entry;
+
+                // Update BAT on disk
+                let bat_offset = 1536 + (block_idx * 4) as u64;
+                vhd.file.seek(SeekFrom::Start(bat_offset))?;
+                vhd.file.write_all(&bat_entry.to_be_bytes())?;
+            }
+        }
+
+        // Write data block-by-block
+        let mut buf_offset = 0;
+        let mut current_byte_offset = lba * block_size;
+
+        while buf_offset < buf.len() {
+            let vhd_block_idx = current_byte_offset / vhd_block_size;
+            let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+
+            let bytes_to_write = std::cmp::min(
+                buf.len() - buf_offset,
+                (vhd_block_size - offset_in_vhd_block) as usize
+            );
+
+            let bat_val = vhd.bat[vhd_block_idx as usize];
+            let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
+            vhd.file.seek(SeekFrom::Start(physical_offset))?;
+            vhd.file.write_all(&buf[buf_offset..buf_offset + bytes_to_write])?;
+
+            buf_offset += bytes_to_write;
+            current_byte_offset += bytes_to_write as u64;
+        }
+
+        vhd.file.sync_all()?;
+        Ok(())
     }
 }
 
@@ -136,6 +270,7 @@ impl Backend {
         })
     }
 
+    #[allow(dead_code)]
     pub fn new_vhd(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
         info!("Membuka storage backend VHD: {}", path);
         let mut options = std::fs::OpenOptions::new();
@@ -162,6 +297,81 @@ impl Backend {
 
         let inner = BackendInner {
             backend: BackendType::Vhd(vhd),
+            ra_buf: vec![0u8; RA_SIZE],
+            ra_lba: u64::MAX,
+            ra_blocks: 0,
+        };
+
+        Ok(Backend {
+            inner: Arc::new(Mutex::new(inner)),
+            block_size,
+            total_size,
+            total_blocks: total_size / block_size,
+            vendor_id: vendor.to_string(),
+            product_id: product.to_string(),
+            product_revision: rev.to_string(),
+        })
+    }
+
+    pub fn new_vhd_diff(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
+        info!("Membuka VHD differencing child: {}, parent: {}", child_path, parent_path);
+
+        let mut child_options = std::fs::OpenOptions::new();
+        child_options.read(true).write(true);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            child_options.share_mode(1 | 2);
+        }
+
+        let child_file = child_options.open(child_path)
+            .map_err(|e| { error!("Gagal membuka child VHD: {}", e); e })?;
+        let child = VhdBackend::open(child_file)?;
+
+        let total_size = child.current_size;
+
+        // Buka parent (read-only)
+        let parent = if let Some(ref parent_path_str) = child.parent_path {
+            let mut parent_options = std::fs::OpenOptions::new();
+            parent_options.read(true);
+
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::OpenOptionsExt;
+                parent_options.share_mode(1 | 2);
+            }
+
+            match parent_options.open(parent_path_str) {
+                Ok(parent_file) => {
+                    let parent_vhd = VhdBackend::open(parent_file)?;
+                    info!("Parent VHD dibuka: {} (size={})", parent_path_str, parent_vhd.current_size);
+                    Some(parent_vhd)
+                }
+                Err(_e) => {
+                    // Try the provided parent_path as fallback
+                    match parent_options.open(parent_path) {
+                        Ok(parent_file) => {
+                            let parent_vhd = VhdBackend::open(parent_file)?;
+                            info!("Parent VHD dibuka (fallback): {} (size={})", parent_path, parent_vhd.current_size);
+                            Some(parent_vhd)
+                        }
+                        Err(_) => {
+                            warn!("Parent VHD tidak ditemukan: {} (child parent_path: {}), running without parent fallback", parent_path, parent_path_str);
+                            None
+                        }
+                    }
+                }
+            }
+        } else {
+            warn!("Child VHD tidak memiliki parent_path!");
+            None
+        };
+
+        info!("VHD differencing backend dibuka. Child size: {} byte", total_size);
+
+        let inner = BackendInner {
+            backend: BackendType::VhdDiff { child, parent },
             ra_buf: vec![0u8; RA_SIZE],
             ra_lba: u64::MAX,
             ra_blocks: 0,
@@ -231,6 +441,18 @@ impl Backend {
         }
 
         Ok(())
+    }
+
+    pub fn write_blocks(&self, lba: u64, num_blocks: u32, buf: &[u8]) -> io::Result<()> {
+        let bs = self.block_size;
+        let write_len = (num_blocks as u64) * bs;
+
+        if buf.len() < write_len as usize {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil untuk write"));
+        }
+
+        let mut inner = self.inner.lock();
+        inner.backend.write_at(lba, bs, &buf[..write_len as usize])
     }
 }
 

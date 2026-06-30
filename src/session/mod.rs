@@ -1,5 +1,6 @@
 use crate::backend::Backend;
 use crate::cache::ClientCache;
+use crate::vhd::VhdBackend;
 use crate::pdu::{
     self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
     OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, STAGE_FULL_FEATURE_PHASE,
@@ -23,6 +24,7 @@ pub struct Session {
     config: Arc<crate::config::Config>,
     client_caches: HashMap<u8, ClientCache>,
     is_imagedisk: bool,
+    child_vhd_path: Option<String>,
 
     target_iqn: String,
     initiator_iqn: String,
@@ -89,6 +91,7 @@ impl Session {
             config,
             client_caches: HashMap::new(),
             is_imagedisk: false,  // will be set in run() after login IQN check
+            child_vhd_path: None,
             target_iqn: String::new(),
             initiator_iqn: String::new(),
             is_discovery: false,
@@ -246,40 +249,67 @@ impl Session {
             let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
             
-            // Resolve VHD path via image_manager config
-            // Absolute path → use directly, relative → join with vhd_dir
+            // Resolve parent VHD path via image_manager config
             let vhd_filename = self.config.image_manager.as_ref()
                 .and_then(|m| m.get(suffix))
                 .cloned()
                 .unwrap_or_else(|| format!("{}.vhd", suffix));
             
-            let vhd_path = if std::path::Path::new(&vhd_filename).is_absolute() {
+            let parent_path = if std::path::Path::new(&vhd_filename).is_absolute() {
                 vhd_filename.clone()
             } else {
                 format!("{}\\{}", self.config.windows.vhd_dir, vhd_filename)
             };
-            match Backend::new_vhd(
-                &vhd_path,
+
+            // Child VHD path: {vhd_dir}\child\{client_ip}-{target_name}.vhd
+            let child_dir = format!("{}\\child", self.config.windows.vhd_dir);
+            let _ = std::fs::create_dir_all(&child_dir);
+            let safe_ip = self.client_ip.chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
+                .collect::<String>();
+            let child_path = format!("{}\\{}-{}.vhd", child_dir, safe_ip, suffix);
+
+            // Buat child VHD jika belum ada (atau selalu buat ulang untuk diskless)
+            if !std::path::Path::new(&child_path).exists() || !is_super {
+                if std::path::Path::new(&child_path).exists() {
+                    // Hapus child lama untuk client biasa (diskless)
+                    info!("Menghapus child VHD lama: {}", child_path);
+                    let _ = std::fs::remove_file(&child_path);
+                }
+                VhdBackend::create_differencing(&parent_path, &child_path)
+                    .map_err(|e| {
+                        error!("Gagal membuat child VHD {}: {}", child_path, e);
+                        std::io::Error::new(std::io::ErrorKind::Other, e)
+                    })?;
+            }
+
+            // Buka differencing backend
+            match Backend::new_vhd_diff(
+                &child_path,
+                &parent_path,
                 self.config.windows.block_size,
                 &self.config.windows.vendor_id,
                 &self.config.windows.product_id,
                 &self.config.windows.product_revision,
             ) {
                 Ok(vhd_backend) => {
-                    self.backends.insert(0, Arc::new(vhd_backend)); // VHD selalu LUN 0
+                    self.backends.insert(0, Arc::new(vhd_backend));
                 }
                 Err(e) => {
-                    error!("Gagal membuka VHD {}: {}", vhd_path, e);
-                    return Ok(()); // Putuskan koneksi jika VHD gagal dibuka
+                    error!("Gagal membuka VHD differencing {}: {}", child_path, e);
+                    return Ok(());
                 }
             }
+
+            // Store child_path for cleanup on disconnect
+            self.child_vhd_path = Some(child_path);
         } else {
             error!("Target IQN tidak valid atau tidak dikenali: {}", self.target_iqn);
             return Ok(()); // Putuskan koneksi
         }
 
-        // 2. Inisialisasi Cache jika ini sesi normal (bukan discovery)
-        if !self.is_discovery {
+        // 2. Inisialisasi Cache — SKIP untuk imagedisk (child VHD handles writes directly)
+        if !self.is_discovery && !self.is_imagedisk {
             for (lun_id, backend) in self.backends.iter() {
                 let cache_name = format!("{}_lun{}", target_name, lun_id);
                 info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
@@ -293,6 +323,8 @@ impl Session {
                 )?;
                 self.client_caches.insert(*lun_id, cache);
             }
+        } else if self.is_imagedisk {
+            info!("ImageDisk session — write langsung ke child VHD, tanpa cache .bin");
         }
 
         // 3. FFP Message Loop
@@ -328,6 +360,18 @@ impl Session {
                 _ => {
                     warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
                 }
+            }
+        }
+
+        // Cleanup child VHD on disconnect (diskless — hanya pertahankan untuk super client)
+        if self.is_imagedisk {
+            if !is_super {
+                if let Some(ref child_path) = self.child_vhd_path {
+                    info!("Menghapus child VHD (diskless): {}", child_path);
+                    let _ = std::fs::remove_file(child_path);
+                }
+            } else {
+                info!("Super client — child VHD dipertahankan");
             }
         }
 
