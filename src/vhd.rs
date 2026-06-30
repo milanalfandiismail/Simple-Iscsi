@@ -262,6 +262,15 @@ impl VhdBackend {
         }
         child_file.write_all(parent_path_bytes)?;
 
+        // Pad to 512-byte boundary before footer — EOF MUST be sector-aligned
+        // so that bat_entry = eof/512 maps exactly to the bitmap position.
+        let current_pos = child_file.seek(SeekFrom::Current(0))?;
+        let aligned = ((current_pos + 511) / 512) * 512;
+        if aligned > current_pos {
+            let footer_pad = vec![0u8; (aligned - current_pos) as usize];
+            child_file.write_all(&footer_pad)?;
+        }
+
         // Write original footer at EOF (required!)
         child_file.write_all(&footer)?;
 
