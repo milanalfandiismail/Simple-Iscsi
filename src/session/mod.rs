@@ -331,6 +331,7 @@ impl Session {
         }
 
         // 3. FFP Message Loop
+        let mut logged_out = false;
         loop {
             let req = match pdu::parser::read_pdu(&mut self.stream).await {
                 Ok(p) => p,
@@ -352,6 +353,7 @@ impl Session {
                 }
                 OP_LOGOUT_REQ => {
                     self.handle_logout(req).await?;
+                    logged_out = true;
                     break; // Selesai
                 }
                 OP_TEXT_REQ => {
@@ -375,6 +377,23 @@ impl Session {
                 }
             } else {
                 info!("Super client — child VHD dipertahankan");
+            }
+        }
+
+        // On explicit LOGOUT, delete gamedisk .bin caches (selesai bermain)
+        // On TCP disconnect (reboot), keep .bin so data survives
+        if logged_out {
+            for (lun_id, cache) in self.client_caches.iter() {
+                info!("Client logout — menghapus gamedisk cache LUN {}", lun_id);
+                cache.cleanup();
+            }
+        } else {
+            // TCP disconnect → flush but keep .bin files
+            for (lun_id, cache) in self.client_caches.iter() {
+                info!("TCP disconnect — mempertahankan gamedisk cache LUN {}", lun_id);
+                if let Err(e) = cache.flush() {
+                    warn!("Gagal flush cache LUN {}: {}", lun_id, e);
+                }
             }
         }
 

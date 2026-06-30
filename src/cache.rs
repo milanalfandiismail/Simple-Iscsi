@@ -55,8 +55,11 @@ impl ClientCache {
         let mut next_write_offset = 0;
         let block_map = DashMap::new();
 
-        // Load existing map if super client and file exists
-        if is_super && file_path.exists() && map_path.exists() {
+        // Load existing map — ALL clients need .map to see .bin data.
+        // Without .map, .bin block offsets are unknown → reads go to raw disk → corrupt.
+        if file_path.exists() && map_path.exists() {
+            // Verify .bin size — must be >= next_offset from .map
+            let bin_size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
             if let Ok(map_content) = std::fs::read_to_string(&map_path) {
                 for line in map_content.lines() {
                     let parts: Vec<&str> = line.split(':').collect();
@@ -69,6 +72,16 @@ impl ClientCache {
                         }
                     }
                 }
+                // Defensive: if .map points beyond .bin size, cache is corrupt → clear
+                if next_write_offset > bin_size {
+                    warn!(".map inconsistent dgn .bin (map_next={} > bin_size={}) — menghapus cache stale", next_write_offset, bin_size);
+                    block_map.clear();
+                    next_write_offset = 0;
+                    let _ = std::fs::remove_file(&map_path);
+                    let _ = std::fs::remove_file(&file_path);
+                } else {
+                    info!("Memuat {} block dari .map (next_offset={} of {}MB .bin)", block_map.len(), next_write_offset, bin_size / 1048576);
+                }
             }
         }
 
@@ -76,7 +89,8 @@ impl ClientCache {
             .read(true)
             .write(true)
             .create(true)
-            .truncate(!is_super) // Hanya truncate jika bukan super_client
+            // NEVER truncate — .bin adalah write layer untuk gamedisk.
+            // Cleanup di-handle eksplisit saat LOGOUT, bukan saat reconnect.
             .open(&file_path)?;
 
         let buffered = BufWriter::with_capacity(BUFFER_SIZE, file);
@@ -166,7 +180,14 @@ impl ClientCache {
             let mut writer = self.file.lock();
             writer.get_mut().seek(SeekFrom::Start(base))?;
             writer.write_all(data)?;
+            // CRITICAL: sync_all() BEFORE saving .map — ensures .bin data
+            // is on disk before .map entries point to it.
+            writer.get_mut().sync_all()?;
             drop(writer);
+
+            // Save .map immediately after sync — .map & .bin always consistent
+            self.save_map();
+
             self.maybe_flush(num_blocks as u64);
             return Ok(());
         }
@@ -243,21 +264,23 @@ impl ClientCache {
         }
     }
 
+    fn save_map(&self) {
+        let mut map_content = String::new();
+        for entry in self.block_map.iter() {
+            map_content.push_str(&format!("{}:{}\n", entry.key(), entry.value()));
+        }
+        if let Err(e) = std::fs::write(&self.map_path, map_content) {
+            warn!("Gagal menyimpan block map {:?}: {}", self.map_path, e);
+        }
+    }
+
     pub fn flush(&self) -> io::Result<()> {
         let mut writer = self.file.lock();
         writer.flush()?;
         writer.get_mut().sync_all()?;
+        drop(writer);
         
-        if self.is_super {
-            // Save map to file
-            let mut map_content = String::new();
-            for entry in self.block_map.iter() {
-                map_content.push_str(&format!("{}:{}\n", entry.key(), entry.value()));
-            }
-            if let Err(e) = std::fs::write(&self.map_path, map_content) {
-                warn!("Gagal menyimpan block map {:?}: {}", self.map_path, e);
-            }
-        }
+        self.save_map();
         
         Ok(())
     }
@@ -284,6 +307,12 @@ impl ClientCache {
 
 impl Drop for ClientCache {
     fn drop(&mut self) {
-        self.cleanup();
+        // Flush on drop but DON'T auto-delete — cleanup handled explicitly
+        // by session state (logout vs TCP disconnect)
+        if !self.is_super {
+            let mut writer = self.file.lock();
+            let _ = writer.flush();
+            let _ = writer.get_mut().sync_all();
+        }
     }
 }
