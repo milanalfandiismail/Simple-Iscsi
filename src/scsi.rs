@@ -16,6 +16,7 @@ pub fn handle_scsi_command(
     cache: Option<&ClientCache>,
     block_size: u64,
     active_luns: &[u8],
+    lun_id: u8,
 ) -> ScsiResult {
     let opcode = cdb[0];
 
@@ -71,8 +72,8 @@ pub fn handle_scsi_command(
                         response_data.push(0x00); // Reserved
                         response_data.push(8);    // Designator Length
                         response_data.extend_from_slice(&[
-                            // NAA IEEE Registered Extended
-                            0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+                            // NAA IEEE Registered Extended, unique per LUN
+                            0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, lun_id,
                         ]);
                     }
                     0xB0 => {

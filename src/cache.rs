@@ -131,17 +131,17 @@ impl ClientCache {
         Some(Ok(()))
     }
 
-    /// Cek apakah seluruh range LBA (first_lba..first_lba+n) ada di cache
-    /// dengan offset berurutan (contiguous). Cukup cek 2 blocks: pertama & terakhir.
+    /// Cek apakah seluruh range LBA (first_lba..first_lba+n) ada di cache.
+    /// Game installers write files in multiple WRITE commands — blocks may
+    /// be at non-contiguous offsets in .bin. Check every LBA individually.
     pub fn contains_range(&self, first_lba: u64, n: u32) -> bool {
         if n == 0 { return false; }
-        if n == 1 { return self.block_map.contains_key(&first_lba); }
-        let last_lba = first_lba + n as u64 - 1;
-        // Cek apakah first & last ada di cache
-        let first_off = match self.block_map.get(&first_lba) { Some(v) => *v, None => return false };
-        let last_off  = match self.block_map.get(&last_lba)  { Some(v) => *v, None => return false };
-        // Kalau contiguous, offset last harus = first + (n-1) * block_size
-        last_off == first_off + (n as u64 - 1) * self.block_size
+        for i in 0..n {
+            if !self.block_map.contains_key(&(first_lba + i as u64)) {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
@@ -238,6 +238,7 @@ impl ClientCache {
         if count >= FLUSH_THRESHOLD {
             let mut writer = self.file.lock();
             let _ = writer.flush();
+            let _ = writer.get_mut().sync_all(); // ensure data hits physical disk
             self.unflushed_writes.store(0, Ordering::Relaxed);
         }
     }
