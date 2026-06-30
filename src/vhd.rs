@@ -53,20 +53,17 @@ impl VhdBackend {
         // Parse parent info for differencing disk (type 4)
         let (parent_path, parent_uuid) = if disk_type == 4 {
             let uuid: [u8; 16] = header[40..56].try_into().unwrap();
-            // Parent unicode name at header offset 64, 512 bytes UTF-16LE
+            // Parent unicode name at header offset 64, 512 bytes UTF-16LE, null-terminated
             let parent_raw = &header[64..576];
-            let end = parent_raw.iter().position(|&b| b == 0 && parent_raw.get(
-                parent_raw.iter().position(|&x| x == 0).map_or(0, |p| p + 1)
-            ).map_or(true, |&b| b == 0))
-                .unwrap_or(parent_raw.len());
-            let name_bytes = &parent_raw[..end.min(parent_raw.len())];
-            let name = String::from_utf16_lossy(
-                &name_bytes
-                    .chunks(2)
-                    .map(|c| u16::from_le_bytes([c[0], c.get(1).copied().unwrap_or(0)]))
-                    .collect::<Vec<u16>>()
-            );
-            let name = name.trim_end_matches('\0').to_string();
+            let mut name = String::new();
+            for chunk in parent_raw.chunks(2) {
+                if chunk.len() < 2 { break; }
+                let ch = u16::from_le_bytes([chunk[0], chunk[1]]);
+                if ch == 0 { break; } // null terminator
+                if let Some(c) = char::from_u32(ch as u32) {
+                    name.push(c);
+                }
+            }
             info!("VHD differencing: parent={}", name);
             (Some(name), Some(uuid))
         } else {
@@ -231,7 +228,14 @@ impl VhdBackend {
         let mut child_file = child_options.open(child_path)?;
         use std::io::Write;
 
-        // Write footer copy (at start)
+        // VHD structure:
+        //   offset 0:      footer COPY
+        //   offset 512:    header (1024 bytes)
+        //   offset 1536:   BAT (max_table_entries * 4)
+        //   data_start:    parent path bytes
+        //   EOF - 512:     footer ORIGINAL
+
+        // Write footer copy at start
         child_file.write_all(&footer)?;
 
         // Write header
@@ -243,12 +247,13 @@ impl VhdBackend {
 
         // Write parent path after table (for parent locator)
         if data_start > child_file.seek(SeekFrom::Current(0))? {
-            let padding = vec![0u8; (data_start - child_file.seek(SeekFrom::Current(0))?) as usize];
+            let diff = data_start - child_file.seek(SeekFrom::Current(0))?;
+            let padding = vec![0u8; diff as usize];
             child_file.write_all(&padding)?;
         }
         child_file.write_all(parent_path_bytes)?;
 
-        // Write trailing footer at EOF (required by Windows VHD parser)
+        // Write original footer at EOF (required!)
         child_file.write_all(&footer)?;
 
         child_file.sync_all()?;
