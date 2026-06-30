@@ -48,4 +48,4 @@ max_cache_per_client_gb = 50
 
 [image_manager]
 windows_10 = "win10.vhd"
-windows_11 = "E:\W11-23H2-5335.vhd"
+windows_11 = 'E:\W11-23H2-5335.vhd'
