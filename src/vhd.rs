@@ -177,14 +177,17 @@ impl VhdBackend {
         header[584..588].copy_from_slice(&locator_len.to_be_bytes());
         header[588..592].copy_from_slice(&locator_offset.to_be_bytes());
 
-        // Header checksum field at header[12..16]
+        // Compute header checksum (sum of 256 u32 BE words → complement → write to header[12..16])
+        // Header[12..16] is currently zero (not yet set)
         let mut header_sum: u32 = 0;
         for chunk in header.chunks(4) {
             let val = u32::from_be_bytes([chunk[0], chunk.get(1).copied().unwrap_or(0),
                 chunk.get(2).copied().unwrap_or(0), chunk.get(3).copied().unwrap_or(0)]);
             header_sum = header_sum.wrapping_add(val);
         }
-        let _header_checksum = !header_sum;
+        let header_checksum = !header_sum;
+        // Write checksum into header — total sum of header becomes 0xFFFFFFFF
+        header[12..16].copy_from_slice(&header_checksum.to_be_bytes());
 
         // 5. Build footer (512 bytes)
         let mut footer = vec![0u8; 512];
