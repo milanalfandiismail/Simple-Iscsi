@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
 const BUFFER_SIZE: usize = 2 * 1024 * 1024; // 2MB buffer
-const FLUSH_THRESHOLD: u64 = 64;              // flush after 64 unwritten blocks
+const FLUSH_THRESHOLD: u64 = 64;
+const CACHE_VERSION: u32 = 1; // bump to auto-invalidate stale .bin from old code
 
 pub struct ClientCache {
     file_path: PathBuf,
@@ -61,26 +62,41 @@ impl ClientCache {
             // Verify .bin size — must be >= next_offset from .map
             let bin_size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
             if let Ok(map_content) = std::fs::read_to_string(&map_path) {
-                for line in map_content.lines() {
-                    let parts: Vec<&str> = line.split(':').collect();
-                    if parts.len() == 2 {
-                        if let (Ok(lba), Ok(offset)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
-                            block_map.insert(lba, offset);
-                            if offset + block_size > next_write_offset {
-                                next_write_offset = offset + block_size;
+                let mut map_version: u32 = 0;
+                let mut lines_iter = map_content.lines();
+                // First line must be version marker: "@V:1"
+                if let Some(ver_line) = lines_iter.next() {
+                    if let Some(v) = ver_line.strip_prefix("@V:") {
+                        map_version = v.parse().unwrap_or(0);
+                    }
+                }
+                if map_version != CACHE_VERSION {
+                    warn!(".map version {} != {} — cache dari kode lama, menghapus stale .bin", map_version, CACHE_VERSION);
+                    let _ = std::fs::remove_file(&map_path);
+                    let _ = std::fs::remove_file(&file_path);
+                    // fall through to fresh state (block_map empty, next_write_offset=0)
+                } else {
+                    for line in lines_iter {
+                        let parts: Vec<&str> = line.split(':').collect();
+                        if parts.len() == 2 {
+                            if let (Ok(lba), Ok(offset)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                                block_map.insert(lba, offset);
+                                if offset + block_size > next_write_offset {
+                                    next_write_offset = offset + block_size;
+                                }
                             }
                         }
                     }
-                }
-                // Defensive: if .map points beyond .bin size, cache is corrupt → clear
-                if next_write_offset > bin_size {
-                    warn!(".map inconsistent dgn .bin (map_next={} > bin_size={}) — menghapus cache stale", next_write_offset, bin_size);
-                    block_map.clear();
-                    next_write_offset = 0;
-                    let _ = std::fs::remove_file(&map_path);
-                    let _ = std::fs::remove_file(&file_path);
-                } else {
-                    info!("Memuat {} block dari .map (next_offset={} of {}MB .bin)", block_map.len(), next_write_offset, bin_size / 1048576);
+                    // Defensive: if .map points beyond .bin size, cache is corrupt → clear
+                    if next_write_offset > bin_size {
+                        warn!(".map inconsistent dgn .bin (map_next={} > bin_size={}) — menghapus cache stale", next_write_offset, bin_size);
+                        block_map.clear();
+                        next_write_offset = 0;
+                        let _ = std::fs::remove_file(&map_path);
+                        let _ = std::fs::remove_file(&file_path);
+                    } else {
+                        info!("Memuat {} block dari .map v{} (next_offset={} of {}MB .bin)", block_map.len(), map_version, next_write_offset, bin_size / 1048576);
+                    }
                 }
             }
         }
@@ -265,7 +281,7 @@ impl ClientCache {
     }
 
     fn save_map(&self) {
-        let mut map_content = String::new();
+        let mut map_content = format!("@V:{}\n", CACHE_VERSION);
         for entry in self.block_map.iter() {
             map_content.push_str(&format!("{}:{}\n", entry.key(), entry.value()));
         }
