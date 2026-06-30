@@ -1,16 +1,17 @@
 [server]
-address = "0.0.0.0"
+address = "10.10.10.25"
 port = 3300
 
 [dhcp]
 enabled = true
-start_ip = "192.168.56.100"
-end_ip = "192.168.56.200"
+start_ip = "10.10.10.100"
+end_ip = "10.10.10.200"
 subnet_mask = "255.255.255.0"
-router = "192.168.56.1"
+router = "10.10.10.1"
 dns = "8.8.8.8"
-next_server = "192.168.56.1"
+next_server = "10.10.10.1"
 tftp_dir = "pxe"
+pxe_default = "sb-custom"
 
 [gamedisk_target]
 target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"

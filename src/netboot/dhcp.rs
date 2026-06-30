@@ -2,10 +2,11 @@ use tokio::net::UdpSocket;
 use std::sync::Arc;
 use tracing::{info, warn, error, debug};
 use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use tokio::sync::Mutex;
 use bytes::{BytesMut, BufMut, Buf};
 use std::str::FromStr;
+use socket2::{Socket, Domain, Type, Protocol};
 
 use crate::config::{Config, ClientConfig};
 
@@ -57,7 +58,7 @@ struct DhcpPacket {
     chaddr: [u8; 16],
     sname: [u8; 64],
     file: [u8; 128],
-    options: HashMap<u8, Vec<u8>>,
+    options: BTreeMap<u8, Vec<u8>>,
 }
 
 impl DhcpPacket {
@@ -94,7 +95,7 @@ impl DhcpPacket {
             return None; // Not DHCP
         }
         
-        let mut options = HashMap::new();
+        let mut options = BTreeMap::new();
         while buf.has_remaining() {
             let opt_code = buf.get_u8();
             if opt_code == 255 {
@@ -162,6 +163,7 @@ impl DhcpPacket {
 pub struct DhcpServer {
     config: Arc<Config>,
     socket: Arc<UdpSocket>,
+    sender: Arc<UdpSocket>,
     leases: Mutex<HashMap<[u8; 6], Ipv4Addr>>,
     next_ip: Mutex<u32>,
     clients: Mutex<HashMap<[u8; 6], ClientConfig>>,
@@ -182,14 +184,28 @@ impl DhcpServer {
         let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT);
         let socket = UdpSocket::bind(addr).await?;
         socket.set_broadcast(true)?;
-        
+
+        // Create a dedicated sender socket bound to the server IP:67
+        // Uses SO_REUSEADDR so two sockets can share port 67
+        // UEFI PXE firmware requires replies from source port 67
+        let server_addr = Ipv4Addr::from_str(&config.server.address)
+            .unwrap_or(Ipv4Addr::new(192, 168, 56, 1));
+
+        let sock2 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        sock2.set_reuse_address(true)?;
+        sock2.set_broadcast(true)?;
+        let sender_addr: std::net::SocketAddr = SocketAddrV4::new(server_addr, DHCP_SERVER_PORT).into();
+        sock2.bind(&sender_addr.into())?;
+        let sender = UdpSocket::from_std(sock2.into())?;
+        info!("Sender DHCP socket bind ke {}:{}", server_addr, DHCP_SERVER_PORT);
+
         // Parse IPs
         let start_ip = Ipv4Addr::from_str(&config.dhcp.start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
         let start_ip_u32 = u32::from_be_bytes(start_ip.octets());
 
         let mut clients_map = HashMap::new();
         if let Ok(loaded_clients) = crate::config::load_clients("clients.toml") {
-            for (_, c) in loaded_clients.clients {
+            for (_, c) in loaded_clients {
                 if let Some(mac_bytes) = parse_mac(&c.mac) {
                     clients_map.insert(mac_bytes, c);
                 }
@@ -199,6 +215,7 @@ impl DhcpServer {
         Ok(Arc::new(DhcpServer {
             config,
             socket: Arc::new(socket),
+            sender: Arc::new(sender),
             leases: Mutex::new(HashMap::new()),
             next_ip: Mutex::new(start_ip_u32),
             clients: Mutex::new(clients_map),
@@ -251,44 +268,24 @@ impl DhcpServer {
         
         let mut mac = [0u8; 6];
         mac.copy_from_slice(&req.chaddr[0..6]);
-        
-        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        
-        let mut is_ipxe = false;
-        if let Some(user_class) = req.options.get(&77) {
-            if String::from_utf8_lossy(user_class).contains("iPXE") {
-                is_ipxe = true;
-            }
-        }
-        if req.options.contains_key(&175) {
-            is_ipxe = true;
-        }
 
-        let mut is_uefi = false;
-        if let Some(arch) = req.options.get(&93) {
-            if arch.len() >= 2 {
-                let arch_type = u16::from_be_bytes([arch[0], arch[1]]);
-                if arch_type == 7 || arch_type == 9 {
-                    is_uefi = true;
-                }
-            }
-        }
+        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
         let mut is_new_client = false;
-        let mut client_conf_clone: Option<ClientConfig> = None;
+        let mut client_conf: Option<ClientConfig> = Default::default();
 
         {
             let mut clients_guard = self.clients.lock().await;
             if let Some(c) = clients_guard.get(&mac) {
-                client_conf_clone = Some(c.clone());
+                client_conf = Some(c.clone());
             } else {
                 let pc_count = clients_guard.len() + 1;
                 let hostname = format!("PC-{:02}", pc_count);
-                
+
                 let mut next = self.next_ip.lock().await;
                 let ip_addr = Ipv4Addr::from(*next);
                 *next += 1;
-                
+
                 let new_client = ClientConfig {
                     hostname: Some(hostname),
                     mac: mac_str.clone(),
@@ -302,15 +299,15 @@ impl DhcpServer {
                     next_server: Some(self.config.dhcp.next_server.clone()),
                     image_manager: None,
                 };
-                
+
                 clients_guard.insert(mac, new_client.clone());
-                client_conf_clone = Some(new_client.clone());
+                client_conf = Some(new_client.clone());
                 is_new_client = true;
             }
         }
 
         if is_new_client {
-            if let Some(ref conf) = client_conf_clone {
+            if let Some(ref conf) = client_conf {
                 if let Err(e) = crate::config::append_client("clients.toml", conf) {
                     error!("Gagal auto-add klien baru ke clients.toml: {}", e);
                 } else {
@@ -319,30 +316,71 @@ impl DhcpServer {
             }
         }
 
-        let pxe_folder = client_conf_clone
-            .as_ref()
-            .and_then(|c| c.pxe.clone())
-            .unwrap_or_else(|| "sb-custom".to_string());
+        // ─── Bootfile selection ───────────────────────────────────────
+        // client_arch dari DHCP option 93 (2-byte big-endian)
+        // 0x0000 = BIOS x86 (Legacy), 0x0006 = UEFI x86
+        // 0x0007 = UEFI x64, 0x0009 = UEFI x64 w/PXE, 0x000D = BIOS w/UEFI BC
+        let client_arch = req.options.get(&93).and_then(|v| {
+            if v.len() >= 2 {
+                Some(u16::from_be_bytes([v[0], v[1]]))
+            } else {
+                None
+            }
+        });
+        let has_opt_175 = req.options.contains_key(&175);
+        let c = client_conf.as_ref();
+        let default_bf = self.config.dhcp.pxe_default.as_deref().unwrap_or("sb-custom");
 
-        let bootfile = if is_ipxe {
-            client_conf_clone.as_ref().and_then(|c| c.bootfile_ipxe.clone())
-                .unwrap_or_else(|| format!("{}/autoexec.ipxe", pxe_folder))
-        } else if is_uefi {
-            client_conf_clone.as_ref().and_then(|c| c.bootfile_uefi.clone())
-                .unwrap_or_else(|| format!("{}/ipxe.efi", pxe_folder))
-        } else {
-            client_conf_clone.as_ref().and_then(|c| c.bootfile_legacy.clone())
-                .unwrap_or_else(|| format!("{}/undionly.kpxe", pxe_folder))
+        let bootfile = match client_arch {
+            // Legacy BIOS
+            Some(0x0000) | Some(0x000D) => c
+                .and_then(|c| c.bootfile_legacy.as_ref())
+                .filter(|s| !s.is_empty())
+                .or_else(|| c.and_then(|c| c.pxe.as_ref()))
+                .cloned()
+                .unwrap_or_else(|| default_bf.to_string()),
+
+            // UEFI
+            Some(0x0006) | Some(0x0007) | Some(0x0009) => {
+                let ipxe_bf = c
+                    .and_then(|c| c.bootfile_ipxe.as_ref())
+                    .filter(|s| !s.is_empty());
+                if has_opt_175 && ipxe_bf.is_some() {
+                    ipxe_bf.cloned().unwrap()
+                } else {
+                    let uefi_bf = c
+                        .and_then(|c| c.bootfile_uefi.as_ref())
+                        .filter(|s| !s.is_empty());
+                    if let Some(bf) = uefi_bf {
+                        bf.clone()
+                    } else {
+                        let pxe_dir = c.and_then(|c| c.pxe.as_ref()).cloned()
+                            .unwrap_or_else(|| default_bf.to_string());
+                        format!("{}/ipxe-shim.efi", pxe_dir)
+                    }
+                }
+            }
+
+            // Unknown → fallback legacy
+            _ => c
+                .and_then(|c| c.bootfile_legacy.as_ref())
+                .filter(|s| !s.is_empty())
+                .or_else(|| c.and_then(|c| c.pxe.as_ref()))
+                .cloned()
+                .unwrap_or_else(|| default_bf.to_string()),
         };
+
+        info!(
+            "DHCP {:?} dari {} arch={:?} opt175={} flags=0x{:04X} bootfile={}",
+            msg_type, mac_str, client_arch, has_opt_175, req.flags, bootfile
+        );
 
         match msg_type {
             DhcpMessageType::Discover => {
-                info!("Menerima DHCPDISCOVER dari {} (UEFI: {}, iPXE: {})", mac_str, is_uefi, is_ipxe);
-                self.send_offer(req, mac, bootfile, client_conf_clone.as_ref()).await;
+                self.send_offer(req, mac, bootfile, client_conf.as_ref()).await;
             }
             DhcpMessageType::Request => {
-                info!("Menerima DHCPREQUEST dari {} (UEFI: {}, iPXE: {})", mac_str, is_uefi, is_ipxe);
-                self.send_ack(req, mac, bootfile, client_conf_clone.as_ref()).await;
+                self.send_ack(req, mac, bootfile, client_conf.as_ref()).await;
             }
             _ => {
                 debug!("Mengabaikan tipe DHCP: {:?}", msg_type);
@@ -386,17 +424,30 @@ impl DhcpServer {
             chaddr: req.chaddr,
             sname: [0u8; 64],
             file: file_buf,
-            options: HashMap::new(),
+            options: BTreeMap::new(),
         };
 
-        resp.options.insert(54, server_ip.octets().to_vec());
-        
         resp.options.insert(53, vec![msg_type.clone() as u8]);
-        
+
+        // Option 60: Vendor Class Identifier — Wajib untuk PXE client
+        resp.options.insert(60, b"PXEClient".to_vec());
+
+        // Option 54: Server Identifier — IP DHCP server
+        let dhcp_server_ip = Ipv4Addr::from_str(&self.config.server.address).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        resp.options.insert(54, dhcp_server_ip.octets().to_vec());
+
+        // Option 43: Vendor-Specific — PXE Discovery Control (sub-opt 6 = 8: PXE boot server)
+        resp.options.insert(43, vec![6u8, 1u8, 8u8]);
+
+        // Option 93: Echo-back Client System Architecture (required by EDK2 UEFI)
+        if let Some(arch_data) = req.options.get(&93) {
+            resp.options.insert(93, arch_data.clone());
+        }
+
         let subnet_str = self.config.dhcp.subnet_mask.clone();
         let subnet = Ipv4Addr::from_str(&subnet_str).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
         resp.options.insert(1, subnet.octets().to_vec());
-        
+
         let router_str = client_conf.as_ref()
             .and_then(|c| c.gateway.clone())
             .unwrap_or_else(|| self.config.dhcp.router.clone());
@@ -404,11 +455,11 @@ impl DhcpServer {
         if router != Ipv4Addr::UNSPECIFIED {
             resp.options.insert(3, router.octets().to_vec());
         }
-        
+
         if let Some(ref hostname) = client_conf.as_ref().and_then(|c| c.hostname.clone()) {
             resp.options.insert(12, hostname.as_bytes().to_vec());
         }
-        
+
         let dns_str = client_conf.as_ref()
             .and_then(|c| c.dns.clone())
             .unwrap_or_else(|| self.config.dhcp.dns.clone());
@@ -416,20 +467,31 @@ impl DhcpServer {
         if dns != Ipv4Addr::UNSPECIFIED {
             resp.options.insert(6, dns.octets().to_vec());
         }
-        
+
+        // Lease time: 86400 detik (24 jam)
         resp.options.insert(51, 86400u32.to_be_bytes().to_vec());
+        // Renewal time (T1): 43200 (12 jam)
+        resp.options.insert(58, 43200u32.to_be_bytes().to_vec());
+        // Rebinding time (T2): 75600 (21 jam)
+        resp.options.insert(59, 75600u32.to_be_bytes().to_vec());
 
         let mut bootfile_vec = bootfile.as_bytes().to_vec();
         bootfile_vec.push(0);
         resp.options.insert(67, bootfile_vec);
-        
+
         let mut next_server_bytes = next_server_str.as_bytes().to_vec();
         next_server_bytes.push(0);
         resp.options.insert(66, next_server_bytes);
 
         let is_broadcast = (req.flags & 0x8000) != 0;
         let packet = resp.serialize();
-        
+
+        // Hex dump first 48 bytes of packet for debugging
+        let hex_dump: String = packet.iter().take(48).enumerate().map(|(i, b)| {
+            format!("{:02x}{}", b, if (i + 1) % 16 == 0 { "\n" } else { " " })
+        }).collect();
+        info!("DHCP {:?} packet hex dump (first 48 bytes):\n{}", msg_type, hex_dump);
+
         let server_ip = Ipv4Addr::from_str(&self.config.dhcp.next_server).unwrap_or(Ipv4Addr::UNSPECIFIED);
         let subnet = Ipv4Addr::from_str(&self.config.dhcp.subnet_mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
         
@@ -453,13 +515,13 @@ impl DhcpServer {
             }
         };
 
-        if let Err(e) = self.socket.send_to(&packet, dest).await {
+        if let Err(e) = self.sender.send_to(&packet, dest).await {
             error!("Gagal mengirim DHCP Reply ke {}: {}", dest, e);
         } else {
-            // Fallback to global broadcast just in case
+            // Also send to global broadcast as fallback (for multi-homed setups)
             let backup_dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, DHCP_CLIENT_PORT);
             if dest.ip() != &Ipv4Addr::BROADCAST {
-                let _ = self.socket.send_to(&packet, backup_dest).await;
+                let _ = self.sender.send_to(&packet, backup_dest).await;
             }
             info!("Sukses mengirim {:?} ke {} (Bootfile: {})", msg_type, dest, bootfile);
         }
