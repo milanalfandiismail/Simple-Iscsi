@@ -43,7 +43,7 @@ super_client_ip = "10.10.10.25"
 super_client_action = "none"
 
 [writeback]
-writeback_dirs = ['E:\writeback']
+writeback_dirs = ['C:\writeback']
 max_cache_per_client_gb = 10
 
 [image_manager]
