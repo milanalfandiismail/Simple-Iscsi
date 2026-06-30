@@ -55,6 +55,14 @@ impl BackendType {
         }
     }
 
+    fn sync(&mut self) -> io::Result<()> {
+        match self {
+            BackendType::RawDisk(ref mut file) => file.sync_all(),
+            BackendType::Vhd(ref mut vhd) => vhd.file.sync_all(),
+            BackendType::VhdDiff { ref mut child, .. } => child.file.sync_all(),
+        }
+    }
+
     /// Read from single VHD (dynamic or simple)
     fn vhd_read_blocks(vhd: &mut VhdBackend, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
         let mut buf_offset = 0;
@@ -487,14 +495,11 @@ impl Backend {
                 return Ok(());
             }
 
-            let max_readable = (total_blocks - lba) * bs;
-            let ra_bytes = (RA_SIZE as u64).min(max_readable) as usize;
-            
-            // Read into read-ahead cache
-            let ra_slice = unsafe { &mut *std::ptr::addr_of_mut!(inner.ra_buf[..ra_bytes]) };
+            // Read exactly what was requested — no forced 1MB read-ahead
+            let ra_slice = unsafe { &mut *std::ptr::addr_of_mut!(inner.ra_buf[..actual_len as usize]) };
             inner.backend.read_exact_at(lba, bs, ra_slice)?;
             inner.ra_lba = lba;
-            inner.ra_blocks = (ra_bytes as u64 / bs) as u32;
+            inner.ra_blocks = num;
 
             buf[..actual_len as usize]
                 .copy_from_slice(&inner.ra_buf[..actual_len as usize]);
@@ -519,6 +524,12 @@ impl Backend {
         // Invalidate read-ahead cache — data in child VHD has changed
         inner.ra_blocks = 0;
         Ok(())
+    }
+
+    /// Flush all pending writes to physical disk
+    pub fn sync(&self) -> io::Result<()> {
+        let mut inner = self.inner.lock();
+        inner.backend.sync()
     }
 }
 

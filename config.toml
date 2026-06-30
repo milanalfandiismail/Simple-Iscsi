@@ -44,7 +44,7 @@ super_client_action = "none"
 
 [writeback]
 writeback_dirs = ['E:\writeback']
-max_cache_per_client_gb = 50
+max_cache_per_client_gb = 10
 
 [image_manager]
 windows_10 = "win10.vhd"

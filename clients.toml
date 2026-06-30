@@ -37,7 +37,7 @@ pxe = "sb-custom"
 next_server = "192.168.56.1"
 
 [[client]]
-hostname = "PC-05"
+hostname = "REGULER MANTAP"
 mac = "F4:B5:20:70:1C:81"
 ip = "10.10.10.100"
 gateway = "10.10.10.1"
