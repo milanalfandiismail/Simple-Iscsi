@@ -15,15 +15,17 @@ pub struct Config {
     pub dhcp: DhcpConfig,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct DhcpConfig {
     pub enabled: bool,
     pub start_ip: String,
+    pub end_ip: Option<String>,
     pub router: String,
     pub dns: String,
     pub next_server: String,
     pub subnet_mask: String,
     pub tftp_dir: String,
+    pub pxe_default: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -90,7 +92,8 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ClientsConfig {
-    pub clients: HashMap<String, ClientConfig>,
+    #[serde(rename = "client")]
+    pub clients: Vec<ClientConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -108,33 +111,37 @@ pub struct ClientConfig {
     pub image_manager: Option<String>,
 }
 
-pub fn load_clients(path: &str) -> Result<ClientsConfig, Box<dyn std::error::Error>> {
+pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn std::error::Error>> {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
-        Err(_) => return Ok(ClientsConfig { clients: HashMap::new() }),
+        Err(_) => return Ok(HashMap::new()),
     };
     let config: ClientsConfig = toml::from_str(&content)?;
-    Ok(config)
+    let map: HashMap<String, ClientConfig> = config
+        .clients
+        .into_iter()
+        .map(|c| (c.mac.clone(), c))
+        .collect();
+    Ok(map)
 }
 
 pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    
-    let mut toml_str = String::new();
-    toml_str.push_str(&format!("\n[clients.\"{}\"]\n", client.mac));
-    toml_str.push_str(&format!("mac = \"{}\"\n", client.mac));
-    toml_str.push_str(&format!("ip = \"{}\"\n", client.ip));
-    
-    if let Some(ref hostname) = client.hostname {
-        toml_str.push_str(&format!("hostname = \"{}\"\n", hostname));
-    }
-    if let Some(ref gw) = client.gateway {
-        toml_str.push_str(&format!("gateway = \"{}\"\n", gw));
-    }
-    if let Some(ref dns) = client.dns {
-        toml_str.push_str(&format!("dns = \"{}\"\n", dns));
-    }
-    
-    file.write_all(toml_str.as_bytes())?;
+
+    let mut buf = String::new();
+    buf.push_str("\n[[client]]\n");
+    buf.push_str(&format!("hostname = \"{}\"\n", client.hostname.as_deref().unwrap_or("")));
+    buf.push_str(&format!("mac = \"{}\"\n", client.mac));
+    buf.push_str(&format!("ip = \"{}\"\n", client.ip));
+    buf.push_str(&format!("gateway = \"{}\"\n", client.gateway.as_deref().unwrap_or("")));
+    buf.push_str(&format!("dns = \"{}\"\n", client.dns.as_deref().unwrap_or("")));
+    buf.push_str(&format!("pxe = \"{}\"\n", client.pxe.as_deref().unwrap_or("")));
+    buf.push_str(&format!("bootfile_uefi = \"{}\"\n", client.bootfile_uefi.as_deref().unwrap_or("")));
+    buf.push_str(&format!("bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
+    buf.push_str(&format!("bootfile_ipxe = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
+    buf.push_str(&format!("next_server = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
+    buf.push_str(&format!("image_manager = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
+
+    file.write_all(buf.as_bytes())?;
     Ok(())
 }

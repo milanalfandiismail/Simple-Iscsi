@@ -1,0 +1,30 @@
+#!ipxe
+
+echo
+echo    ==========================================
+echo
+echo          ~ PXE SB Milannn v1.0 ~
+echo
+echo    ==========================================
+echo
+dhcp
+echo
+echo        IP Address  : ${net0/ip}
+echo        MAC Address : ${net0/mac}
+echo        Gateway     : ${net0/gateway}
+echo        Platform    : ${platform}
+echo
+echo    ==========================================
+echo
+echo        Mencoba boot via snponly.efi...
+echo
+sanboot ${168:string}:000 || goto fallback
+exit
+
+:fallback
+echo
+echo    ==========================================
+echo        snponly gagal, fallback ipxe.efi...
+echo    ==========================================
+sleep 2
+chain --replace ipxe.efi
