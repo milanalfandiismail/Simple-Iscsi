@@ -1,21 +1,23 @@
 #!ipxe
 
-clear screen
-echo    ==========================================
-echo    =          Antigravity PXE Boot          =
-echo    ==========================================
+echo ==========================================
+echo       PXE Boot - iSCSI SAN Mode
+echo ==========================================
 echo
-echo    [ Informasi Klien DHCP ]
-echo    Hostname    : ${hostname}
-echo    MAC Address : ${net0/mac}
-echo    IP Address  : ${net0/ip}
-echo    Subnet Mask : ${net0/netmask}
-echo    Gateway     : ${net0/gateway}
-echo    DNS Server  : ${dns}
-echo    Next Server : ${next-server}
-echo    Bootfile    : ${filename}
-echo    Platform    : ${platform}
+echo    DHCP Client Info:
+echo    IP         : ${net0/ip}
+echo    Gateway    : ${net0/gateway}
+echo    MAC        : ${net0/mac}
+echo    Platform   : ${platform}
+echo    iSCSI IP   : ${168}
+echo    iSCSI IQN  : ${169}
 echo
-echo    ==========================================
-echo    Masuk ke mode shell interaktif...
+echo ==========================================
+echo    Phase 1: Hooking GameDisk...
+sanhook iscsi:${168}::::iqn.2024-01.com.tmdebug:gamedisks || echo GameDisk hook skipped
+echo
+echo    Phase 2: Booting Windows from iSCSI...
+sanboot iscsi:${168}::::${169}
+echo
+echo    Boot failed, entering shell...
 shell
