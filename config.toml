@@ -1,6 +1,6 @@
 [server]
 address = "10.10.10.25"
-port = 3300
+port = 3260
 
 [dhcp]
 enabled = true
@@ -43,9 +43,9 @@ super_client_ip = "10.10.10.25"
 super_client_action = "none"
 
 [writeback]
-writeback_dirs = ['E:\writeback', 'G:\writeback']
+writeback_dirs = ['E:\writeback']
 max_cache_per_client_gb = 50
 
 [image_manager]
 windows_10 = "win10.vhd"
-windows_11 = "win11.vhd"
+windows_11 = "E:\W11-23H2-5335.vhd"

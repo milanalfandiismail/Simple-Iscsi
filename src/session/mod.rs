@@ -242,8 +242,18 @@ impl Session {
             let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
             
-            // Buka VHD Dinamis
-            let vhd_path = format!("{}\\{}.vhd", self.config.windows.vhd_dir, suffix);
+            // Resolve VHD path via image_manager config
+            // Absolute path → use directly, relative → join with vhd_dir
+            let vhd_filename = self.config.image_manager.as_ref()
+                .and_then(|m| m.get(suffix))
+                .cloned()
+                .unwrap_or_else(|| format!("{}.vhd", suffix));
+            
+            let vhd_path = if std::path::Path::new(&vhd_filename).is_absolute() {
+                vhd_filename.clone()
+            } else {
+                format!("{}\\{}", self.config.windows.vhd_dir, vhd_filename)
+            };
             match Backend::new_vhd(
                 &vhd_path,
                 self.config.windows.block_size,
