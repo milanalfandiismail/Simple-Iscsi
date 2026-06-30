@@ -514,7 +514,11 @@ impl Backend {
         }
 
         let mut inner = self.inner.lock();
-        inner.backend.write_at(lba, bs, &buf[..write_len as usize])
+        inner.backend.write_at(lba, bs, &buf[..write_len as usize])?;
+
+        // Invalidate read-ahead cache — data in child VHD has changed
+        inner.ra_blocks = 0;
+        Ok(())
     }
 }
 
