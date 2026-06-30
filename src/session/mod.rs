@@ -261,8 +261,11 @@ impl Session {
                 format!("{}\\{}", self.config.windows.vhd_dir, vhd_filename)
             };
 
-            // Child VHD path: {vhd_dir}\child\{client_ip}-{target_name}.vhd
-            let child_dir = format!("{}\\child", self.config.windows.vhd_dir);
+            // Child VHD path: {writeback_dirs[0]}\{client_ip}-{target_name}.vhd
+            // Simpan di folder yang sama dengan writeback cache
+            let child_dir = self.config.writeback.writeback_dirs.first()
+                .cloned()
+                .unwrap_or_else(|| self.config.windows.vhd_dir.clone());
             let _ = std::fs::create_dir_all(&child_dir);
             let safe_ip = self.client_ip.chars()
                 .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' })

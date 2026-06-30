@@ -170,10 +170,10 @@ impl VhdBackend {
         header[40..56].copy_from_slice(&parent_uuid);
         header[64..576].copy_from_slice(&parent_name_bytes);
 
-        // Parent locator entry (platform code W2ku = Windows, at offset 576)
+        // Parent locator entry (platform code W2ku = Windows, at header[576])
         let parent_path_bytes = parent_path.as_bytes();
         let platform_code: [u8; 4] = [0x57, 0x32, 0x6B, 0x75]; // "W2ku" in ASCII
-        let locator_offset: u32 = 1024;
+        let locator_offset: u32 = data_start as u32;
         let locator_len = parent_path_bytes.len() as u32;
         header[576..580].copy_from_slice(&platform_code);
         header[580..584].copy_from_slice(&0u32.to_be_bytes()); // platform_data_space
