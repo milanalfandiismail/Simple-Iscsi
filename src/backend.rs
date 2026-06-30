@@ -384,7 +384,7 @@ impl Backend {
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            child_options.share_mode(1 | 2);
+            child_options.share_mode(1 | 2 | 4); // READ|WRITE|DELETE — biar bisa dihapus pas cleanup
         }
 
         let child_file = child_options.open(child_path)
