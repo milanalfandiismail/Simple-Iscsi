@@ -493,7 +493,7 @@ impl DhcpServer {
                     .cloned()
                     .unwrap_or_else(|| "windows_10".to_string())
             });
-        let iscsi_iqn = format!("{}:vhd-{}", self.config.windows.target_iqn_prefix, image_name);
+        let iscsi_iqn = format!("{}{}", self.config.windows.target_iqn_prefix, image_name);
         resp.options.insert(169, iscsi_iqn.as_bytes().to_vec());
 
         let is_broadcast = (req.flags & 0x8000) != 0;
