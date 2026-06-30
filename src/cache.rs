@@ -2,10 +2,10 @@ use dashmap::DashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use parking_lot::Mutex;
 use std::io::BufWriter;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
 const BUFFER_SIZE: usize = 2 * 1024 * 1024; // 2MB buffer
@@ -23,14 +23,19 @@ pub struct ClientCache {
 
 impl ClientCache {
     pub fn new(
-        cache_dir: &str,
+        writeback_dirs: &[String],
         client_ip: &str,
         target_name: &str,
         block_size: u64,
         max_cache_gb: u64,
         is_super: bool,
     ) -> io::Result<Self> {
-        let dir_path = Path::new(cache_dir);
+        // Round-robin drive picker for load balancing across writeback drives
+        static NEXT_DRIVE: AtomicUsize = AtomicUsize::new(0);
+        let idx = NEXT_DRIVE.fetch_add(1, Ordering::Relaxed) % writeback_dirs.len();
+        let dir = &writeback_dirs[idx];
+
+        let dir_path = Path::new(dir);
         fs::create_dir_all(dir_path)?;
 
         let safe_ip = client_ip.chars()

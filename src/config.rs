@@ -10,7 +10,8 @@ pub struct Config {
     pub gamedisk_target: GamediskTargetConfig,
     pub gamedisk: Vec<GamediskConfig>,
     pub windows: WindowsConfig,
-    pub cache: CacheConfig,
+    pub writeback: WritebackConfig,
+    #[serde(alias = "image_manager")]
     pub image_manager: Option<HashMap<String, String>>,
     pub dhcp: DhcpConfig,
 }
@@ -19,6 +20,7 @@ pub struct Config {
 pub struct DhcpConfig {
     pub enabled: bool,
     pub start_ip: String,
+    #[allow(dead_code)]
     pub end_ip: Option<String>,
     pub router: String,
     pub dns: String,
@@ -64,9 +66,9 @@ pub struct WindowsConfig {
     pub super_client_action: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct CacheConfig {
-    pub cache_dir: String,
+#[derive(Deserialize, Debug, Clone)]
+pub struct WritebackConfig {
+    pub writeback_dirs: Vec<String>,
     pub max_cache_per_client_gb: u64,
 }
 

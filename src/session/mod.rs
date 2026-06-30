@@ -270,11 +270,11 @@ impl Session {
                 let cache_name = format!("{}_lun{}", target_name, lun_id);
                 info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
                 let cache = ClientCache::new(
-                    &self.config.cache.cache_dir,
+                    &self.config.writeback.writeback_dirs,
                     &self.client_ip,
                     &cache_name,
                     backend.block_size(),
-                    self.config.cache.max_cache_per_client_gb,
+                    self.config.writeback.max_cache_per_client_gb,
                     is_super,
                 )?;
                 self.client_caches.insert(*lun_id, cache);

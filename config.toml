@@ -42,6 +42,10 @@ discovery = false
 super_client_ip = "10.10.10.25"
 super_client_action = "none"
 
-[cache]
-cache_dir = 'E:\gamedisk-cache'
+[writeback]
+writeback_dirs = ['E:\writeback', 'G:\writeback']
 max_cache_per_client_gb = 50
+
+[image_manager]
+windows_10 = "win10.vhd"
+windows_11 = "win11.vhd"

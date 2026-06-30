@@ -64,12 +64,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Buat direktori writeback/cache utama
-    if let Err(e) = fs::create_dir_all(&config.cache.cache_dir) {
-        error!("Gagal membuat direktori cache {:?}: {}", config.cache.cache_dir, e);
-        std::process::exit(1);
+    // Buat direktori writeback/cache utama untuk semua drive
+    for dir in &config.writeback.writeback_dirs {
+        if let Err(e) = fs::create_dir_all(dir) {
+            error!("Gagal membuat direktori writeback {:?}: {}", dir, e);
+            std::process::exit(1);
+        }
+        info!("Writeback dir siap di: {}", dir);
     }
-    info!("Cache dir siap di: {}", config.cache.cache_dir);
 
     // Mulai server TCP iSCSI
     if let Err(e) = server::start_server(

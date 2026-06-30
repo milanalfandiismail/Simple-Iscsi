@@ -269,15 +269,13 @@ impl DhcpServer {
         let mut mac = [0u8; 6];
         mac.copy_from_slice(&req.chaddr[0..6]);
 
-        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-        let mut is_new_client = false;
-        let mut client_conf: Option<ClientConfig> = Default::default();
-
-        {
+        let (is_new_client, client_conf) = {
             let mut clients_guard = self.clients.lock().await;
             if let Some(c) = clients_guard.get(&mac) {
-                client_conf = Some(c.clone());
+                (false, Some(c.clone()))
             } else {
                 let pc_count = clients_guard.len() + 1;
                 let hostname = format!("PC-{:02}", pc_count);
@@ -301,10 +299,9 @@ impl DhcpServer {
                 };
 
                 clients_guard.insert(mac, new_client.clone());
-                client_conf = Some(new_client.clone());
-                is_new_client = true;
+                (true, Some(new_client))
             }
-        }
+        };
 
         if is_new_client {
             if let Some(ref conf) = client_conf {
@@ -482,6 +479,22 @@ impl DhcpServer {
         let mut next_server_bytes = next_server_str.as_bytes().to_vec();
         next_server_bytes.push(0);
         resp.options.insert(66, next_server_bytes);
+
+        // Option 168: iSCSI Target IP (iPXE reads as ${168})
+        resp.options.insert(168, next_server_str.as_bytes().to_vec());
+
+        // Option 169: iSCSI Target IQN (iPXE reads as ${169})
+        let image_name = client_conf.as_ref()
+            .and_then(|c| c.image_manager.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                self.config.image_manager.as_ref()
+                    .and_then(|m| m.keys().next())
+                    .cloned()
+                    .unwrap_or_else(|| "windows_10".to_string())
+            });
+        let iscsi_iqn = format!("{}:vhd-{}", self.config.windows.target_iqn_prefix, image_name);
+        resp.options.insert(169, iscsi_iqn.as_bytes().to_vec());
 
         let is_broadcast = (req.flags & 0x8000) != 0;
         let packet = resp.serialize();
