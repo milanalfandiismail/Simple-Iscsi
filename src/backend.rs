@@ -48,9 +48,9 @@ impl BackendType {
             BackendType::Vhd(ref mut vhd) => {
                 Self::vhd_write_blocks(vhd, lba, block_size, buf)
             }
-            BackendType::VhdDiff { ref mut child, .. } => {
-                // Write always goes to child
-                Self::vhd_write_blocks(child, lba, block_size, buf)
+            BackendType::VhdDiff { ref mut child, ref mut parent } => {
+                // Copy-on-write: read parent data for newly allocated blocks
+                Self::vhd_diff_write_blocks(child, parent, lba, block_size, buf)
             }
         }
     }
@@ -127,6 +127,68 @@ impl BackendType {
             buf_offset += bytes_to_read;
             current_byte_offset += bytes_to_read as u64;
         }
+        Ok(())
+    }
+
+    /// Write to differencing disk with Copy-on-Write: allocate child block,
+    /// copy parent data first, then overlay write data.
+    fn vhd_diff_write_blocks(child: &mut VhdBackend, parent: &mut Option<VhdBackend>, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+        let vhd_block_size = child.vhd_block_size as u64;
+        let bitmap_size = child.sector_bitmap_size as u64;
+        let start_block = (lba * block_size) / vhd_block_size;
+        let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
+
+        // Phase 1: Allocate new blocks — copy from parent if available (CoW)
+        for block_idx in start_block..end_block.min(child.bat.len() as u64) {
+            if child.bat[block_idx as usize] == 0xFFFFFFFF {
+                // Allocate at EOF
+                let eof = child.file.seek(SeekFrom::End(0))?;
+                let bat_entry = (eof / 512) as u32;
+
+                // Write sector bitmap (all zeros = all sectors dirty)
+                let zero_bitmap = vec![0u8; bitmap_size as usize];
+                child.file.write_all(&zero_bitmap)?;
+
+                // COPY-ON-WRITE: read full block from parent
+                let mut block_data = vec![0u8; vhd_block_size as usize];
+                if let Some(ref mut p) = parent {
+                    let parent_bat = *p.bat.get(block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                    if parent_bat != 0xFFFFFFFF {
+                        let parent_offset = (parent_bat as u64) * 512 + (p.sector_bitmap_size as u64);
+                        p.file.seek(SeekFrom::Start(parent_offset))?;
+                        p.file.read_exact(&mut block_data)?;
+                    }
+                }
+
+                child.file.write_all(&block_data)?;
+
+                // Update BAT
+                child.bat[block_idx as usize] = bat_entry;
+                let bat_offset = 1536 + (block_idx * 4) as u64;
+                child.file.seek(SeekFrom::Start(bat_offset))?;
+                child.file.write_all(&bat_entry.to_be_bytes())?;
+            }
+        }
+
+        // Phase 2: Overlay write data onto child blocks
+        let mut buf_offset = 0;
+        let mut current_byte_offset = lba * block_size;
+        while buf_offset < buf.len() {
+            let vhd_block_idx = current_byte_offset / vhd_block_size;
+            let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+            let bytes_to_write = std::cmp::min(
+                buf.len() - buf_offset,
+                (vhd_block_size - offset_in_vhd_block) as usize
+            );
+            let bat_val = child.bat[vhd_block_idx as usize];
+            let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
+            child.file.seek(SeekFrom::Start(physical_offset))?;
+            child.file.write_all(&buf[buf_offset..buf_offset + bytes_to_write])?;
+            buf_offset += bytes_to_write;
+            current_byte_offset += bytes_to_write as u64;
+        }
+
+        child.file.sync_all()?;
         Ok(())
     }
 
