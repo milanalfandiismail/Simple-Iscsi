@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 pub mod scsi_handler;
+pub mod scsi_image;
 pub mod pdu_io;
 use tracing::{info, warn, error};
 
@@ -21,6 +22,7 @@ pub struct Session {
     backends: HashMap<u8, Arc<Backend>>,
     config: Arc<crate::config::Config>,
     client_caches: HashMap<u8, ClientCache>,
+    is_imagedisk: bool,
 
     target_iqn: String,
     initiator_iqn: String,
@@ -86,6 +88,7 @@ impl Session {
             backends: HashMap::new(),
             config,
             client_caches: HashMap::new(),
+            is_imagedisk: false,
             target_iqn: String::new(),
             initiator_iqn: String::new(),
             is_discovery: false,
@@ -239,6 +242,7 @@ impl Session {
                 self.backends.insert(*lun_id, Arc::clone(backend));
             }
         } else if self.target_iqn.starts_with(&self.config.windows.target_iqn_prefix) {
+            self.is_imagedisk = true;
             let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
             

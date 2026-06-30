@@ -1,6 +1,7 @@
 mod backend;
 mod cache;
 mod pdu;
+mod pdu_image;
 mod scsi;
 mod server;
 mod session;

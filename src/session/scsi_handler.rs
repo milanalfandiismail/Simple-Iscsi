@@ -87,7 +87,7 @@ impl Session {
         let cdb = req.custom_bhs;
         let opcode = cdb[0];
         let lun_id = ((req.lun >> 48) & 0xFF) as u8;
-        trace!("Menerima SCSI Command opcode: 0x{:02X}, LUN: {}, CDB: {:02X?}", opcode, lun_id, cdb);
+        info!("SCSI opcode=0x{:02X} LUN={} is_imagedisk={}", opcode, lun_id, self.is_imagedisk);
 
         let backend = match self.backends.get(&lun_id) {
             Some(b) => b,
@@ -105,16 +105,20 @@ impl Session {
             return Ok(());
         }
 
-        if opcode == 0x28 {
-            // READ (10) — inline untuk menghindari Vec alloc
-            let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64;
-            let num_blocks = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32;
+        if opcode == 0x28 || opcode == 0x88 {
+            // READ (10) or READ (16)
+            let (lba, num_blocks) = if opcode == 0x88 {
+                (u64::from_be_bytes(cdb[2..10].try_into().unwrap()),
+                 u32::from_be_bytes(cdb[10..14].try_into().unwrap()))
+            } else {
+                (u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64,
+                 u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
+            };
             let block_size = backend.block_size();
             let total_bytes = (num_blocks as u64 * block_size) as usize;
 
             let t0 = Instant::now();
 
-            // Grow reusable buffer jika perlu (amortized O(1))
             if self.read_buf.len() < total_bytes {
                 self.read_buf.resize(total_bytes, 0);
             }
@@ -125,30 +129,32 @@ impl Session {
                 return Ok(());
             }
 
-            // Overlay cache jika perlu
             if let Some(cache) = cache_opt {
                 if cache.contains_range(lba, num_blocks) {
                     if let Some(Ok(())) = cache.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
-                        // data sudah dikoreksi dari cache
                     }
                 }
             }
 
-            // SAFETY: read_buf unused during send_scsi_data_in (it only writes to TCP stream).
-            // Raw pointer avoids simultaneous &self + &mut self borrow conflict.
             let ptr = self.read_buf.as_ptr();
             let data = unsafe { std::slice::from_raw_parts(ptr, total_bytes) };
             self.send_scsi_data_in(req.initiator_task_tag, data, 0x00, req.expected_data_len).await?;
-            debug!("READ10 LUN={} LBA={}: send_data_in {}µs", lun_id, lba, t0.elapsed().as_micros());
-        } else if opcode == 0x2A {
-            // WRITE (10)
-            let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap());
-            trace!("Mulai WRITE (10) LUN: {}, LBA: {}", lun_id, lba);
+            info!("READ{} LUN={} LBA={}: {} blocks done in {}µs", 
+                if opcode == 0x88 { "16" } else { "10" }, lun_id, lba, num_blocks, t0.elapsed().as_micros());
+        } else if opcode == 0x2A || opcode == 0x8A {
+            // WRITE (10) or WRITE (16)
+            let lba = if opcode == 0x8A {
+                u64::from_be_bytes(cdb[2..10].try_into().unwrap())
+            } else {
+                u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64
+            };
+            info!("WRITE LUN={} LBA={}", lun_id, lba);
             self.handle_write10(req, lun_id).await?;
-        } else {
-            // Perintah SCSI lainnya disalurkan ke handler scsi.rs
+        } else if self.is_imagedisk {
+            // ImageDisk path → use Windows-compatible SCSI handler
             let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
-            let result = scsi::handle_scsi_command(&cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns);
+            let result = crate::session::scsi_image::handle_imagedisk_scsi(
+                &cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns);
             match result {
                 ScsiResult::Status { status } => {
                     trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
@@ -164,6 +170,24 @@ impl Session {
                         let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap());
                         debug!("READ10 LBA={}: send_data_in {}µs", lba, elapsed.as_micros());
                     }
+                }
+                ScsiResult::CheckCondition { key, asc, ascq } => {
+                    warn!("SCSI Command 0x{:02X} gagal dengan CheckCondition: Key 0x{:02X}, ASC 0x{:02X}, ASCQ 0x{:02X}", opcode, key, asc, ascq);
+                    self.send_scsi_check_condition(req.initiator_task_tag, key, asc, ascq).await?;
+                }
+            }
+        } else {
+            // GameDisk path → use existing lightweight SCSI handler
+            let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
+            let result = scsi::handle_scsi_command(&cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns);
+            match result {
+                ScsiResult::Status { status } => {
+                    trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
+                    self.send_scsi_response(req.initiator_task_tag, status, 0, req.expected_data_len, 0).await?;
+                }
+                ScsiResult::Data { data, status } => {
+                    trace!("SCSI Command 0x{:02X} selesai dengan data len: {}, status: 0x{:02X}", opcode, data.len(), status);
+                    self.send_scsi_data_in(req.initiator_task_tag, &data, status, req.expected_data_len).await?;
                 }
                 ScsiResult::CheckCondition { key, asc, ascq } => {
                     warn!("SCSI Command 0x{:02X} gagal dengan CheckCondition: Key 0x{:02X}, ASC 0x{:02X}, ASCQ 0x{:02X}", opcode, key, asc, ascq);
