@@ -167,15 +167,21 @@ impl VhdBackend {
         header[40..56].copy_from_slice(&parent_uuid);
         header[64..576].copy_from_slice(&parent_name_bytes);
 
-        // Parent locator entry (platform code W2ku = Windows, at header[576])
+        // Parent locator entry (24 bytes at header[576], per VHD spec):
+        //   [576..580] platform_code (4)
+        //   [580..584] platform_data_space (4)
+        //   [584..588] platform_data_length (4)
+        //   [588..592] reserved (4)
+        //   [592..600] platform_data_offset (8)
         let parent_path_bytes = parent_path.as_bytes();
-        let platform_code: [u8; 4] = [0x57, 0x32, 0x6B, 0x75]; // "W2ku" in ASCII
-        let locator_offset: u32 = data_start as u32;
+        let platform_code: [u8; 4] = [0x57, 0x32, 0x6B, 0x75]; // "W2ku"
+        let locator_offset: u64 = data_start;
         let locator_len = parent_path_bytes.len() as u32;
         header[576..580].copy_from_slice(&platform_code);
-        header[580..584].copy_from_slice(&0u32.to_be_bytes()); // platform_data_space
-        header[584..588].copy_from_slice(&locator_len.to_be_bytes());
-        header[588..592].copy_from_slice(&locator_offset.to_be_bytes());
+        header[580..584].copy_from_slice(&0u32.to_be_bytes());       // platform_data_space
+        header[584..588].copy_from_slice(&locator_len.to_be_bytes()); // platform_data_length
+        header[588..592].copy_from_slice(&0u32.to_be_bytes());        // reserved
+        header[592..600].copy_from_slice(&locator_offset.to_be_bytes()); // platform_data_offset (u64)
 
         // Compute header checksum (sum of 256 u32 BE words → complement → write to header[12..16])
         // Header[12..16] is currently zero (not yet set)
