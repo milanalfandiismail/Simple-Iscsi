@@ -188,11 +188,12 @@ impl VhdBackend {
         footer[8..12].copy_from_slice(&0x00000002u32.to_be_bytes()); // features
         footer[12..16].copy_from_slice(&0x01000000u32.to_be_bytes()); // file format version
         footer[16..24].copy_from_slice(&0xFFFFFFFFFFFFFFFFu64.to_be_bytes()); // data_offset (unused for diff)
-        footer[24..28].copy_from_slice(&0u32.to_be_bytes()); // timestamp
-        footer[28..36].copy_from_slice(&0u64.to_be_bytes()); // creator_app + creator_host_os
-        footer[36..40].copy_from_slice(&0u32.to_be_bytes()); // creator_version
-        footer[40..48].copy_from_slice(&parent.current_size.to_be_bytes()); // original_size
-        footer[48..56].copy_from_slice(&parent.current_size.to_be_bytes()); // current_size
+        footer[24..28].copy_from_slice(&0u32.to_be_bytes());        // timestamp
+        footer[28..32].copy_from_slice(&0u32.to_be_bytes());        // creator_app
+        footer[32..36].copy_from_slice(&0u32.to_be_bytes());        // creator_version
+        footer[36..40].copy_from_slice(&0u32.to_be_bytes());        // creator_host_os
+        footer[40..48].copy_from_slice(&parent.current_size.to_be_bytes());   // original_size
+        footer[48..56].copy_from_slice(&parent.current_size.to_be_bytes());   // current_size
         footer[56..60].copy_from_slice(&2u32.to_be_bytes()); // disk geometry: cylinders
         footer[60..64].copy_from_slice(&4u32.to_be_bytes()); // disk_type = 4 (differencing)
         footer[68..72].copy_from_slice(&child_uuid[0..4]);
