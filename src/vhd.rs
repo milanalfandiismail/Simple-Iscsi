@@ -248,6 +248,9 @@ impl VhdBackend {
         }
         child_file.write_all(parent_path_bytes)?;
 
+        // Write trailing footer at EOF (required by Windows VHD parser)
+        child_file.write_all(&footer)?;
+
         child_file.sync_all()?;
 
         info!("Child VHD dibuat: {} ({} bytes, {} blocks)",
