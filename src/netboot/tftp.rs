@@ -132,7 +132,7 @@ impl TftpServer {
     }
 
     async fn transfer_file(&self, client_addr: SocketAddr, file_data: Vec<u8>, options: Vec<(String, String)>) {
-        let bind_ip = &self.config.dhcp.next_server;
+        let bind_ip = &self.config.server.address;
         let bind_addr = format!("{}:0", bind_ip);
         
         let socket = match UdpSocket::bind(&bind_addr).await {
@@ -269,7 +269,7 @@ impl TftpServer {
     }
 
     async fn send_error(&self, addr: SocketAddr, error_code: u16, msg: &str) {
-        let bind_ip = &self.config.dhcp.next_server;
+        let bind_ip = &self.config.server.address;
         if let Ok(socket) = UdpSocket::bind(format!("{}:0", bind_ip)).await {
             let mut packet = BytesMut::with_capacity(100);
             packet.put_u16(TFTP_OP_ERROR);
