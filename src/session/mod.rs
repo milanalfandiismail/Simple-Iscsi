@@ -88,7 +88,7 @@ impl Session {
             backends: HashMap::new(),
             config,
             client_caches: HashMap::new(),
-            is_imagedisk: false,
+            is_imagedisk: false,  // will be set in run() after login IQN check
             target_iqn: String::new(),
             initiator_iqn: String::new(),
             is_discovery: false,
