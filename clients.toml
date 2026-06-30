@@ -25,6 +25,7 @@ dns = "8.8.8.8"
 pxe = "sb-custom"
 bootfile_uefi = "sb-custom/ipxe-shim.efi"
 next_server = "192.168.56.1"
+image_manager = "windows_11"
 
 [[client]]
 hostname = "PC-04"
