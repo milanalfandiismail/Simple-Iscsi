@@ -200,26 +200,30 @@ impl Session {
 
     pub(super) async fn handle_write10(&mut self, req: Pdu, lun_id: u8) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
-        let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64;
-        let num_blocks = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32;
+        let opcode = cdb[0];
+        let (lba, num_blocks) = if opcode == 0x8A {
+            // WRITE(16): 64-bit LBA, 32-bit transfer length
+            (u64::from_be_bytes(cdb[2..10].try_into().unwrap()),
+             u32::from_be_bytes(cdb[10..14].try_into().unwrap()))
+        } else {
+            // WRITE(10): 32-bit LBA, 16-bit transfer length
+            (u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64,
+             u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
+        };
         
         let backend = self.backends.get(&lun_id).unwrap();
         let block_size = backend.block_size();
         let expected_len = (num_blocks as usize) * (block_size as usize);
 
+        // Buffer semua data dulu — baru satu write_stream di akhir
+        let mut write_buf: Vec<u8> = Vec::with_capacity(expected_len);
         let mut bytes_received = 0;
 
-        // Tulis immediate data (unsolicited) ke cache langsung
+        // Tampung immediate data (unsolicited)
         let immediate_len = req.data.len();
         if immediate_len > 0 {
-            if let Some(cache) = self.client_caches.get(&lun_id) {
-                cache.write_stream(lba, 0, &req.data)?;
-                bytes_received = req.data.len();
-            } else {
-                error!("Client cache tidak tersedia untuk immediate write LUN {}!", lun_id);
-                self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
-                return Ok(());
-            }
+            write_buf.extend_from_slice(&req.data);
+            bytes_received = immediate_len;
         }
 
         // Kalo masih kurang, kirim R2T
@@ -234,7 +238,7 @@ impl Session {
             ).await?;
         }
 
-        // Data-Out loop: tiap PDU langsung stream ke .bin
+        // Data-Out loop: buffer semua PDU ke write_buf
         while bytes_received < expected_len {
             let data_out = match pdu::parser::read_pdu(&mut self.stream).await {
                 Ok(p) => p,
@@ -250,18 +254,16 @@ impl Session {
                 return Ok(());
             }
 
-            let data_len = data_out.data.len();
-            let buf_offset = data_out.exp_stat_sn as u64;
-            let chunk = data_out.data;
+            write_buf.extend_from_slice(&data_out.data);
+            bytes_received += data_out.data.len();
+        }
 
-            if let Some(cache) = self.client_caches.get(&lun_id) {
-                cache.write_stream(lba, buf_offset, &chunk)?;
-            } else {
-                self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
-                return Ok(());
-            }
-
-            bytes_received += data_len;
+        // Satu kali write_stream — tanpa flush di dalamnya (periodic flush via maybe_flush)
+        if let Some(cache) = self.client_caches.get(&lun_id) {
+            cache.write_stream(lba, 0, &write_buf)?;
+        } else {
+            self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
+            return Ok(());
         }
 
         info!("WRITE10 LUN {} LBA {} sukses ({} bytes)", lun_id, lba, expected_len);

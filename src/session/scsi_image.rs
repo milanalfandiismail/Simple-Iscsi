@@ -77,7 +77,7 @@ pub fn handle_imagedisk_scsi(
             "ImageDisk WRITE (16) LBA={} blocks={}",
             lba, num_blocks
         );
-        // Delegate — write handled by scsi_handler's async write path
+        // WRITE(16) already handled by handle_scsi_cmd dispatch (line 144)
         return ScsiResult::Status { status: 0x00 };
     }
 

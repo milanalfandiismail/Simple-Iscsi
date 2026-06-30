@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
 const BUFFER_SIZE: usize = 2 * 1024 * 1024; // 2MB buffer
+const FLUSH_THRESHOLD: u64 = 64;              // flush after 64 unwritten blocks
 
 pub struct ClientCache {
     file_path: PathBuf,
@@ -19,6 +20,8 @@ pub struct ClientCache {
     block_size: u64,
     max_cache_size: u64,
     is_super: bool,
+    unflushed_writes: AtomicU64,
+    total_bytes_written: AtomicU64,
 }
 
 impl ClientCache {
@@ -87,6 +90,8 @@ impl ClientCache {
             block_size,
             max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
             is_super,
+            unflushed_writes: AtomicU64::new(0),
+            total_bytes_written: AtomicU64::new(next_write_offset),
         })
     }
 
@@ -150,11 +155,9 @@ impl ClientCache {
 
         if self.block_map.get(&start_lba).is_none() {
             let total_len = data.len() as u64;
+            self.ensure_capacity(total_len)?;
             let base = self.next_write_offset.fetch_add(total_len, Ordering::SeqCst);
-
-            if base + total_len > self.max_cache_size {
-                return Err(io::Error::new(io::ErrorKind::OutOfMemory, "Cache full"));
-            }
+            self.total_bytes_written.fetch_add(total_len, Ordering::SeqCst);
 
             for i in 0..num_blocks {
                 self.block_map.insert(start_lba + i as u64, base + (i as u64) * self.block_size);
@@ -163,7 +166,8 @@ impl ClientCache {
             let mut writer = self.file.lock();
             writer.get_mut().seek(SeekFrom::Start(base))?;
             writer.write_all(data)?;
-            writer.flush()?; // ⚠️ flush ke disk sebelum unlock!
+            drop(writer);
+            self.maybe_flush(num_blocks as u64);
             return Ok(());
         }
 
@@ -173,10 +177,9 @@ impl ClientCache {
             let offset = if let Some(entry) = self.block_map.get(&lba) {
                 *entry
             } else {
+                self.ensure_capacity(self.block_size)?;
                 let off = self.next_write_offset.fetch_add(self.block_size, Ordering::SeqCst);
-                if off + self.block_size > self.max_cache_size {
-                    return Err(io::Error::new(io::ErrorKind::OutOfMemory, "Cache full"));
-                }
+                self.total_bytes_written.fetch_add(self.block_size, Ordering::SeqCst);
                 self.block_map.insert(lba, off);
                 off
             };
@@ -202,8 +205,41 @@ impl ClientCache {
 
             span_start = span_end;
         }
-        writer.flush()?; // ⚠️ flush ke disk sebelum unlock!
+        drop(writer);
+        self.maybe_flush(num_blocks as u64);
         Ok(())
+    }
+
+    /// Pastikan kapasitas cache tidak melebihi max_cache_size.
+    /// Jika melebihi, evict oldest blocks sampai cukup.
+    fn ensure_capacity(&self, needed: u64) -> io::Result<()> {
+        let current = self.total_bytes_written.load(Ordering::Relaxed);
+        if current + needed <= self.max_cache_size {
+            return Ok(());
+        }
+        // Evict oldest blocks: hapus entries dengan offset terkecil
+        let to_free = (current + needed).saturating_sub(self.max_cache_size);
+        let mut freed: u64 = 0;
+        let mut entries: Vec<(u64, u64)> = self.block_map.iter().map(|e| (*e.key(), *e.value())).collect();
+        entries.sort_by_key(|(_, off)| *off); // oldest first (lowest offset)
+
+        for (lba, _off) in entries {
+            if freed >= to_free { break; }
+            self.block_map.remove(&lba);
+            freed += self.block_size;
+        }
+        self.total_bytes_written.fetch_sub(freed.min(current), Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Flush ke disk hanya jika counter melebihi threshold
+    fn maybe_flush(&self, blocks: u64) {
+        let count = self.unflushed_writes.fetch_add(blocks, Ordering::Relaxed) + blocks;
+        if count >= FLUSH_THRESHOLD {
+            let mut writer = self.file.lock();
+            let _ = writer.flush();
+            self.unflushed_writes.store(0, Ordering::Relaxed);
+        }
     }
 
     pub fn flush(&self) -> io::Result<()> {
