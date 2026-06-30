@@ -5,6 +5,7 @@ echo       PXE Boot - iSCSI SAN Mode
 echo ==========================================
 echo
 echo    DHCP Client Info:
+echo    Hostname   : ${hostname}
 echo    IP         : ${net0/ip}
 echo    Gateway    : ${net0/gateway}
 echo    MAC        : ${net0/mac}
@@ -13,7 +14,10 @@ echo    iSCSI IP   : ${168}
 echo    iSCSI IQN  : ${169}
 echo
 echo ==========================================
-echo    Booting Windows from iSCSI...
+echo    Hooking Game iSCSI disk to 0x81...
+sanhook --drive 0x81 iscsi:${168}::::iqn.2024-01.com.tmdebug:gamedisks || echo GameDisk not available
+echo
+echo    Booting Windows from iSCSI to 0x80...
 sanboot iscsi:${168}::::${169}
 echo
 echo    Boot failed, entering shell...
