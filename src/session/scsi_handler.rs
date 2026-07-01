@@ -1,10 +1,10 @@
 use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP, OP_DATA_OUT};
-use crate::scsi::ScsiResult;
+use crate::scsi_gamedisk::ScsiResult;
 use crate::session::Session;
 use tracing::{debug, error, info, trace, warn};
 use tokio::io::AsyncWriteExt;
 use std::time::Instant;
-use crate::scsi;
+use crate::scsi_gamedisk;
 
 impl Session {
     pub(super) async fn handle_nop_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
@@ -180,7 +180,7 @@ impl Session {
         } else if self.is_imagedisk {
             // ImageDisk path → use Windows-compatible SCSI handler
             let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
-            let result = crate::session::scsi_image::handle_imagedisk_scsi(
+            let result = crate::scsi_imagedisk::handle_imagedisk_scsi(
                 &cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id);
             match result {
                 ScsiResult::Status { status } => {
@@ -206,7 +206,7 @@ impl Session {
         } else {
             // GameDisk path → use existing lightweight SCSI handler
             let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
-            let result = scsi::handle_scsi_command(&cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id);
+            let result = scsi_gamedisk::handle_scsi_command(&cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id);
             match result {
                 ScsiResult::Status { status } => {
                     trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);

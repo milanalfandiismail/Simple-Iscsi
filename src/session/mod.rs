@@ -1,6 +1,6 @@
 use crate::backend::Backend;
 use crate::writeback_gamedisk::ClientCache;
-use crate::vhd::VhdBackend;
+use crate::writeback_imagedisk;
 use crate::stats::ServerStats;
 use crate::pdu::{
     self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 pub mod scsi_handler;
-pub mod scsi_image;
 pub mod pdu_io;
 use tracing::{info, warn, error};
 
@@ -260,64 +259,22 @@ impl Session {
             self.is_imagedisk = true;
             let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
-            
-            // Resolve parent VHD path via image_manager config
-            let vhd_filename = self.config.image_manager.as_ref()
-                .and_then(|m| m.get(suffix))
-                .cloned()
-                .unwrap_or_else(|| format!("{}.vhd", suffix));
-            
-            let parent_path = if std::path::Path::new(&vhd_filename).is_absolute() {
-                vhd_filename.clone()
-            } else {
-                format!("{}\\{}", self.config.windows.vhd_dir, vhd_filename)
-            };
 
-            // Child VHD path: {writeback_dirs[0]}\{client_ip}-{target_name}.vhd
-            // Simpan di folder yang sama dengan writeback cache
-            let child_dir = self.config.writeback.writeback_dirs.first()
-                .cloned()
-                .unwrap_or_else(|| self.config.windows.vhd_dir.clone());
-            let _ = std::fs::create_dir_all(&child_dir);
-            let safe_ip = self.client_ip.chars()
-                .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
-                .collect::<String>();
-            let child_path = format!("{}\\{}-{}.vhd", child_dir, safe_ip, suffix);
-
-            // Buat child VHD jika belum ada (atau selalu buat ulang untuk diskless)
-            if !std::path::Path::new(&child_path).exists() || !is_super {
-                if std::path::Path::new(&child_path).exists() {
-                    // Hapus child lama untuk client biasa (diskless)
-                    info!("Menghapus child VHD lama: {}", child_path);
-                    let _ = std::fs::remove_file(&child_path);
-                }
-                VhdBackend::create_differencing(&parent_path, &child_path)
-                    .map_err(|e| {
-                        error!("Gagal membuat child VHD {}: {}", child_path, e);
-                        std::io::Error::new(std::io::ErrorKind::Other, e)
-                    })?;
-            }
-
-            // Buka differencing backend
-            match Backend::new_vhd_diff(
-                &child_path,
-                &parent_path,
-                self.config.windows.block_size,
-                &self.config.windows.vendor_id,
-                &self.config.windows.product_id,
-                &self.config.windows.product_revision,
+            // Gunakan writeback_imagedisk untuk init child VHD (SRP)
+            match writeback_imagedisk::init_child_vhd(
+                &self.config,
+                &self.client_ip,
+                suffix,
             ) {
-                Ok(vhd_backend) => {
-                    self.backends.insert(0, Arc::new(vhd_backend));
+                Ok(result) => {
+                    self.backends.insert(0, result.backend);
+                    self.child_vhd_path = Some(result.child_path);
                 }
                 Err(e) => {
-                    error!("Gagal membuka VHD differencing {}: {}", child_path, e);
+                    error!("Gagal init child VHD: {}", e);
                     return Ok(());
                 }
             }
-
-            // Store child_path for cleanup on disconnect
-            self.child_vhd_path = Some(child_path);
         } else {
             error!("Target IQN tidak valid atau tidak dikenali: {}", self.target_iqn);
             return Ok(()); // Putuskan koneksi
@@ -380,16 +337,13 @@ impl Session {
             }
         }
 
-        // Cleanup child VHD on disconnect (diskless — hanya pertahankan untuk super client)
+        // Cleanup child VHD via writeback_imagedisk (SRP)
         if self.is_imagedisk {
-            if !is_super {
-                if let Some(ref child_path) = self.child_vhd_path {
-                    info!("Menghapus child VHD (diskless): {}", child_path);
-                    let _ = std::fs::remove_file(child_path);
-                }
-            } else {
-                info!("Super client — child VHD dipertahankan");
-            }
+            writeback_imagedisk::cleanup_child_vhd(
+                self.child_vhd_path.as_deref(),
+                &self.client_ip,
+                &self.config,
+            );
         }
 
         // On explicit LOGOUT, delete gamedisk .bin caches (selesai bermain)

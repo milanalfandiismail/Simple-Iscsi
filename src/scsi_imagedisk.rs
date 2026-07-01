@@ -4,10 +4,10 @@
 use crate::backend::Backend;
 use crate::writeback_gamedisk::ClientCache;
 use crate::pdu_image;
-use crate::scsi::{self, ScsiResult};
+use crate::scsi_gamedisk::{self, ScsiResult};
 
 /// ImageDisk SCSI command handler — intercepts Windows-specific commands
-/// before delegating to shared scsi.rs
+/// before delegating to scsi_gamedisk for shared SCSI commands
 pub fn handle_imagedisk_scsi(
     cdb: &[u8],
     backend: &Backend,
@@ -61,7 +61,7 @@ pub fn handle_imagedisk_scsi(
         }
         // READ (16)
         0x88 => {
-            return scsi::handle_scsi_command(cdb, backend, cache, block_size, active_luns, lun_id);
+            return scsi_gamedisk::handle_scsi_command(cdb, backend, cache, block_size, active_luns, lun_id);
         }
         // WRITE (16) — handled by handle_scsi_cmd dispatch (line 144 of scsi_handler)
         0x8A => {
@@ -69,9 +69,9 @@ pub fn handle_imagedisk_scsi(
         }
         // SERVICE ACTION IN (16)
         0x9E => {
-            return scsi::handle_scsi_command(cdb, backend, cache, block_size, active_luns, lun_id);
+            return scsi_gamedisk::handle_scsi_command(cdb, backend, cache, block_size, active_luns, lun_id);
         }
-        // All other commands → delegate to shared handler
-        _ => scsi::handle_scsi_command(cdb, backend, cache, block_size, active_luns, lun_id),
+        // All other commands → delegate to scsi_gamedisk
+        _ => scsi_gamedisk::handle_scsi_command(cdb, backend, cache, block_size, active_luns, lun_id),
     }
 }

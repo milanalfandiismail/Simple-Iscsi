@@ -1,8 +1,10 @@
 mod backend;
 mod writeback_gamedisk;
+mod writeback_imagedisk;
 mod pdu;
 mod pdu_image;
-mod scsi;
+mod scsi_gamedisk;
+mod scsi_imagedisk;
 mod server;
 mod session;
 mod config;
