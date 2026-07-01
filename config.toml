@@ -1,15 +1,15 @@
 [server]
-address = "192.168.56.1"
+address = "192.168.57.1"
 port = 3260
 
 [dhcp]
 enabled = true
-start_ip = "192.168.56.100"
-end_ip = "192.168.56.200"
+start_ip = "192.168.57.100"
+end_ip = "192.168.57.200"
 subnet_mask = "255.255.255.0"
-router = "192.168.56.1"
+router = "192.168.57.1"
 dns = "8.8.8.8"
-next_server = "192.168.56.1"
+next_server = "192.168.57.1"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"
 
@@ -18,7 +18,7 @@ target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"
 discovery = true
 
 [[gamedisk]]
-physical_disk = '\\.\PhysicalDrive0'
+physical_disk = '\\.\PhysicalDrive1'
 block_size = 512
 vendor_id = "TM"
 product_id = "GameDisk-1"
