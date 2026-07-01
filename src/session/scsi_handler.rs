@@ -123,10 +123,33 @@ impl Session {
                 self.read_buf.resize(total_bytes, 0);
             }
 
-            if let Err(e) = backend.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
-                error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
-                self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
-                return Ok(());
+            // Large reads (>1MB) via spawn_blocking to avoid blocking tokio worker
+            if total_bytes > 1024 * 1024 {
+                let backend = backend.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    let mut buf = vec![0u8; total_bytes];
+                    backend.read_blocks(lba, num_blocks, &mut buf).map(|_| buf)
+                });
+                match handle.await {
+                    Ok(Ok(data)) => {
+                        self.read_buf[..total_bytes].copy_from_slice(&data);
+                    }
+                    Ok(Err(e)) => {
+                        error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
+                        self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        error!("spawn_blocking panicked untuk LUN {} LBA {}", lun_id, lba);
+                        return Ok(());
+                    }
+                }
+            } else {
+                if let Err(e) = backend.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
+                    error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
+                    self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
+                    return Ok(());
+                }
             }
 
             if let Some(cache) = cache_opt {
