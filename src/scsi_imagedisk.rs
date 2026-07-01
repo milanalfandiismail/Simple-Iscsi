@@ -3,7 +3,7 @@
 
 use crate::backend::Backend;
 use crate::writeback_gamedisk::ClientCache;
-use crate::pdu_image;
+use crate::pdu::imagedisk;
 use crate::scsi_gamedisk::{self, ScsiResult};
 
 /// ImageDisk SCSI command handler — intercepts Windows-specific commands
@@ -24,14 +24,14 @@ pub fn handle_imagedisk_scsi(
             let page_code = cdb[2] & 0x3F;
             if opcode == 0x1A {
                 let alloc_len = cdb[4] as usize;
-                let mut data = pdu_image::build_mode_sense_6(page_code, block_size);
+                let mut data = imagedisk::build_mode_sense_6(page_code, block_size);
                 if data.len() > alloc_len {
                     data.truncate(alloc_len);
                 }
                 return ScsiResult::Data { data, status: 0x00 };
             } else {
                 let alloc_len = u16::from_be_bytes([cdb[7], cdb[8]]) as usize;
-                let data = pdu_image::build_mode_sense_10(page_code, block_size, alloc_len);
+                let data = imagedisk::build_mode_sense_10(page_code, block_size, alloc_len);
                 return ScsiResult::Data { data, status: 0x00 };
             }
         }
