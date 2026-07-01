@@ -27,6 +27,7 @@ pub struct Session {
     client_caches: HashMap<u8, ClientCache>,
     is_imagedisk: bool,
     child_vhd_path: Option<String>,
+    is_super: bool,
     stats: Arc<ServerStats>,
 
     target_iqn: String,
@@ -96,6 +97,7 @@ impl Session {
             client_caches: HashMap::new(),
             is_imagedisk: false,  // will be set in run() after login IQN check
             child_vhd_path: None,
+            is_super: false,
             stats,
             target_iqn: String::new(),
             initiator_iqn: String::new(),
@@ -262,18 +264,20 @@ impl Session {
             let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
 
-            // Gunakan writeback_imagedisk untuk init child VHD (SRP)
+            // Gunakan writeback_imagedisk — kalo super client, serve super VHD langsung
+            self.is_super = self.client_ip == self.config.windows.super_client_ip;
             match writeback_imagedisk::init_child_vhd(
                 &self.config,
                 &self.client_ip,
                 suffix,
+                self.is_super,
             ) {
                 Ok(result) => {
                     self.backends.insert(0, result.backend);
-                    self.child_vhd_path = Some(result.child_path);
+                    self.child_vhd_path = result.child_path; // None untuk super VHD, Some untuk child
                 }
                 Err(e) => {
-                    error!("Gagal init child VHD: {}", e);
+                    error!("Gagal init VHD: {}", e);
                     return Ok(());
                 }
             }
@@ -339,7 +343,7 @@ impl Session {
             }
         }
 
-        // Cleanup child VHD via writeback_imagedisk (SRP)
+        // Cleanup VHD via writeback_imagedisk — super VHD persistent, child VHD dihapus
         if self.is_imagedisk {
             writeback_imagedisk::cleanup_child_vhd(
                 self.child_vhd_path.as_deref(),
