@@ -1,5 +1,5 @@
 use crate::backend::Backend;
-use crate::cache::ClientCache;
+use crate::writeback_gamedisk::ClientCache;
 use crate::vhd::VhdBackend;
 use crate::pdu::{
     self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
