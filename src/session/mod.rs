@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 pub mod scsi_handler;
+pub mod scsi_handler_gamedisk;
+pub mod scsi_handler_imagedisk;
 pub mod pdu_io;
 use tracing::{info, warn, error};
 
