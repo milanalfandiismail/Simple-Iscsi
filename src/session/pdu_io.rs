@@ -1,4 +1,5 @@
 use crate::pdu::{self, Pdu, OP_SCSI_RESP, OP_DATA_IN, OP_R2T};
+use crate::scsi_gamedisk::ScsiResult;
 use crate::session::Session;
 use tokio::io::AsyncWriteExt;
 
@@ -196,6 +197,26 @@ impl Session {
         let packet = pdu::builder::build_pdu(&resp);
         self.stream.write_all(&packet).await?;
         self.stream.flush().await?;
+        Ok(())
+    }
+
+    /// Shared helper: convert ScsiResult → send response/data/check-condition
+    pub(super) async fn send_scsi_result(
+        &mut self,
+        req: &Pdu,
+        result: ScsiResult,
+    ) -> Result<(), std::io::Error> {
+        match result {
+            ScsiResult::Status { status } => {
+                self.send_scsi_response(req.initiator_task_tag, status, 0, req.expected_data_len, 0).await?;
+            }
+            ScsiResult::Data { data, status } => {
+                self.send_scsi_data_in(req.initiator_task_tag, &data, status, req.expected_data_len).await?;
+            }
+            ScsiResult::CheckCondition { key, asc, ascq } => {
+                self.send_scsi_check_condition(req.initiator_task_tag, key, asc, ascq).await?;
+            }
+        }
         Ok(())
     }
 }

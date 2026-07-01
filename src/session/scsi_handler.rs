@@ -1,10 +1,8 @@
-use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP, OP_DATA_OUT};
-use crate::scsi_gamedisk::ScsiResult;
+use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP};
 use crate::session::Session;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, info, warn};
 use tokio::io::AsyncWriteExt;
 use std::time::Instant;
-use crate::scsi_gamedisk;
 
 impl Session {
     pub(super) async fn handle_nop_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
@@ -43,6 +41,7 @@ impl Session {
     pub(super) async fn handle_text_req(&mut self, req: Pdu) -> Result<(), std::io::Error> {
         let params = pdu::parser::parse_text_parameters(&req.data);
         info!("Menerima Text Request parameters: {:?}", params);
+
         let mut resp_params = Vec::new();
 
         if params.get("SendTargets").map(|s| s.as_str()) == Some("All") {
@@ -105,8 +104,8 @@ impl Session {
             return Ok(());
         }
 
+        // --- READ10/16: shared path ---
         if opcode == 0x28 || opcode == 0x88 {
-            // READ (10) or READ (16)
             let (lba, num_blocks) = if opcode == 0x88 {
                 (u64::from_be_bytes(cdb[2..10].try_into().unwrap()),
                  u32::from_be_bytes(cdb[10..14].try_into().unwrap()))
@@ -152,6 +151,7 @@ impl Session {
                 }
             }
 
+            // Cache overlay (gamedisk only — imagedisk has no .bin cache)
             if let Some(cache) = cache_opt {
                 if cache.contains_range(lba, num_blocks) {
                     self.stats.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -168,140 +168,34 @@ impl Session {
             self.stats.bytes_read.fetch_add(total_bytes as u64, std::sync::atomic::Ordering::Relaxed);
             info!("READ{} LUN={} LBA={}: {} blocks done in {}µs", 
                 if opcode == 0x88 { "16" } else { "10" }, lun_id, lba, num_blocks, t0.elapsed().as_micros());
+
+        // --- WRITE10/16: dispatch to specialized handlers ---
         } else if opcode == 0x2A || opcode == 0x8A {
-            // WRITE (10) or WRITE (16)
             let lba = if opcode == 0x8A {
                 u64::from_be_bytes(cdb[2..10].try_into().unwrap())
             } else {
                 u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64
             };
-            info!("WRITE LUN={} LBA={}", lun_id, lba);
-            self.handle_write10(req, lun_id).await?;
-        } else if self.is_imagedisk {
-            // ImageDisk path → use Windows-compatible SCSI handler
-            let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
-            let result = crate::scsi_imagedisk::handle_imagedisk_scsi(
-                &cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id);
-            match result {
-                ScsiResult::Status { status } => {
-                    trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
-                    self.send_scsi_response(req.initiator_task_tag, status, 0, req.expected_data_len, 0).await?;
-                }
-                ScsiResult::Data { data, status } => {
-                    let is_read10 = opcode == 0x28;
-                    let t0 = if is_read10 { Some(Instant::now()) } else { None };
-                    trace!("SCSI Command 0x{:02X} selesai dengan data len: {}, status: 0x{:02X}", opcode, data.len(), status);
-                    self.send_scsi_data_in(req.initiator_task_tag, &data, status, req.expected_data_len).await?;
-                    if let Some(timer) = t0 {
-                        let elapsed = timer.elapsed();
-                        let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap());
-                        debug!("READ10 LBA={}: send_data_in {}µs", lba, elapsed.as_micros());
-                    }
-                }
-                ScsiResult::CheckCondition { key, asc, ascq } => {
-                    warn!("SCSI Command 0x{:02X} gagal dengan CheckCondition: Key 0x{:02X}, ASC 0x{:02X}, ASCQ 0x{:02X}", opcode, key, asc, ascq);
-                    self.send_scsi_check_condition(req.initiator_task_tag, key, asc, ascq).await?;
-                }
-            }
-        } else {
-            // GameDisk path → use existing lightweight SCSI handler
-            let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
-            let result = scsi_gamedisk::handle_scsi_command(&cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id);
-            match result {
-                ScsiResult::Status { status } => {
-                    trace!("SCSI Command 0x{:02X} selesai dengan status: 0x{:02X}", opcode, status);
-                    self.send_scsi_response(req.initiator_task_tag, status, 0, req.expected_data_len, 0).await?;
-                }
-                ScsiResult::Data { data, status } => {
-                    trace!("SCSI Command 0x{:02X} selesai dengan data len: {}, status: 0x{:02X}", opcode, data.len(), status);
-                    self.send_scsi_data_in(req.initiator_task_tag, &data, status, req.expected_data_len).await?;
-                }
-                ScsiResult::CheckCondition { key, asc, ascq } => {
-                    warn!("SCSI Command 0x{:02X} gagal dengan CheckCondition: Key 0x{:02X}, ASC 0x{:02X}, ASCQ 0x{:02X}", opcode, key, asc, ascq);
-                    self.send_scsi_check_condition(req.initiator_task_tag, key, asc, ascq).await?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(super) async fn handle_write10(&mut self, req: Pdu, lun_id: u8) -> Result<(), std::io::Error> {
-        let cdb = req.custom_bhs;
-        let opcode = cdb[0];
-        let (lba, num_blocks) = if opcode == 0x8A {
-            // WRITE(16): 64-bit LBA, 32-bit transfer length
-            (u64::from_be_bytes(cdb[2..10].try_into().unwrap()),
-             u32::from_be_bytes(cdb[10..14].try_into().unwrap()))
-        } else {
-            // WRITE(10): 32-bit LBA, 16-bit transfer length
-            (u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64,
-             u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
-        };
-        
-        let backend = self.backends.get(&lun_id).unwrap();
-        let block_size = backend.block_size();
-        let expected_len = (num_blocks as usize) * (block_size as usize);
-
-        // Buffer semua data dulu — baru satu write_stream di akhir
-        let mut write_buf: Vec<u8> = Vec::with_capacity(expected_len);
-        let mut bytes_received = 0;
-
-        // Tampung immediate data (unsolicited)
-        let immediate_len = req.data.len();
-        if immediate_len > 0 {
-            write_buf.extend_from_slice(&req.data);
-            bytes_received = immediate_len;
-        }
-
-        // Kalo masih kurang, kirim R2T
-        if bytes_received < expected_len {
-            let remaining = (expected_len - bytes_received) as u32;
-            info!("WRITE10 LUN {} LBA {} ({} blocks): kirim R2T offset={} desired={}", lun_id, lba, num_blocks, bytes_received, remaining);
-            self.send_r2t(
-                req.initiator_task_tag,
-                req.lun,
-                bytes_received as u32,
-                remaining,
-            ).await?;
-        }
-
-        // Data-Out loop: buffer semua PDU ke write_buf
-        while bytes_received < expected_len {
-            let data_out = match pdu::parser::read_pdu(&mut self.stream).await {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Gagal membaca Data-Out PDU: {}", e);
-                    return Err(e);
-                }
+            let num_blocks = if opcode == 0x8A {
+                u32::from_be_bytes(cdb[10..14].try_into().unwrap())
+            } else {
+                u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32
             };
+            info!("WRITE LUN={} LBA={} blocks={}", lun_id, lba, num_blocks);
 
-            if data_out.opcode != OP_DATA_OUT {
-                warn!("Non Data-Out opcode 0x{:02X} saat menanti write data", data_out.opcode);
-                self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x00, 0x00).await?;
-                return Ok(());
+            if self.is_imagedisk {
+                self.handle_imagedisk_write(&req, lun_id, lba, num_blocks).await?;
+            } else {
+                self.handle_gamedisk_write(&req, lun_id, lba, num_blocks).await?;
             }
 
-            write_buf.extend_from_slice(&data_out.data);
-            bytes_received += data_out.data.len();
-        }
-
-        // Satu kali write — untuk imagedisk: langsung ke backend, untuk gamedisk: ke cache
-        if self.is_imagedisk {
-            // Write langsung ke differencing VHD backend
-            let backend = self.backends.get(&lun_id).unwrap();
-            backend.write_blocks(lba, num_blocks, &write_buf)?;
-            info!("WRITE10 (ImageDisk) LUN {} LBA {} sukses ({} bytes) → child VHD", lun_id, lba, expected_len);
-        } else if let Some(cache) = self.client_caches.get(&lun_id) {
-            cache.write_stream(lba, 0, &write_buf)?;
+        // --- Other SCSI commands: dispatch to specialized handlers ---
+        } else if self.is_imagedisk {
+            self.handle_imagedisk_scsi_cmd(&req, &cdb, opcode, lun_id).await?;
         } else {
-            self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
-            return Ok(());
+            self.handle_gamedisk_scsi_cmd(&req, &cdb, opcode, lun_id).await?;
         }
 
-        self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
-
-        info!("WRITE10 LUN {} LBA {} sukses ({} bytes)", lun_id, lba, expected_len);
-        self.send_scsi_response(req.initiator_task_tag, 0x00, 0, 0, 0).await?;
         Ok(())
     }
 }
