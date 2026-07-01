@@ -1,9 +1,9 @@
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -151,15 +151,50 @@ pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn
         Err(_) => return Ok(HashMap::new()),
     };
     let config: ClientsConfig = toml::from_str(&content)?;
+
+    // Validasi duplicate MAC dan IP
+    let mut mac_set = HashSet::new();
+    let mut ip_set = HashSet::new();
+    for client in &config.clients {
+        let mac_lower = client.mac.to_lowercase();
+        if !mac_set.insert(mac_lower) {
+            return Err(format!("Duplicate MAC address: {} (client: {})",
+                client.mac, client.hostname.as_deref().unwrap_or("?")).into());
+        }
+        if !ip_set.insert(client.ip.clone()) {
+            return Err(format!("Duplicate IP address: {} (client: {})",
+                client.ip, client.hostname.as_deref().unwrap_or("?")).into());
+        }
+    }
+
     let map: HashMap<String, ClientConfig> = config
         .clients
         .into_iter()
         .map(|c| (c.mac.clone(), c))
         .collect();
+    info!("Loaded {} client(s) from {}", map.len(), path);
     Ok(map)
 }
 
 pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn std::error::Error>> {
+    // Load existing dulu untuk validasi duplicate
+    let existing = load_clients(path)?;
+
+    // Validasi duplicate MAC
+    if existing.contains_key(&client.mac) {
+        return Err(format!("MAC already exists: {} (used by {})",
+            client.mac, existing[&client.mac].hostname.as_deref().unwrap_or("?")).into());
+    }
+
+    // Validasi duplicate IP
+    for (_, existing_client) in &existing {
+        if existing_client.ip == client.ip {
+            return Err(format!("IP {} already used by {}",
+                client.ip, existing_client.hostname.as_deref().unwrap_or("?")).into());
+        }
+    }
+
+    // Append ke file
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
 
     let mut buf = String::new();
@@ -177,5 +212,7 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
     buf.push_str(&format!("image_manager = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
 
     file.write_all(buf.as_bytes())?;
+    info!("Client '{}' ({}) appended to {}", 
+        client.hostname.as_deref().unwrap_or("?"), client.mac, path);
     Ok(())
 }

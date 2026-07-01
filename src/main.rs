@@ -88,6 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // === CLI: --reload (validasi clients.toml tanpa restart) ===
+    if args.len() >= 2 && args[1] == "--reload" {
+        info!("Reload: memvalidasi clients.toml...");
+        let _config = Arc::new(config::load_config(&config_path)?);
+        let _clients = config::load_clients("clients.toml")?;
+        info!("✅ clients.toml valid! {} client(s) dimuat.", _clients.len());
+        return Ok(());
+    }
+
     // === Normal Server Start ===
     let config = Arc::new(config::load_config(&config_path)?);
 
@@ -96,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.server.address, config.server.port
     );
 
-    // Load konfigurasi klien DHCP
+    // Load konfigurasi klien DHCP (dengan validasi duplicate)
     let clients = config::load_clients("clients.toml")?;
     info!("Memuat {} konfigurasi klien DHCP.", clients.len());
 
