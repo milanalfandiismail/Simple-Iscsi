@@ -2,7 +2,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use tracing::error;
+use std::path::Path;
+use tracing::{error, warn};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -88,6 +89,34 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
             return Err(Box::new(e));
         }
     };
+
+    // === Validation ===
+    let is_power_of_2 = |v: u64| v.count_ones() == 1;
+    for (i, gd) in config.gamedisk.iter().enumerate() {
+        if !is_power_of_2(gd.block_size) {
+            error!("GameDisk[{}] block_size {} harus power of 2 (512/1024/4096)", i, gd.block_size);
+            return Err("block_size invalid".into());
+        }
+        let path = gd.physical_disk.trim_start_matches("\\\\.\\");
+        if !Path::new(&gd.physical_disk).exists() && !Path::new(path).exists() {
+            warn!("GameDisk[{}] physical_disk {} mungkin tidak tersedia", i, gd.physical_disk);
+        }
+    }
+    if !is_power_of_2(config.windows.block_size) {
+        error!("Windows block_size {} harus power of 2", config.windows.block_size);
+        return Err("block_size invalid".into());
+    }
+    if config.writeback.max_cache_per_client_gb < 1 {
+        error!("max_cache_per_client_gb harus >= 1");
+        return Err("max_cache_per_client_gb invalid".into());
+    }
+    for (i, dir) in config.writeback.writeback_dirs.iter().enumerate() {
+        let p = Path::new(dir);
+        if p.exists() && !p.is_dir() {
+            error!("writeback_dirs[{}] {:?} bukan direktori", i, dir);
+            return Err("writeback_dirs invalid".into());
+        }
+    }
 
     Ok(config)
 }
