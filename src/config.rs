@@ -126,7 +126,7 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ClientsConfig {
-    #[serde(rename = "client")]
+    #[serde(rename = "client", default)]
     pub clients: Vec<ClientConfig>,
 }
 
@@ -152,18 +152,22 @@ pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn
     };
     let config: ClientsConfig = toml::from_str(&content)?;
 
-    // Validasi duplicate MAC dan IP
+    // Validasi duplicate MAC (strict — HashMap key conflict)
     let mut mac_set = HashSet::new();
-    let mut ip_set = HashSet::new();
     for client in &config.clients {
         let mac_lower = client.mac.to_lowercase();
         if !mac_set.insert(mac_lower) {
             return Err(format!("Duplicate MAC address: {} (client: {})",
                 client.mac, client.hostname.as_deref().unwrap_or("?")).into());
         }
+    }
+
+    // Cek duplicate IP (warning only — valid untuk DHCP beda client)
+    let mut ip_set = HashSet::new();
+    for client in &config.clients {
         if !ip_set.insert(client.ip.clone()) {
-            return Err(format!("Duplicate IP address: {} (client: {})",
-                client.ip, client.hostname.as_deref().unwrap_or("?")).into());
+            warn!("Duplicate IP address: {} (client: {}) — allowed jika di subnet berbeda",
+                client.ip, client.hostname.as_deref().unwrap_or("?"));
         }
     }
 
@@ -180,17 +184,17 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
     // Load existing dulu untuk validasi duplicate
     let existing = load_clients(path)?;
 
-    // Validasi duplicate MAC
+    // Validasi duplicate MAC (strict)
     if existing.contains_key(&client.mac) {
         return Err(format!("MAC already exists: {} (used by {})",
             client.mac, existing[&client.mac].hostname.as_deref().unwrap_or("?")).into());
     }
 
-    // Validasi duplicate IP
+    // Cek duplicate IP (warning only)
     for (_, existing_client) in &existing {
         if existing_client.ip == client.ip {
-            return Err(format!("IP {} already used by {}",
-                client.ip, existing_client.hostname.as_deref().unwrap_or("?")).into());
+            warn!("IP {} already used by {} — allowed jika di subnet berbeda",
+                client.ip, existing_client.hostname.as_deref().unwrap_or("?"));
         }
     }
 
