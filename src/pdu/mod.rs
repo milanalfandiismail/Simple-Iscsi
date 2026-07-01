@@ -2,6 +2,7 @@
 
 pub mod builder;
 pub mod parser;
+pub mod imagedisk;
 
 // Opcode iSCSI Initiator (Client -> Target)
 pub const OP_NOP_OUT: u8 = 0x00;
