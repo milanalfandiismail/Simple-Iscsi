@@ -8,8 +8,8 @@ use std::io::BufWriter;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
-const BUFFER_SIZE: usize = 2 * 1024 * 1024; // 2MB buffer
-const FLUSH_THRESHOLD: u64 = 64;
+const BUFFER_SIZE: usize = 8 * 1024 * 1024; // 8MB buffer
+const FLUSH_THRESHOLD: u64 = 512;
 const CACHE_VERSION: u32 = 1; // bump to auto-invalidate stale .bin from old code
 
 pub struct ClientCache {

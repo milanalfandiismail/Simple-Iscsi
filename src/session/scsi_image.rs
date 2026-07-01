@@ -2,9 +2,9 @@
 //! Menangani MODE SENSE, VERIFY, START STOP UNIT, dll yang dibutuhkan Windows Boot Manager
 
 use crate::backend::Backend;
+use crate::writeback_gamedisk::ClientCache;
 use crate::pdu_image;
 use crate::scsi::{self, ScsiResult};
-use crate::writeback_gamedisk::ClientCache;
 
 /// ImageDisk SCSI command handler — intercepts Windows-specific commands
 /// before delegating to shared scsi.rs

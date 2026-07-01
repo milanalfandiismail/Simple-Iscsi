@@ -6,8 +6,8 @@ use tracing::{info, warn, error};
 
 use crate::vhd::VhdBackend;
 
-/// 1MB read-ahead buffer
-const RA_SIZE: usize = 1024 * 1024;
+/// 8MB read-ahead buffer
+const RA_SIZE: usize = 8 * 1024 * 1024;
 
 #[allow(dead_code)]
 enum BackendType {
@@ -146,54 +146,67 @@ impl BackendType {
         let start_block = (lba * block_size) / vhd_block_size;
         let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
 
-        // Phase 1: Allocate new blocks — copy from parent if available (CoW)
+        // Pre-allocate reusable zero buffers ONCE (no per-block heap alloc)
+        let zero_bitmap = vec![0u8; bitmap_size as usize];
+        let mut block_data = vec![0u8; vhd_block_size as usize];
+        let mut bat_updates: Vec<(u64, u32)> = Vec::new();
+
+        // Phase 1: Allocate + CoW copy — batch BAT updates
         for block_idx in start_block..end_block.min(child.bat.len() as u64) {
             if child.bat[block_idx as usize] == 0xFFFFFFFF {
-                // Allocate at EOF
                 let eof = child.file.seek(SeekFrom::End(0))?;
                 let bat_entry = (eof / 512) as u32;
 
-                // Write sector bitmap (all zeros = all sectors dirty)
-                let zero_bitmap = vec![0u8; bitmap_size as usize];
+                // Write sector bitmap (reuse zero buffer)
                 child.file.write_all(&zero_bitmap)?;
 
                 // COPY-ON-WRITE: read full block from parent
-                let mut block_data = vec![0u8; vhd_block_size as usize];
                 if let Some(ref mut p) = parent {
                     let parent_bat = *p.bat.get(block_idx as usize).unwrap_or(&0xFFFFFFFF);
                     if parent_bat != 0xFFFFFFFF {
                         let parent_offset = (parent_bat as u64) * 512 + (p.sector_bitmap_size as u64);
                         p.file.seek(SeekFrom::Start(parent_offset))?;
                         p.file.read_exact(&mut block_data)?;
+                    } else {
+                        block_data.fill(0);
                     }
+                } else {
+                    block_data.fill(0);
                 }
 
                 child.file.write_all(&block_data)?;
 
-                // Update BAT
+                // Buffer BAT update
                 child.bat[block_idx as usize] = bat_entry;
-                let bat_offset = 1536 + (block_idx * 4) as u64;
-                child.file.seek(SeekFrom::Start(bat_offset))?;
-                child.file.write_all(&bat_entry.to_be_bytes())?;
+                bat_updates.push((block_idx, bat_entry));
             }
         }
 
-        // Phase 2: Overlay write data onto child blocks
+        // Batch write all BAT updates in one sequential pass
+        if !bat_updates.is_empty() {
+            let first_off = 1536 + (bat_updates[0].0 * 4) as u64;
+            child.file.seek(SeekFrom::Start(first_off))?;
+            for (_, entry) in &bat_updates {
+                child.file.write_all(&entry.to_be_bytes())?;
+            }
+        }
+
+        // Phase 2: Overlay write data — contiguous blocks = 1 seek
         let mut buf_offset = 0;
         let mut current_byte_offset = lba * block_size;
         while buf_offset < buf.len() {
             let vhd_block_idx = current_byte_offset / vhd_block_size;
             let offset_in_vhd_block = current_byte_offset % vhd_block_size;
-            let bytes_to_write = std::cmp::min(
+            let chunk = std::cmp::min(
                 buf.len() - buf_offset,
                 (vhd_block_size - offset_in_vhd_block) as usize
             );
             let bat_val = child.bat[vhd_block_idx as usize];
             let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
             child.file.seek(SeekFrom::Start(physical_offset))?;
-            child.file.write_all(&buf[buf_offset..buf_offset + bytes_to_write])?;
-            buf_offset += bytes_to_write;
-            current_byte_offset += bytes_to_write as u64;
+            child.file.write_all(&buf[buf_offset..buf_offset + chunk])?;
+            buf_offset += chunk;
+            current_byte_offset += chunk as u64;
         }
 
         child.file.sync_all()?;
@@ -207,51 +220,51 @@ impl BackendType {
         let start_block = (lba * block_size) / vhd_block_size;
         let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
 
-        // Allocate new blocks for any BAT entries that are 0xFFFFFFFF
+        // Pre-allocate reusable zero buffers ONCE
+        let zero_bitmap = vec![0u8; bitmap_size as usize];
+        let zero_data = vec![0u8; vhd_block_size as usize];
+        let mut bat_updates: Vec<(u64, u32)> = Vec::new();
+
+        // Phase 1: Allocate new blocks — batch BAT updates
         for block_idx in start_block..end_block.min(vhd.bat.len() as u64) {
             if vhd.bat[block_idx as usize] == 0xFFFFFFFF {
-                // Append to EOF: bitmap + data block
                 let eof = vhd.file.seek(SeekFrom::End(0))?;
                 let bat_entry = (eof / 512) as u32;
 
-                // Write sector bitmap (all zeros = all sectors dirty)
-                let zero_bitmap = vec![0u8; bitmap_size as usize];
+                // Write bitmap + zero data (reuse buffers)
                 vhd.file.write_all(&zero_bitmap)?;
+                vhd.file.write_all(&zero_data)?;
 
-                // Write zeroed data block
-                let zero_block = vec![0u8; vhd_block_size as usize];
-                vhd.file.write_all(&zero_block)?;
-
-                // Update BAT in-memory
                 vhd.bat[block_idx as usize] = bat_entry;
-
-                // Update BAT on disk
-                let bat_offset = 1536 + (block_idx * 4) as u64;
-                vhd.file.seek(SeekFrom::Start(bat_offset))?;
-                vhd.file.write_all(&bat_entry.to_be_bytes())?;
+                bat_updates.push((block_idx, bat_entry));
             }
         }
 
-        // Write data block-by-block
+        // Batch write all BAT updates sequentially
+        if !bat_updates.is_empty() {
+            let first_off = 1536 + (bat_updates[0].0 * 4) as u64;
+            vhd.file.seek(SeekFrom::Start(first_off))?;
+            for (_, entry) in &bat_updates {
+                vhd.file.write_all(&entry.to_be_bytes())?;
+            }
+        }
+
+        // Phase 2: Write data — contiguous per VHD block = 1 seek per VHD block
         let mut buf_offset = 0;
         let mut current_byte_offset = lba * block_size;
-
         while buf_offset < buf.len() {
             let vhd_block_idx = current_byte_offset / vhd_block_size;
             let offset_in_vhd_block = current_byte_offset % vhd_block_size;
-
-            let bytes_to_write = std::cmp::min(
+            let chunk = std::cmp::min(
                 buf.len() - buf_offset,
                 (vhd_block_size - offset_in_vhd_block) as usize
             );
-
             let bat_val = vhd.bat[vhd_block_idx as usize];
             let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
             vhd.file.seek(SeekFrom::Start(physical_offset))?;
-            vhd.file.write_all(&buf[buf_offset..buf_offset + bytes_to_write])?;
-
-            buf_offset += bytes_to_write;
-            current_byte_offset += bytes_to_write as u64;
+            vhd.file.write_all(&buf[buf_offset..buf_offset + chunk])?;
+            buf_offset += chunk;
+            current_byte_offset += chunk as u64;
         }
 
         vhd.file.sync_all()?;
