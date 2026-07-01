@@ -97,9 +97,11 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
             error!("GameDisk[{}] block_size {} harus power of 2 (512/1024/4096)", i, gd.block_size);
             return Err("block_size invalid".into());
         }
-        let path = gd.physical_disk.trim_start_matches("\\\\.\\");
-        if !Path::new(&gd.physical_disk).exists() && !Path::new(path).exists() {
-            warn!("GameDisk[{}] physical_disk {} mungkin tidak tersedia", i, gd.physical_disk);
+        // Windows device paths (\\.\PhysicalDriveN) can't be checked via Path::exists
+        if !gd.physical_disk.starts_with("\\\\.\\") {
+            if !Path::new(&gd.physical_disk).exists() {
+                warn!("GameDisk[{}] path {} tidak ditemukan", i, gd.physical_disk);
+            }
         }
     }
     if !is_power_of_2(config.windows.block_size) {
