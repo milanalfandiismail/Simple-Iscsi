@@ -58,6 +58,7 @@ pub struct GamediskConfig {
 pub struct WindowsConfig {
     pub target_iqn_prefix: String,
     pub vhd_dir: String,
+    pub super_vhd_dir: String,
     pub block_size: u64,
     pub vendor_id: String,
     pub product_id: String,
