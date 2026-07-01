@@ -154,14 +154,18 @@ impl Session {
 
             if let Some(cache) = cache_opt {
                 if cache.contains_range(lba, num_blocks) {
+                    self.stats.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     if let Some(Ok(())) = cache.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
                     }
+                } else {
+                    self.stats.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }
 
             let ptr = self.read_buf.as_ptr();
             let data = unsafe { std::slice::from_raw_parts(ptr, total_bytes) };
             self.send_scsi_data_in(req.initiator_task_tag, data, 0x00, req.expected_data_len).await?;
+            self.stats.bytes_read.fetch_add(total_bytes as u64, std::sync::atomic::Ordering::Relaxed);
             info!("READ{} LUN={} LBA={}: {} blocks done in {}µs", 
                 if opcode == 0x88 { "16" } else { "10" }, lun_id, lba, num_blocks, t0.elapsed().as_micros());
         } else if opcode == 0x2A || opcode == 0x8A {
@@ -293,6 +297,8 @@ impl Session {
             self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
             return Ok(());
         }
+
+        self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
 
         info!("WRITE10 LUN {} LBA {} sukses ({} bytes)", lun_id, lba, expected_len);
         self.send_scsi_response(req.initiator_task_tag, 0x00, 0, 0, 0).await?;
