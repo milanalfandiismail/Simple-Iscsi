@@ -1,6 +1,7 @@
 use crate::backend::Backend;
 use crate::writeback_gamedisk::ClientCache;
 use crate::vhd::VhdBackend;
+use crate::stats::ServerStats;
 use crate::pdu::{
     self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
     OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, STAGE_FULL_FEATURE_PHASE,
@@ -25,6 +26,7 @@ pub struct Session {
     client_caches: HashMap<u8, ClientCache>,
     is_imagedisk: bool,
     child_vhd_path: Option<String>,
+    stats: Arc<ServerStats>,
 
     target_iqn: String,
     initiator_iqn: String,
@@ -43,6 +45,7 @@ impl Session {
         client_ip: IpAddr,
         gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
         config: Arc<crate::config::Config>,
+        stats: Arc<ServerStats>,
     ) -> Self {
         // Konfigurasi TCP: disable Nagle
         let _ = stream.set_nodelay(true);
@@ -92,6 +95,7 @@ impl Session {
             client_caches: HashMap::new(),
             is_imagedisk: false,  // will be set in run() after login IQN check
             child_vhd_path: None,
+            stats,
             target_iqn: String::new(),
             initiator_iqn: String::new(),
             is_discovery: false,
@@ -102,7 +106,15 @@ impl Session {
             read_buf: Vec::new(),
         }
     }
+}
 
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.stats.active_sessions.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Session {
     /// Menjalankan state machine sesi.
     pub async fn run(mut self) -> Result<(), std::io::Error> {
         let peer_addr = self.stream.peer_addr()?;

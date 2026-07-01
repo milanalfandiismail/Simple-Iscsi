@@ -8,6 +8,7 @@ mod session;
 mod config;
 mod vhd;
 mod netboot;
+mod stats;
 
 use backend::Backend;
 use std::fs;
@@ -75,9 +76,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Mulai server TCP iSCSI
+    let stats = stats::ServerStats::new();
+    stats::ServerStats::start_periodic_logging(stats.clone());
+    
     if let Err(e) = server::start_server(
         config.clone(),
         Arc::new(gamedisk_backends),
+        stats,
     )
     .await
     {
