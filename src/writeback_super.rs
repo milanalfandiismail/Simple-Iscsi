@@ -44,14 +44,18 @@ pub fn delete_super(super_path: &str) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-/// Dapatkan path super VHD dari config + image key
-/// Format: {super_vhd_dir}/{image_key}_super.vhd
+/// Dapatkan path super VHD — ikut folder base image + _super.vhd
+/// Contoh:
+///   Base: E:\Windows 24H2\Windows_24H2_Modern.vhd
+///   Super: E:\Windows 24H2\Windows_24H2_Modern_super.vhd
 pub fn get_super_path(config: &Config, image_key: &str) -> String {
-    let safe_name = image_key
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect::<String>();
-    format!("{}\\{}_super.vhd", config.windows.super_vhd_dir, safe_name)
+    let base_path = resolve_base_path(config, image_key);
+    let path = std::path::Path::new(&base_path);
+    let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let stem = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(image_key);
+    format!("{}\\{}_super.vhd", dir.display(), stem)
 }
 
 /// Resolve base VHD path dari image_manager config
