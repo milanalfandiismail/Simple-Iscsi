@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
@@ -58,7 +59,6 @@ pub struct GamediskConfig {
 pub struct WindowsConfig {
     pub target_iqn_prefix: String,
     pub vhd_dir: String,
-    pub super_vhd_dir: String,
     pub block_size: u64,
     pub vendor_id: String,
     pub product_id: String,
@@ -98,7 +98,7 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
             error!("GameDisk[{}] block_size {} harus power of 2 (512/1024/4096)", i, gd.block_size);
             return Err("block_size invalid".into());
         }
-        // Windows device paths (\\.\PhysicalDriveN) can't be checked via Path::exists
+        // Windows device paths (\\\\.\\PhysicalDriveN) can't be checked via Path::exists
         if !gd.physical_disk.starts_with("\\\\.\\") {
             if !Path::new(&gd.physical_disk).exists() {
                 warn!("GameDisk[{}] path {} tidak ditemukan", i, gd.physical_disk);
@@ -178,6 +178,85 @@ pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn
         .collect();
     info!("Loaded {} client(s) from {}", map.len(), path);
     Ok(map)
+}
+
+/// Auto-fix duplicate IPs di clients.toml
+/// Kalo ada IP yang sama, assign IP baru dari range DHCP
+pub fn auto_fix_duplicate_ips(clients_path: &str, start_ip: &str, end_ip: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let content = match fs::read_to_string(clients_path) {
+        Ok(c) => c,
+        Err(_) => return Ok(()), // File gak ada, skip
+    };
+
+    let config: ClientsConfig = toml::from_str(&content)?;
+    if config.clients.is_empty() {
+        return Ok(());
+    }
+
+    // Collect semua IP yang dipake
+    let mut used_ips = HashSet::new();
+    let mut has_duplicate = false;
+
+    for client in &config.clients {
+        if !used_ips.insert(client.ip.clone()) {
+            has_duplicate = true;
+        }
+    }
+
+    if !has_duplicate {
+        return Ok(()); // Gak ada duplikat, skip
+    }
+
+    // Fix duplicate: assign ulang IP
+    let start: Ipv4Addr = start_ip.parse()?;
+    let end: Ipv4Addr = end_ip.parse()?;
+    let start_u32 = u32::from(start);
+    let end_u32 = u32::from(end);
+
+    let mut fixed_clients: Vec<ClientConfig> = Vec::new();
+    let mut seen_ips = HashSet::new();
+    let mut next_ip_u32 = start_u32;
+
+    for mut client in config.clients {
+        if seen_ips.contains(&client.ip) {
+            // Duplicate! Cari IP baru
+            while next_ip_u32 <= end_u32 {
+                let candidate = Ipv4Addr::from(next_ip_u32).to_string();
+                if !seen_ips.contains(&candidate) {
+                    let old_ip = client.ip.clone();
+                    client.ip = candidate.clone();
+                    seen_ips.insert(candidate);
+                    warn!("⚠️ Duplicate IP: {} ({}). Auto-assigned → {}", old_ip, client.hostname.as_deref().unwrap_or("?"), client.ip);
+                    break;
+                }
+                next_ip_u32 += 1;
+            }
+        } else {
+            seen_ips.insert(client.ip.clone());
+        }
+        fixed_clients.push(client);
+    }
+
+    // Tulis ulang clients.toml
+    let mut buf = String::new();
+    for client in &fixed_clients {
+        buf.push_str("[[client]]\n");
+        buf.push_str(&format!("hostname = \"{}\"\n", client.hostname.as_deref().unwrap_or("")));
+        buf.push_str(&format!("mac = \"{}\"\n", client.mac));
+        buf.push_str(&format!("ip = \"{}\"\n", client.ip));
+        buf.push_str(&format!("gateway = \"{}\"\n", client.gateway.as_deref().unwrap_or("")));
+        buf.push_str(&format!("dns = \"{}\"\n", client.dns.as_deref().unwrap_or("")));
+        buf.push_str(&format!("pxe = \"{}\"\n", client.pxe.as_deref().unwrap_or("")));
+        buf.push_str(&format!("bootfile_uefi = \"{}\"\n", client.bootfile_uefi.as_deref().unwrap_or("")));
+        buf.push_str(&format!("bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
+        buf.push_str(&format!("bootfile_ipxe = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
+        buf.push_str(&format!("next_server = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
+        buf.push_str(&format!("image_manager = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
+    }
+
+    fs::write(clients_path, buf)?;
+    info!("✅ Duplicate IPs auto-fixed. File clients.toml diperbarui.");
+    Ok(())
 }
 
 pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn std::error::Error>> {

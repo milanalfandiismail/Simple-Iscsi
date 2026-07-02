@@ -247,7 +247,6 @@ impl Session {
 
         info!("Transisi login sukses. Client masuk ke FFP (Full Feature Phase).");
 
-        let is_super = self.client_ip == self.config.windows.super_client_ip;
         let target_name: String;
 
         if self.is_discovery {
@@ -297,7 +296,7 @@ impl Session {
                     &cache_name,
                     backend.block_size(),
                     self.config.writeback.max_cache_per_client_gb,
-                    is_super,
+                    false, // ⚠️ FIX: gamedisk tidak boleh pakai is_super, selalu false
                 )?;
                 self.client_caches.insert(*lun_id, cache);
             }
