@@ -122,40 +122,34 @@ impl Session {
                 self.read_buf.resize(total_bytes, 0);
             }
 
-            // Large reads (>1MB) via spawn_blocking to avoid blocking tokio worker
-            if total_bytes > 1024 * 1024 {
-                let backend = backend.clone();
-                let handle = tokio::task::spawn_blocking(move || {
-                    let mut buf = vec![0u8; total_bytes];
-                    backend.read_blocks(lba, num_blocks, &mut buf).map(|_| buf)
-                });
-                match handle.await {
-                    Ok(Ok(data)) => {
-                        self.read_buf[..total_bytes].copy_from_slice(&data);
-                    }
-                    Ok(Err(e)) => {
-                        error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
-                        self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
-                        return Ok(());
-                    }
-                    Err(_) => {
-                        error!("spawn_blocking panicked untuk LUN {} LBA {}", lun_id, lba);
-                        return Ok(());
-                    }
+            // All reads via spawn_blocking to avoid blocking tokio worker threads
+            let backend = backend.clone();
+            let handle = tokio::task::spawn_blocking(move || {
+                let mut buf = vec![0u8; total_bytes];
+                backend.read_blocks(lba, num_blocks, &mut buf).map(|_| buf)
+            });
+            match handle.await {
+                Ok(Ok(data)) => {
+                    self.read_buf[..total_bytes].copy_from_slice(&data);
                 }
-            } else {
-                if let Err(e) = backend.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
+                Ok(Err(e)) => {
                     error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
                     self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
+                    return Ok(());
+                }
+                Err(_) => {
+                    error!("spawn_blocking panicked untuk LUN {} LBA {}", lun_id, lba);
                     return Ok(());
                 }
             }
 
             // Cache overlay (gamedisk only — imagedisk has no .bin cache)
             if let Some(cache) = cache_opt {
-                if cache.contains_range(lba, num_blocks) {
-                    self.stats.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if let Some(Ok(())) = cache.read_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
+                if let Some(res) = cache.read_partial_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
+                    if let Err(e) = res {
+                        error!("Gagal overlay cache LUN {} LBA {}: {}", lun_id, lba, e);
+                    } else {
+                        self.stats.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
                 } else {
                     self.stats.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -196,6 +190,51 @@ impl Session {
             self.handle_gamedisk_scsi_cmd(&req, &cdb, opcode, lun_id).await?;
         }
 
+        Ok(())
+    }
+
+    pub(super) async fn handle_data_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+        let itt = req.initiator_task_tag;
+        
+        let mut is_complete = false;
+        
+        if let Some(pending) = self.pending_writes.get_mut(&itt) {
+            pending.buffer.extend_from_slice(&req.data);
+            
+            if pending.buffer.len() >= pending.expected_len {
+                is_complete = true;
+            }
+        } else {
+            warn!("Menerima Data-Out untuk task tag {} yang tidak ada di pending_writes", itt);
+            return Ok(());
+        }
+
+        if is_complete {
+            let pending = self.pending_writes.remove(&itt).unwrap();
+            
+            if self.is_imagedisk {
+                let backend = self.backends.get(&pending.lun_id).unwrap();
+                if let Err(e) = backend.write_blocks(pending.lba, pending.num_blocks, &pending.buffer) {
+                    error!("Gagal write backend imagedisk: {}", e);
+                    self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
+                    return Ok(());
+                }
+                self.stats.bytes_written.fetch_add(pending.expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+            } else {
+                if let Some(cache) = self.client_caches.get(&pending.lun_id) {
+                    if let Err(e) = cache.write_stream(pending.lba, 0, &pending.buffer) {
+                        error!("Gagal write cache gamedisk: {}", e);
+                        self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
+                        return Ok(());
+                    }
+                    self.stats.bytes_written.fetch_add(pending.expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            
+            info!("WRITE LUN {} LBA {} selesai via Data-Out ({} bytes)", pending.lun_id, pending.lba, pending.expected_len);
+            self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+        }
+        
         Ok(())
     }
 }

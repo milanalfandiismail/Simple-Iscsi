@@ -4,7 +4,7 @@ use crate::writeback_imagedisk;
 use crate::stats::ServerStats;
 use crate::pdu::{
     self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
-    OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, STAGE_FULL_FEATURE_PHASE,
+    OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, OP_DATA_OUT, STAGE_FULL_FEATURE_PHASE,
 };
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -17,6 +17,14 @@ pub mod scsi_handler_gamedisk;
 pub mod scsi_handler_imagedisk;
 pub mod pdu_io;
 use tracing::{info, warn, error};
+
+pub struct PendingWrite {
+    pub lun_id: u8,
+    pub lba: u64,
+    pub num_blocks: u32,
+    pub expected_len: usize,
+    pub buffer: Vec<u8>,
+}
 
 pub struct Session {
     stream: TcpStream,
@@ -39,6 +47,7 @@ pub struct Session {
     max_recv_data_segment_len: usize,
     /// Reusable read buffer – eliminate alloc per READ10.
     read_buf: Vec<u8>,
+    pub pending_writes: HashMap<u32, PendingWrite>,
 }
 
 impl Session {
@@ -107,6 +116,7 @@ impl Session {
             max_cmd_sn: 32,
             max_recv_data_segment_len: 16777216, // 16MB
             read_buf: Vec::new(),
+            pending_writes: HashMap::new(),
         }
     }
 }
@@ -336,6 +346,9 @@ impl Session {
                 }
                 OP_SCSI_CMD => {
                     self.handle_scsi_cmd(req).await?;
+                }
+                OP_DATA_OUT => {
+                    self.handle_data_out(req).await?;
                 }
                 _ => {
                     warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
