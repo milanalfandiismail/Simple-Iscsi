@@ -317,43 +317,52 @@ impl Session {
 
         // 3. FFP Message Loop
         let mut logged_out = false;
-        loop {
-            let req = match pdu::parser::read_pdu(&mut self.stream).await {
-                Ok(p) => p,
-                Err(e) => {
-                    info!("TCP connection closed or errored: {}", e);
-                    break;
-                }
-            };
+        
+        let loop_result: Result<(), std::io::Error> = async {
+            loop {
+                let req = match pdu::parser::read_pdu(&mut self.stream).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        info!("TCP connection closed or errored: {}", e);
+                        break;
+                    }
+                };
 
-            let is_immediate = req.is_immediate;
-            if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
-                self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-                self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
-            }
+                let is_immediate = req.is_immediate;
+                if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
+                    self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
+                    self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+                }
 
-            match req.opcode {
-                OP_NOP_OUT => {
-                    self.handle_nop_out(req).await?;
-                }
-                OP_LOGOUT_REQ => {
-                    self.handle_logout(req).await?;
-                    logged_out = true;
-                    break; // Selesai
-                }
-                OP_TEXT_REQ => {
-                    self.handle_text_req(req).await?;
-                }
-                OP_SCSI_CMD => {
-                    self.handle_scsi_cmd(req).await?;
-                }
-                OP_DATA_OUT => {
-                    self.handle_data_out(req).await?;
-                }
-                _ => {
-                    warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
+                match req.opcode {
+                    OP_NOP_OUT => {
+                        self.handle_nop_out(req).await?;
+                    }
+                    OP_LOGOUT_REQ => {
+                        // ignore error if client closes socket early after sending LOGOUT
+                        let _ = self.handle_logout(req).await;
+                        logged_out = true;
+                        break; // Selesai
+                    }
+                    OP_TEXT_REQ => {
+                        self.handle_text_req(req).await?;
+                    }
+                    OP_SCSI_CMD => {
+                        self.handle_scsi_cmd(req).await?;
+                    }
+                    OP_DATA_OUT => {
+                        self.handle_data_out(req).await?;
+                    }
+                    _ => {
+                        warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
+                    }
                 }
             }
+            Ok(())
+        }.await;
+
+        if let Err(e) = loop_result {
+            info!("Session error atau terputus: {}", e);
         }
 
         // Cleanup VHD via writeback_imagedisk — super VHD persistent, child VHD dihapus
@@ -368,9 +377,9 @@ impl Session {
         // On explicit LOGOUT, delete gamedisk .bin caches (selesai bermain)
         // On TCP disconnect (reboot), keep .bin so data survives
         if logged_out {
-            for (lun_id, cache) in self.client_caches.iter() {
+            for (lun_id, cache) in self.client_caches.drain() {
                 info!("Client logout — menghapus gamedisk cache LUN {}", lun_id);
-                cache.cleanup();
+                cache.cleanup_and_drop();
             }
         } else {
             // TCP disconnect → flush but keep .bin files
