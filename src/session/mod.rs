@@ -258,13 +258,14 @@ impl Session {
             for (lun_id, backend) in self.gamedisk_backends.iter() {
                 self.backends.insert(*lun_id, Arc::clone(backend));
             }
-        } else if self.target_iqn.starts_with(&self.config.windows.target_iqn_prefix) {
+        } else if self.config.windows.as_ref().map_or(false, |win| self.target_iqn.starts_with(&win.target_iqn_prefix)) {
+            let win = self.config.windows.as_ref().unwrap();
             self.is_imagedisk = true;
-            let suffix = &self.target_iqn[self.config.windows.target_iqn_prefix.len()..];
+            let suffix = &self.target_iqn[win.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
 
             // Gunakan writeback_imagedisk — kalo super client, serve super VHD langsung
-            self.is_super = self.client_ip == self.config.windows.super_client_ip;
+            self.is_super = self.client_ip == win.super_client_ip;
             match writeback_imagedisk::init_child_vhd(
                 &self.config,
                 &self.client_ip,

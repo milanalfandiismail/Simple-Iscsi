@@ -57,7 +57,7 @@ impl Session {
                 resp_params.push(("TargetAddress".to_string(), target_address.clone()));
             }
             
-            if self.config.windows.discovery {
+            if self.config.windows.as_ref().map_or(false, |win| win.discovery) {
                 // If we had a list of specific VHDs we could list them, but for now just list the prefix
                 // Since Windows usually connects directly to a specific target_iqn for boot,
                 // discovery for Windows targets might not be needed, but if enabled we can return a generic one or skip.

@@ -11,11 +11,11 @@ pub struct Config {
     pub server: ServerConfig,
     pub gamedisk_target: GamediskTargetConfig,
     pub gamedisk: Vec<GamediskConfig>,
-    pub windows: WindowsConfig,
+    pub windows: Option<WindowsConfig>,
     pub writeback: WritebackConfig,
     #[serde(alias = "image_manager")]
     pub image_manager: Option<HashMap<String, String>>,
-    pub dhcp: DhcpConfig,
+    pub dhcp: Option<DhcpConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -105,9 +105,11 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
             }
         }
     }
-    if !is_power_of_2(config.windows.block_size) {
-        error!("Windows block_size {} harus power of 2", config.windows.block_size);
-        return Err("block_size invalid".into());
+    if let Some(ref win) = config.windows {
+        if !is_power_of_2(win.block_size) {
+            error!("Windows block_size {} harus power of 2", win.block_size);
+            return Err("block_size invalid".into());
+        }
     }
     if config.writeback.max_cache_per_client_gb < 1 {
         error!("max_cache_per_client_gb harus >= 1");
