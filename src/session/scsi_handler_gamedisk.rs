@@ -13,7 +13,7 @@ impl Session {
         lun_id: u8,
     ) -> Result<(), std::io::Error> {
         let backend = self.backends.get(&lun_id).unwrap();
-        let cache_opt = self.client_caches.get(&lun_id);
+        let cache_opt = self.client_caches.get(&lun_id).map(|c| &**c);
         let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
         let result = scsi_gamedisk::handle_scsi_command(
             cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id,
@@ -63,10 +63,20 @@ impl Session {
         }
 
         // Jika semua data diterima via Immediate Data
-        if let Some(cache) = self.client_caches.get(&lun_id) {
-            cache.write_stream(lba, 0, &write_buf)?;
-        } else {
-            self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
+        let cache_opt = self.client_caches.get(&lun_id).cloned();
+        let write_buf_clone = write_buf;
+        let itt = req.initiator_task_tag;
+        let handle = tokio::task::spawn_blocking(move || {
+            if let Some(cache) = cache_opt {
+                cache.write_stream(lba, 0, &write_buf_clone)
+            } else {
+                Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Cache not found for LUN"))
+            }
+        });
+        
+        if let Err(e) = handle.await.unwrap() {
+            tracing::error!("Gagal menulis immediate data gamedisk: {}", e);
+            self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
             return Ok(());
         }
 

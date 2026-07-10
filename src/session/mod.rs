@@ -32,7 +32,7 @@ pub struct Session {
     gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
     backends: HashMap<u8, Arc<Backend>>,
     config: Arc<crate::config::Config>,
-    client_caches: HashMap<u8, ClientCache>,
+    client_caches: HashMap<u8, Arc<ClientCache>>,
     is_imagedisk: bool,
     child_vhd_path: Option<String>,
     is_super: bool,
@@ -73,6 +73,7 @@ impl Session {
 
             const SOL_SOCKET: c_int = 0xFFFF;   // SOL_SOCKET on Windows
             const SO_SNDBUF: c_int = 0x1001;    // SO_SNDBUF on Windows
+            const SO_RCVBUF: c_int = 0x1002;    // SO_RCVBUF on Windows
 
             extern "system" {
                 fn setsockopt(
@@ -85,12 +86,19 @@ impl Session {
             }
 
             let socket = stream.as_raw_socket() as SOCKET;
-            let val: u32 = 512 * 1024;
+            let val: u32 = 1024 * 1024; // 1MB buffer for gigabit speeds
             unsafe {
                 setsockopt(
                     socket,
                     SOL_SOCKET,
                     SO_SNDBUF,
+                    &val as *const u32 as *const std::ffi::c_void,
+                    std::mem::size_of::<u32>() as c_int,
+                );
+                setsockopt(
+                    socket,
+                    SOL_SOCKET,
+                    SO_RCVBUF,
                     &val as *const u32 as *const std::ffi::c_void,
                     std::mem::size_of::<u32>() as c_int,
                 );
@@ -309,7 +317,7 @@ impl Session {
                     self.config.writeback.max_cache_per_client_gb,
                     false, // ⚠️ FIX: gamedisk tidak boleh pakai is_super, selalu false
                 )?;
-                self.client_caches.insert(*lun_id, cache);
+                self.client_caches.insert(*lun_id, Arc::new(cache));
             }
         } else if self.is_imagedisk {
             info!("ImageDisk session — write langsung ke child VHD, tanpa cache .bin");
@@ -375,9 +383,13 @@ impl Session {
         }
 
         // Sesi selesai (karena LOGOUT atau TCP disconnect) -> hapus writeback gamedisk
-        for (lun_id, cache) in self.client_caches.drain() {
+        for (lun_id, cache_arc) in self.client_caches.drain() {
             info!("Sesi berakhir (logout/disconnect) — menghapus gamedisk cache LUN {}", lun_id);
-            cache.cleanup_and_drop();
+            if let Ok(cache) = Arc::try_unwrap(cache_arc) {
+                cache.cleanup_and_drop();
+            } else {
+                warn!("Tidak dapat cleanup LUN {} karena cache masih direferensikan oleh thread lain", lun_id);
+            }
         }
 
         info!("Koneksi dengan client {} selesai.", peer_addr);

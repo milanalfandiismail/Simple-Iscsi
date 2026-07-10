@@ -13,7 +13,7 @@ impl Session {
         lun_id: u8,
     ) -> Result<(), std::io::Error> {
         let backend = self.backends.get(&lun_id).unwrap();
-        let cache_opt = self.client_caches.get(&lun_id);
+        let cache_opt = self.client_caches.get(&lun_id).map(|c| &**c);
         let active_luns: Vec<u8> = self.backends.keys().cloned().collect();
         let result = scsi_imagedisk::handle_imagedisk_scsi(
             cdb, backend.as_ref(), cache_opt, backend.block_size(), &active_luns, lun_id,
@@ -63,7 +63,18 @@ impl Session {
         }
 
         // Jika semua data diterima via Immediate Data
-        backend.write_blocks(lba, num_blocks, &write_buf)?;
+        let backend_clone = backend.clone();
+        let write_buf_clone = write_buf;
+        let itt = req.initiator_task_tag;
+        let handle = tokio::task::spawn_blocking(move || {
+            backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
+        });
+
+        if let Err(e) = handle.await.unwrap() {
+            tracing::error!("Gagal menulis immediate data imagedisk: {}", e);
+            self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
+            return Ok(());
+        }
 
         self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
         info!("WRITE (imagedisk) LUN {} LBA {} sukses ({} bytes) → child VHD", lun_id, lba, expected_len);
