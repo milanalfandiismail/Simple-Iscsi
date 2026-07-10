@@ -51,30 +51,40 @@ pub fn handle_scsi_command(
                         response_data.push(0x00); // Peripheral Device Type
                         response_data.push(0x00); // Page Code: 0x00
                         response_data.push(0x00); // Reserved
-                        response_data.push(5);    // Page Length (5 pages)
+                        response_data.push(6);    // Page Length (6 pages)
 
                         response_data.push(0x00); // Supported VPD Pages
+                        response_data.push(0x80); // Unit Serial Number
                         response_data.push(0x83); // Device Identification
                         response_data.push(0xB0); // Block Limits VPD
                         response_data.push(0xB1); // Block Device Characteristics VPD
                         response_data.push(0xB2); // Thin Provisioning VPD
+                    }
+                    0x80 => {
+                        // Unit Serial Number
+                        response_data.push(0x00); // Peripheral Device Type
+                        response_data.push(0x80); // Page Code
+                        response_data.push(0x00); // Reserved
+                        let serial = format!("MGC{:04}", lun_id);
+                        response_data.push(serial.len() as u8); // Page Length
+                        response_data.extend_from_slice(serial.as_bytes());
                     }
                     0x83 => {
                         // Device Identification
                         response_data.push(0x00); // Peripheral Device Type
                         response_data.push(0x83); // Page Code
                         response_data.push(0x00); // Reserved
-                        response_data.push(12);   // Page Length
+                        
+                        let name_str = format!("iqn.2024-01.com.gamedisk:lun{}", lun_id);
+                        let total_len = 4 + name_str.len();
+                        response_data.push(total_len as u8); // Page Length
 
                         // Designation Descriptor #1: Vendor Specific (SCSI name)
-                        response_data.push(0x01); // Code Set: Binary
-                        response_data.push(0x03); // Designator Type: NAA
+                        response_data.push(0x02); // Code Set: ASCII
+                        response_data.push(0x08); // Designator Type: SCSI Name String
                         response_data.push(0x00); // Reserved
-                        response_data.push(8);    // Designator Length
-                        response_data.extend_from_slice(&[
-                            // NAA IEEE Registered Extended, unique per LUN
-                            0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, lun_id,
-                        ]);
+                        response_data.push(name_str.len() as u8); // Designator Length
+                        response_data.extend_from_slice(name_str.as_bytes());
                     }
                     0xB0 => {
                         // Block Limits VPD — minimal valid response
@@ -301,14 +311,11 @@ pub fn handle_scsi_command(
 
             // Overlay data dari cache untuk block yang pernah di-WRITE
             if let Some(cache) = cache {
-                if cache.contains_range(lba, num_blocks) {
-                    // Fast path: semua cached — baca bulk dari .bin (over backend data)
-                    if let Some(Ok(())) = cache.read_blocks(lba, num_blocks, &mut data) {
-                        // data sudah terisi dari cache
+                if let Some(res) = cache.read_partial_blocks(lba, num_blocks, &mut data) {
+                    if let Err(e) = res {
+                        // ignore error in this dead code path, or log it
                     }
                 }
-                // Partial cache hit (jarang): fallback — baca per-block
-                // skip for now — 99% game READ tanpa WRITE sebelumnya
             }
 
             ScsiResult::Data { data, status: 0x00 }
@@ -339,8 +346,11 @@ pub fn handle_scsi_command(
             let lun_list_len = (active_luns.len() * 8) as u32;
             let mut data = vec![0u8; 8 + active_luns.len() * 8];
             data[0..4].copy_from_slice(&lun_list_len.to_be_bytes()); // LUN list length
+            
+            let mut sorted_luns = active_luns.to_vec();
+            sorted_luns.sort_unstable();
 
-            for (i, &lun_id) in active_luns.iter().enumerate() {
+            for (i, &lun_id) in sorted_luns.iter().enumerate() {
                 let offset = 8 + i * 8;
                 // Single Level LUN Format
                 // Address Method = 00b (Peripheral device addressing method), BUS Identifier = 0

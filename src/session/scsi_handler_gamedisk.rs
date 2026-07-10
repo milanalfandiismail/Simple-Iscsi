@@ -1,4 +1,4 @@
-use crate::pdu::{self, Pdu, OP_DATA_OUT};
+use crate::pdu::{self, Pdu};
 use crate::scsi_gamedisk;
 use crate::session::Session;
 use tracing::{error, info, warn};
@@ -44,33 +44,25 @@ impl Session {
             bytes_received = immediate_len;
         }
 
-        // Kalo masih kurang, kirim R2T
+        // Kalo masih kurang, kirim R2T dan simpan ke pending_writes
         if bytes_received < expected_len {
             let remaining = (expected_len - bytes_received) as u32;
             info!("WRITE (gamedisk) LUN {} LBA {} ({} blocks): R2T offset={} desired={}",
                 lun_id, lba, num_blocks, bytes_received, remaining);
+            
+            self.pending_writes.insert(req.initiator_task_tag, crate::session::PendingWrite {
+                lun_id,
+                lba,
+                num_blocks,
+                expected_len,
+                buffer: write_buf,
+            });
+            
             self.send_r2t(req.initiator_task_tag, req.lun, bytes_received as u32, remaining).await?;
+            return Ok(());
         }
 
-        // Data-Out loop
-        while bytes_received < expected_len {
-            let data_out = match pdu::parser::read_pdu(&mut self.stream).await {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Gagal membaca Data-Out PDU (gamedisk): {}", e);
-                    return Err(e);
-                }
-            };
-            if data_out.opcode != OP_DATA_OUT {
-                warn!("Non Data-Out opcode 0x{:02X} saat menanti write data", data_out.opcode);
-                self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x00, 0x00).await?;
-                return Ok(());
-            }
-            write_buf.extend_from_slice(&data_out.data);
-            bytes_received += data_out.data.len();
-        }
-
-        // Write to cache
+        // Jika semua data diterima via Immediate Data
         if let Some(cache) = self.client_caches.get(&lun_id) {
             cache.write_stream(lba, 0, &write_buf)?;
         } else {

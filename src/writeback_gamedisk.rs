@@ -125,53 +125,63 @@ impl ClientCache {
         })
     }
 
-    pub fn read_blocks(&self, first_lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<io::Result<()>> {
+    pub fn read_partial_blocks(&self, first_lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<io::Result<()>> {
         let n = num_blocks as usize;
-        let mut offsets = Vec::with_capacity(n);
-        for i in 0..n {
+        let mut spans = Vec::new();
+        
+        let mut i = 0;
+        while i < n {
             let lba = first_lba + i as u64;
-            if let Some(offset) = self.block_map.get(&lba) {
-                offsets.push(*offset);
+            if let Some(offset_ref) = self.block_map.get(&lba) {
+                let start_idx = i;
+                let mut current_off = *offset_ref;
+                let base_off = current_off;
+
+                i += 1;
+                while i < n {
+                    let next_lba = first_lba + i as u64;
+                    if let Some(next_off_ref) = self.block_map.get(&next_lba) {
+                        let next_off = *next_off_ref;
+                        if next_off == current_off + self.block_size {
+                            current_off = next_off;
+                            i += 1;
+                        } else {
+                            break; // Not contiguous in cache file
+                        }
+                    } else {
+                        break; // Block not in cache
+                    }
+                }
+                spans.push((start_idx, i, base_off));
             } else {
-                return None;
+                i += 1; // Skip blocks not in cache
             }
+        }
+
+        if spans.is_empty() {
+            return None;
         }
 
         let mut writer = self.file.lock();
-        writer.flush().ok()?; // ⚠️ flush BufWriter sebelum read biar data latest
+        if let Err(e) = writer.flush() {
+            return Some(Err(e));
+        }
         let file = writer.get_mut();
 
-        let mut span_start = 0;
         let block_size = self.block_size as usize;
-        while span_start < n {
-            let base_off = offsets[span_start];
-            let mut span_end = span_start + 1;
-            while span_end < n && offsets[span_end] == base_off + (span_end - span_start) as u64 * self.block_size {
-                span_end += 1;
+        for (start_idx, end_idx, base_off) in spans {
+            let byte_start = start_idx * block_size;
+            let byte_end = end_idx * block_size;
+
+            if let Err(e) = file.seek(SeekFrom::Start(base_off)) {
+                return Some(Err(e));
             }
-
-            let byte_start = span_start * block_size;
-            let byte_end = span_end * block_size;
-
-            file.seek(SeekFrom::Start(base_off)).ok()?;
-            file.read_exact(&mut buf[byte_start..byte_end]).ok()?;
-
-            span_start = span_end;
+            if let Err(e) = file.read_exact(&mut buf[byte_start..byte_end]) {
+                return Some(Err(e));
+            }
         }
+        
         Some(Ok(()))
-    }
-
-    /// Cek apakah seluruh range LBA (first_lba..first_lba+n) ada di cache.
-    /// Game installers write files in multiple WRITE commands — blocks may
-    /// be at non-contiguous offsets in .bin. Check every LBA individually.
-    pub fn contains_range(&self, first_lba: u64, n: u32) -> bool {
-        if n == 0 { return false; }
-        for i in 0..n {
-            if !self.block_map.contains_key(&(first_lba + i as u64)) {
-                return false;
-            }
-        }
-        true
     }
 
     pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
@@ -190,19 +200,18 @@ impl ClientCache {
             self.total_bytes_written.fetch_add(total_len, Ordering::SeqCst);
 
             for i in 0..num_blocks {
-                self.block_map.insert(start_lba + i as u64, base + (i as u64) * self.block_size);
+                let lba = start_lba + i as u64;
+                let offset = base + (i as u64) * self.block_size;
+                self.block_map.insert(lba, offset);
+                self.append_map(lba, offset);
             }
 
             let mut writer = self.file.lock();
             writer.get_mut().seek(SeekFrom::Start(base))?;
             writer.write_all(data)?;
-            // CRITICAL: sync_all() BEFORE saving .map — ensures .bin data
-            // is on disk before .map entries point to it.
-            writer.get_mut().sync_all()?;
+            // Removed sync_all() to prevent blocking Tokio worker thread.
+            // OS page cache will flush it asynchronously.
             drop(writer);
-
-            // Save .map immediately after sync — .map & .bin always consistent
-            self.save_map();
 
             self.maybe_flush(num_blocks as u64);
             return Ok(());
@@ -218,6 +227,7 @@ impl ClientCache {
                 let off = self.next_write_offset.fetch_add(self.block_size, Ordering::SeqCst);
                 self.total_bytes_written.fetch_add(self.block_size, Ordering::SeqCst);
                 self.block_map.insert(lba, off);
+                self.append_map(lba, off);
                 off
             };
             offsets.push(offset);
@@ -287,6 +297,13 @@ impl ClientCache {
         }
         if let Err(e) = std::fs::write(&self.map_path, map_content) {
             warn!("Gagal menyimpan block map {:?}: {}", self.map_path, e);
+        }
+    }
+
+    fn append_map(&self, lba: u64, offset: u64) {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&self.map_path) {
+            let _ = writeln!(file, "{}:{}", lba, offset);
         }
     }
 
