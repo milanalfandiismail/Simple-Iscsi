@@ -4,18 +4,16 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use parking_lot::Mutex;
-use std::io::BufWriter;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 
-const BUFFER_SIZE: usize = 8 * 1024 * 1024; // 8MB buffer
 const FLUSH_THRESHOLD: u64 = 512;
 const CACHE_VERSION: u32 = 1; // bump to auto-invalidate stale .bin from old code
 
 pub struct ClientCache {
     file_path: PathBuf,
     map_path: PathBuf,
-    file: Arc<Mutex<BufWriter<std::fs::File>>>,
+    file: Arc<Mutex<std::fs::File>>,
     block_map: DashMap<u64, u64>,
     next_write_offset: AtomicU64,
     block_size: u64,
@@ -109,12 +107,10 @@ impl ClientCache {
             // Cleanup di-handle eksplisit saat LOGOUT, bukan saat reconnect.
             .open(&file_path)?;
 
-        let buffered = BufWriter::with_capacity(BUFFER_SIZE, file);
-
         Ok(ClientCache {
             file_path,
             map_path,
-            file: Arc::new(Mutex::new(buffered)),
+            file: Arc::new(Mutex::new(file)),
             block_map,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
@@ -162,11 +158,7 @@ impl ClientCache {
             return None;
         }
 
-        let mut writer = self.file.lock();
-        if let Err(e) = writer.flush() {
-            return Some(Err(e));
-        }
-        let file = writer.get_mut();
+        let mut file = self.file.lock();
 
         let block_size = self.block_size as usize;
         for (start_idx, end_idx, base_off) in spans {
@@ -206,12 +198,12 @@ impl ClientCache {
                 self.append_map(lba, offset);
             }
 
-            let mut writer = self.file.lock();
-            writer.get_mut().seek(SeekFrom::Start(base))?;
-            writer.write_all(data)?;
+            let mut file = self.file.lock();
+            file.seek(SeekFrom::Start(base))?;
+            file.write_all(data)?;
             // Removed sync_all() to prevent blocking Tokio worker thread.
             // OS page cache will flush it asynchronously.
-            drop(writer);
+            drop(file);
 
             self.maybe_flush(num_blocks as u64);
             return Ok(());
@@ -233,8 +225,7 @@ impl ClientCache {
             offsets.push(offset);
         }
 
-        let mut writer = self.file.lock();
-        let file = writer.get_mut();
+        let mut file = self.file.lock();
 
         let mut span_start = 0;
         while span_start < num_blocks {
@@ -252,7 +243,7 @@ impl ClientCache {
 
             span_start = span_end;
         }
-        drop(writer);
+        drop(file);
         self.maybe_flush(num_blocks as u64);
         Ok(())
     }
@@ -283,9 +274,8 @@ impl ClientCache {
     fn maybe_flush(&self, blocks: u64) {
         let count = self.unflushed_writes.fetch_add(blocks, Ordering::Relaxed) + blocks;
         if count >= FLUSH_THRESHOLD {
-            let mut writer = self.file.lock();
-            let _ = writer.flush();
-            let _ = writer.get_mut().sync_all(); // ensure data hits physical disk
+            let mut file = self.file.lock();
+            let _ = file.sync_all(); // ensure data hits physical disk
             self.unflushed_writes.store(0, Ordering::Relaxed);
         }
     }
@@ -308,10 +298,9 @@ impl ClientCache {
     }
 
     pub fn flush(&self) -> io::Result<()> {
-        let mut writer = self.file.lock();
-        writer.flush()?;
-        writer.get_mut().sync_all()?;
-        drop(writer);
+        let mut file = self.file.lock();
+        file.sync_all()?;
+        drop(file);
         
         self.save_map();
         
@@ -351,9 +340,8 @@ impl Drop for ClientCache {
         // Flush on drop but DON'T auto-delete — cleanup handled explicitly
         // by session state (logout vs TCP disconnect)
         if !self.is_super {
-            let mut writer = self.file.lock();
-            let _ = writer.flush();
-            let _ = writer.get_mut().sync_all();
+            let file = self.file.lock();
+            let _ = file.sync_all();
         }
     }
 }
