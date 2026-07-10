@@ -31,7 +31,7 @@ impl TftpServer {
     }
 
     pub async fn run(self: Arc<Self>) {
-        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.dhcp.tftp_dir);
+        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.dhcp.as_ref().unwrap().tftp_dir);
         let mut buf = [0u8; 2048];
         
         loop {
@@ -115,7 +115,7 @@ impl TftpServer {
         }
 
         let clean_filename = filename.replace("/", "\\");
-        let base_dir = Path::new(&self.config.dhcp.tftp_dir);
+        let base_dir = Path::new(&self.config.dhcp.as_ref().unwrap().tftp_dir);
         let full_path = base_dir.join(clean_filename);
 
         let file_data = match std::fs::read(&full_path) {

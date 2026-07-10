@@ -40,10 +40,10 @@ pub fn init_child_vhd(
         let backend = Backend::new_vhd_diff(
             &super_path,
             &base_path,
-            config.windows.block_size,
-            &config.windows.vendor_id,
-            &config.windows.product_id,
-            &config.windows.product_revision,
+            config.windows.as_ref().unwrap().block_size,
+            &config.windows.as_ref().unwrap().vendor_id,
+            &config.windows.as_ref().unwrap().product_id,
+            &config.windows.as_ref().unwrap().product_revision,
         ).map_err(|e| {
             error!("Gagal membuka super VHD {}: {}", super_path, e);
             e
@@ -59,7 +59,7 @@ pub fn init_child_vhd(
         // === NORMAL CLIENT: create temporary child VHD ===
         let child_dir = config.writeback.writeback_dirs.first()
             .cloned()
-            .unwrap_or_else(|| config.windows.vhd_dir.clone());
+            .unwrap_or_else(|| config.windows.as_ref().unwrap().vhd_dir.clone());
         let _ = std::fs::create_dir_all(&child_dir);
         let safe_ip = client_ip.chars()
             .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
@@ -81,10 +81,10 @@ pub fn init_child_vhd(
         let backend = Backend::new_vhd_diff(
             &child_path,
             &base_path,
-            config.windows.block_size,
-            &config.windows.vendor_id,
-            &config.windows.product_id,
-            &config.windows.product_revision,
+            config.windows.as_ref().unwrap().block_size,
+            &config.windows.as_ref().unwrap().vendor_id,
+            &config.windows.as_ref().unwrap().product_id,
+            &config.windows.as_ref().unwrap().product_revision,
         ).map_err(|e| {
             error!("Gagal membuka VHD differencing {}: {}", child_path, e);
             e
@@ -102,7 +102,7 @@ pub fn init_child_vhd(
 /// Hapus child VHD saat disconnect (diskless)
 /// Super VHD tidak dihapus — dibiarkan utuh (persistent)
 pub fn cleanup_child_vhd(child_path: Option<&str>, client_ip: &str, config: &Config) {
-    let is_super = client_ip == config.windows.super_client_ip;
+    let is_super = client_ip == config.windows.as_ref().unwrap().super_client_ip;
     match child_path {
         Some(path) if !is_super => {
             info!("Menghapus child VHD (diskless): {}", path);

@@ -194,12 +194,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Auto-fix duplicate IPs di clients.toml sebelum start
-    let dhcp_end = config.dhcp.end_ip.clone().unwrap_or_else(|| {
-        // Auto-calculate end dari start_ip + 100
-        let start_parts: Vec<&str> = config.dhcp.start_ip.split('.').collect();
-        format!("{}.{}.{}.{}", start_parts[0], start_parts[1], start_parts[2], 200)
-    });
-    let _ = config::auto_fix_duplicate_ips(&clients_path, &config.dhcp.start_ip, &dhcp_end);
+    if let Some(ref dhcp_cfg) = config.dhcp {
+        let dhcp_end = dhcp_cfg.end_ip.clone().unwrap_or_else(|| {
+            // Auto-calculate end dari start_ip + 100
+            let start_parts: Vec<&str> = dhcp_cfg.start_ip.split('.').collect();
+            format!("{}.{}.{}.{}", start_parts[0], start_parts[1], start_parts[2], 200)
+        });
+        let _ = config::auto_fix_duplicate_ips(&clients_path, &dhcp_cfg.start_ip, &dhcp_end);
+    }
 
     // Load konfigurasi klien DHCP (dengan validasi duplicate)
     let clients = config::load_clients(&clients_path)?;

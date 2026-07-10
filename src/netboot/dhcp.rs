@@ -200,7 +200,7 @@ impl DhcpServer {
         info!("Sender DHCP socket bind ke {}:{}", server_addr, DHCP_SERVER_PORT);
 
         // Parse IPs
-        let start_ip = Ipv4Addr::from_str(&config.dhcp.start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
+        let start_ip = Ipv4Addr::from_str(&config.dhcp.as_ref().unwrap().start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
         let start_ip_u32 = u32::from_be_bytes(start_ip.octets());
 
         let mut clients_map = HashMap::new();
@@ -288,13 +288,13 @@ impl DhcpServer {
                     hostname: Some(hostname),
                     mac: mac_str.clone(),
                     ip: ip_addr.to_string(),
-                    gateway: Some(self.config.dhcp.router.clone()),
-                    dns: Some(self.config.dhcp.dns.clone()),
+                    gateway: Some(self.config.dhcp.as_ref().unwrap().router.clone()),
+                    dns: Some(self.config.dhcp.as_ref().unwrap().dns.clone()),
                     pxe: Some("sb-custom".to_string()),
                     bootfile_uefi: None,
                     bootfile_legacy: None,
                     bootfile_ipxe: None,
-                    next_server: Some(self.config.dhcp.next_server.clone()),
+                    next_server: Some(self.config.dhcp.as_ref().unwrap().next_server.clone()),
                     image_manager: None,
                 };
 
@@ -326,7 +326,7 @@ impl DhcpServer {
         });
         let has_opt_175 = req.options.contains_key(&175);
         let c = client_conf.as_ref();
-        let default_bf = self.config.dhcp.pxe_default.as_deref().unwrap_or("sb-custom");
+        let default_bf = self.config.dhcp.as_ref().unwrap().pxe_default.as_deref().unwrap_or("sb-custom");
 
         let bootfile = match client_arch {
             // Legacy BIOS
@@ -403,7 +403,7 @@ impl DhcpServer {
 
         let next_server_str = client_conf.as_ref()
             .and_then(|c| c.next_server.clone())
-            .unwrap_or_else(|| self.config.dhcp.next_server.clone());
+            .unwrap_or_else(|| self.config.dhcp.as_ref().unwrap().next_server.clone());
         let server_ip = Ipv4Addr::from_str(&next_server_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
 
         let mut resp = DhcpPacket {
@@ -441,13 +441,13 @@ impl DhcpServer {
             resp.options.insert(93, arch_data.clone());
         }
 
-        let subnet_str = self.config.dhcp.subnet_mask.clone();
+        let subnet_str = self.config.dhcp.as_ref().unwrap().subnet_mask.clone();
         let subnet = Ipv4Addr::from_str(&subnet_str).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
         resp.options.insert(1, subnet.octets().to_vec());
 
         let router_str = client_conf.as_ref()
             .and_then(|c| c.gateway.clone())
-            .unwrap_or_else(|| self.config.dhcp.router.clone());
+            .unwrap_or_else(|| self.config.dhcp.as_ref().unwrap().router.clone());
         let router = Ipv4Addr::from_str(&router_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
         if router != Ipv4Addr::UNSPECIFIED {
             resp.options.insert(3, router.octets().to_vec());
@@ -459,7 +459,7 @@ impl DhcpServer {
 
         let dns_str = client_conf.as_ref()
             .and_then(|c| c.dns.clone())
-            .unwrap_or_else(|| self.config.dhcp.dns.clone());
+            .unwrap_or_else(|| self.config.dhcp.as_ref().unwrap().dns.clone());
         let dns = Ipv4Addr::from_str(&dns_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
         if dns != Ipv4Addr::UNSPECIFIED {
             resp.options.insert(6, dns.octets().to_vec());
@@ -493,7 +493,11 @@ impl DhcpServer {
                     .cloned()
                     .unwrap_or_else(|| "windows_10".to_string())
             });
-        let iscsi_iqn = format!("{}{}", self.config.windows.target_iqn_prefix, image_name);
+        let iscsi_iqn = if let Some(ref win) = self.config.windows {
+            format!("{}{}", win.target_iqn_prefix, image_name)
+        } else {
+            image_name.clone()
+        };
         resp.options.insert(169, iscsi_iqn.as_bytes().to_vec());
 
         let is_broadcast = (req.flags & 0x8000) != 0;
@@ -505,8 +509,8 @@ impl DhcpServer {
         }).collect();
         info!("DHCP {:?} packet hex dump (first 48 bytes):\n{}", msg_type, hex_dump);
 
-        let server_ip = Ipv4Addr::from_str(&self.config.dhcp.next_server).unwrap_or(Ipv4Addr::UNSPECIFIED);
-        let subnet = Ipv4Addr::from_str(&self.config.dhcp.subnet_mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
+        let server_ip = Ipv4Addr::from_str(&self.config.dhcp.as_ref().unwrap().next_server).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let subnet = Ipv4Addr::from_str(&self.config.dhcp.as_ref().unwrap().subnet_mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
         
         // Calculate Subnet Broadcast Address (e.g., 10.10.10.255)
         let s_oct = server_ip.octets();

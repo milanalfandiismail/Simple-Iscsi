@@ -10,7 +10,15 @@ use dhcp::DhcpServer;
 use tftp::TftpServer;
 
 pub async fn start_netboot(config: Arc<Config>) {
-    if !config.dhcp.enabled {
+    let dhcp_cfg = match &config.dhcp {
+        Some(d) => d,
+        None => {
+            info!("DHCP Server dinonaktifkan di konfigurasi.");
+            return;
+        }
+    };
+
+    if !dhcp_cfg.enabled {
         info!("DHCP Server dinonaktifkan di konfigurasi.");
         return;
     }
