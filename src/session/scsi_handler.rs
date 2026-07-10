@@ -56,13 +56,6 @@ impl Session {
                 resp_params.push(("TargetName".to_string(), self.config.gamedisk_target.target_iqn.clone()));
                 resp_params.push(("TargetAddress".to_string(), target_address.clone()));
             }
-            
-            if self.config.windows.as_ref().map_or(false, |win| win.discovery) {
-                // If we had a list of specific VHDs we could list them, but for now just list the prefix
-                // Since Windows usually connects directly to a specific target_iqn for boot,
-                // discovery for Windows targets might not be needed, but if enabled we can return a generic one or skip.
-                // Usually gamedisk is the main one discovered.
-            }
         }
         info!("Mengirim Text Response parameters: {:?}", resp_params);
 
@@ -97,7 +90,7 @@ impl Session {
             }
         };
 
-        let cache_opt = self.client_caches.get(&lun_id);
+        let cache_opt = self.client_caches.get(&lun_id).cloned();
         if cache_opt.is_none() && !self.is_discovery && !self.is_imagedisk {
             warn!("Normal SCSI Command diterima untuk LUN {} tanpa inisialisasi cache!", lun_id);
             self.send_scsi_check_condition(req.initiator_task_tag, 0x05, 0x25, 0x00).await?;
@@ -113,55 +106,44 @@ impl Session {
                 (u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64,
                  u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
             };
-            let block_size = backend.block_size();
-            let total_bytes = (num_blocks as u64 * block_size) as usize;
-
+            let total_bytes = (num_blocks as usize) * (backend.block_size() as usize);
             let t0 = Instant::now();
 
-            if self.read_buf.len() < total_bytes {
-                self.read_buf.resize(total_bytes, 0);
+            let mut buf = std::mem::take(&mut self.read_buf);
+            if buf.len() < total_bytes {
+                buf.resize(total_bytes, 0);
             }
 
             // All reads via spawn_blocking to avoid blocking tokio worker threads
             let backend = backend.clone();
             let handle = tokio::task::spawn_blocking(move || {
-                let mut buf = vec![0u8; total_bytes];
-                backend.read_blocks(lba, num_blocks, &mut buf).map(|_| buf)
+                backend.read_blocks(lba, num_blocks, &mut buf[..total_bytes])?;
+                // Cache overlay (gamedisk only — imagedisk has no .bin cache)
+                if let Some(cache) = cache_opt {
+                    let _ = cache.read_partial_blocks(lba, num_blocks, &mut buf[..total_bytes]);
+                }
+                Ok::<Vec<u8>, std::io::Error>(buf)
             });
             match handle.await {
-                Ok(Ok(data)) => {
-                    self.read_buf[..total_bytes].copy_from_slice(&data);
+                Ok(Ok(returned_buf)) => {
+                    self.read_buf = returned_buf;
+                    
+                    let ptr = self.read_buf.as_ptr();
+                    let data = unsafe { std::slice::from_raw_parts(ptr, total_bytes) };
+                    self.send_scsi_data_in(req.initiator_task_tag, data, 0x00, req.expected_data_len).await?;
+                    
+                    self.stats.bytes_read.fetch_add(total_bytes as u64, std::sync::atomic::Ordering::Relaxed);
+                    info!("READ{} LUN={} LBA={}: {} blocks done in {}µs", 
+                        if opcode == 0x88 { "16" } else { "10" }, lun_id, lba, num_blocks, t0.elapsed().as_micros());
                 }
                 Ok(Err(e)) => {
                     error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
                     self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
-                    return Ok(());
                 }
                 Err(_) => {
                     error!("spawn_blocking panicked untuk LUN {} LBA {}", lun_id, lba);
-                    return Ok(());
                 }
             }
-
-            // Cache overlay (gamedisk only — imagedisk has no .bin cache)
-            if let Some(cache) = cache_opt {
-                if let Some(res) = cache.read_partial_blocks(lba, num_blocks, &mut self.read_buf[..total_bytes]) {
-                    if let Err(e) = res {
-                        error!("Gagal overlay cache LUN {} LBA {}: {}", lun_id, lba, e);
-                    } else {
-                        self.stats.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    }
-                } else {
-                    self.stats.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-
-            let ptr = self.read_buf.as_ptr();
-            let data = unsafe { std::slice::from_raw_parts(ptr, total_bytes) };
-            self.send_scsi_data_in(req.initiator_task_tag, data, 0x00, req.expected_data_len).await?;
-            self.stats.bytes_read.fetch_add(total_bytes as u64, std::sync::atomic::Ordering::Relaxed);
-            info!("READ{} LUN={} LBA={}: {} blocks done in {}µs", 
-                if opcode == 0x88 { "16" } else { "10" }, lun_id, lba, num_blocks, t0.elapsed().as_micros());
 
         // --- WRITE10/16: dispatch to specialized handlers ---
         } else if opcode == 0x2A || opcode == 0x8A {
@@ -212,29 +194,44 @@ impl Session {
         if is_complete {
             let pending = self.pending_writes.remove(&itt).unwrap();
             
-            if self.is_imagedisk {
-                let backend = self.backends.get(&pending.lun_id).unwrap();
-                if let Err(e) = backend.write_blocks(pending.lba, pending.num_blocks, &pending.buffer) {
-                    error!("Gagal write backend imagedisk: {}", e);
-                    self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
-                    return Ok(());
-                }
-                self.stats.bytes_written.fetch_add(pending.expected_len as u64, std::sync::atomic::Ordering::Relaxed);
-            } else {
-                if let Some(cache) = self.client_caches.get(&pending.lun_id) {
-                    if let Err(e) = cache.write_stream(pending.lba, 0, &pending.buffer) {
-                        error!("Gagal write cache gamedisk: {}", e);
-                        self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
-                        return Ok(());
+            let backend = self.backends.get(&pending.lun_id).unwrap().clone();
+            let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
+            let is_imagedisk = self.is_imagedisk;
+            let pending_buffer = pending.buffer;
+            let pending_lba = pending.lba;
+            let pending_num_blocks = pending.num_blocks;
+
+            let handle = tokio::task::spawn_blocking(move || {
+                if is_imagedisk {
+                    backend.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
+                } else {
+                    if let Some(cache) = cache_opt {
+                        cache.write_stream(pending_lba, 0, &pending_buffer)
+                    } else {
+                        Ok(())
                     }
+                }
+            });
+
+            match handle.await {
+                Ok(Ok(())) => {
                     self.stats.bytes_written.fetch_add(pending.expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                }
+                Ok(Err(e)) => {
+                    error!("Gagal menulis blok pada LUN {}: {}", pending.lun_id, e);
+                    self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
+                }
+                Err(e) => {
+                    error!("Task panic saat menulis: {}", e);
+                    self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
                 }
             }
             
             info!("WRITE LUN {} LBA {} selesai via Data-Out ({} bytes)", pending.lun_id, pending.lba, pending.expected_len);
-            self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
         }
         
         Ok(())
     }
 }
+
