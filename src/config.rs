@@ -32,9 +32,25 @@ pub struct DhcpConfig {
     pub pxe_default: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum AddressConfig {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl AddressConfig {
+    pub fn as_vec(&self) -> Vec<String> {
+        match self {
+            AddressConfig::Single(s) => vec![s.clone()],
+            AddressConfig::Multiple(v) => v.clone(),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct ServerConfig {
-    pub address: String,
+    pub address: AddressConfig,
     pub port: u16,
 }
 
