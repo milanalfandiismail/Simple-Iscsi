@@ -374,21 +374,10 @@ impl Session {
             );
         }
 
-        // On explicit LOGOUT, delete gamedisk .bin caches (selesai bermain)
-        // On TCP disconnect (reboot), keep .bin so data survives
-        if logged_out {
-            for (lun_id, cache) in self.client_caches.drain() {
-                info!("Client logout — menghapus gamedisk cache LUN {}", lun_id);
-                cache.cleanup_and_drop();
-            }
-        } else {
-            // TCP disconnect → flush but keep .bin files
-            for (lun_id, cache) in self.client_caches.iter() {
-                info!("TCP disconnect — mempertahankan gamedisk cache LUN {}", lun_id);
-                if let Err(e) = cache.flush() {
-                    warn!("Gagal flush cache LUN {}: {}", lun_id, e);
-                }
-            }
+        // Sesi selesai (karena LOGOUT atau TCP disconnect) -> hapus writeback gamedisk
+        for (lun_id, cache) in self.client_caches.drain() {
+            info!("Sesi berakhir (logout/disconnect) — menghapus gamedisk cache LUN {}", lun_id);
+            cache.cleanup_and_drop();
         }
 
         info!("Koneksi dengan client {} selesai.", peer_addr);
