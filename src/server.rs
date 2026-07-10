@@ -12,45 +12,70 @@ pub async fn start_server(
     gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
     stats: Arc<ServerStats>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bind_addr = format!("{}:{}", config.server.address, config.server.port);
-    let listener = TcpListener::bind(&bind_addr).await?;
-    info!("Server iSCSI berjalan di: iSCSI://{}", bind_addr);
+    let addrs = config.server.address.as_vec();
+    let port = config.server.port;
+    
+    let mut handles = Vec::new();
 
-    loop {
-        let (stream, peer) = match listener.accept().await {
-            Ok(conn) => conn,
+    for addr in addrs {
+        let bind_addr = format!("{}:{}", addr, port);
+        let listener = match TcpListener::bind(&bind_addr).await {
+            Ok(l) => l,
             Err(e) => {
-                error!("Gagal menerima koneksi TCP masuk: {}", e);
-                continue;
+                error!("Gagal bind ke {}: {}", bind_addr, e);
+                return Err(Box::new(e));
             }
         };
-
-        stats.total_connections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        stats.active_sessions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        // Set TCP nodelay demi meminimalkan latency pengiriman paket data disk game
-        if let Err(e) = stream.set_nodelay(true) {
-            error!("Gagal mengaktifkan TCP_NODELAY untuk {}: {}", peer, e);
-        }
+        info!("Server iSCSI berjalan di: iSCSI://{}", bind_addr);
 
         let gamedisk_backends_clone = Arc::clone(&gamedisk_backends);
         let config_clone = Arc::clone(&config);
         let stats_clone = Arc::clone(&stats);
 
-        tokio::spawn(async move {
-            let session = Session::new(
-                stream,
-                peer.ip(),
-                gamedisk_backends_clone,
-                config_clone,
-                stats_clone,
-            );
-            
-            if let Err(e) = session.run().await {
-                error!("Sesi iSCSI client {} terputus dengan error: {}", peer.ip(), e);
-            } else {
-                info!("Sesi iSCSI client {} ditutup dengan normal.", peer.ip());
+        let handle = tokio::spawn(async move {
+            loop {
+                let (stream, peer) = match listener.accept().await {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        error!("Gagal menerima koneksi TCP masuk di {}: {}", bind_addr, e);
+                        continue;
+                    }
+                };
+
+                stats_clone.total_connections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                stats_clone.active_sessions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                if let Err(e) = stream.set_nodelay(true) {
+                    error!("Gagal mengaktifkan TCP_NODELAY untuk {}: {}", peer, e);
+                }
+
+                let session_gamedisk = Arc::clone(&gamedisk_backends_clone);
+                let session_config = Arc::clone(&config_clone);
+                let session_stats = Arc::clone(&stats_clone);
+
+                tokio::spawn(async move {
+                    let session = Session::new(
+                        stream,
+                        peer.ip(),
+                        session_gamedisk,
+                        session_config,
+                        session_stats,
+                    );
+                    
+                    if let Err(e) = session.run().await {
+                        error!("Sesi iSCSI client {} terputus dengan error: {}", peer.ip(), e);
+                    } else {
+                        info!("Sesi iSCSI client {} ditutup dengan normal.", peer.ip());
+                    }
+                });
             }
         });
+        handles.push(handle);
     }
+
+    for handle in handles {
+        let _ = handle.await;
+    }
+
+    Ok(())
 }

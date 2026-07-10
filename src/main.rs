@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(
         "Server dikonfigurasi untuk listen di {}:{}",
-        config.server.address, config.server.port
+        config.server.address.as_vec().join(", "),  config.server.port
     );
 
     // Auto-fix duplicate IPs di clients.toml sebelum start

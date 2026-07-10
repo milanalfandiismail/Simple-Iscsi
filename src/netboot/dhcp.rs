@@ -188,7 +188,7 @@ impl DhcpServer {
         // Create a dedicated sender socket bound to the server IP:67
         // Uses SO_REUSEADDR so two sockets can share port 67
         // UEFI PXE firmware requires replies from source port 67
-        let server_addr = Ipv4Addr::from_str(&config.server.address)
+        let server_addr = Ipv4Addr::from_str(&config.server.address.as_vec().first().cloned().unwrap_or_default())
             .unwrap_or(Ipv4Addr::new(192, 168, 56, 1));
 
         let sock2 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
@@ -430,7 +430,7 @@ impl DhcpServer {
         resp.options.insert(60, b"PXEClient".to_vec());
 
         // Option 54: Server Identifier — IP DHCP server
-        let dhcp_server_ip = Ipv4Addr::from_str(&self.config.server.address).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let dhcp_server_ip = Ipv4Addr::from_str(&self.config.server.address.as_vec().first().cloned().unwrap_or_default()).unwrap_or(Ipv4Addr::UNSPECIFIED);
         resp.options.insert(54, dhcp_server_ip.octets().to_vec());
 
         // Option 43: Vendor-Specific — PXE Discovery Control (sub-opt 6 = 8: PXE boot server)
