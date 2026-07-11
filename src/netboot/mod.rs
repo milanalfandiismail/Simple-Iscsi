@@ -6,11 +6,13 @@ use tokio::task;
 use tracing::{info, error};
 
 use crate::config::Config;
+use crate::config_manager::SharedConfig;
 use dhcp::DhcpServer;
 use tftp::TftpServer;
 
-pub async fn start_netboot(config: Arc<Config>) {
-    let dhcp_cfg = match &config.dhcp {
+pub async fn start_netboot(config: SharedConfig) {
+    let current_config = config.read();
+    let dhcp_cfg = match &current_config.dhcp {
         Some(d) => d,
         None => {
             info!("DHCP Server dinonaktifkan di konfigurasi.");

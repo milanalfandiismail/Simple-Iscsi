@@ -87,8 +87,10 @@ pub async fn merge_vhd(child_path: String, parent_path: String) -> io::Result<()
 }
 
 /// Backup base image sebelum merge.
-/// Format: {base_stem}_backup{N}.vhd — increment dari 1.
-pub fn backup_before_merge(base_path: &str) -> io::Result<String> {
+/// Alih-alih mengkopi 21GB base image, kita simpan:
+/// 1. Copy dari super VHD (sebagai backup dari perubahan).
+/// 2. File .meta yang berisi original EOF size dan original BAT dari base image.
+pub fn backup_before_merge(base_path: &str, super_path: &str) -> io::Result<String> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let stem = path.file_stem()
@@ -97,17 +99,51 @@ pub fn backup_before_merge(base_path: &str) -> io::Result<String> {
 
     // Cari nomor backup yang available
     let mut idx = 1;
-    loop {
-        let backup_name = format!("{}_backup{}.vhd", stem, idx);
-        let backup_path = dir.join(&backup_name);
-        if !backup_path.exists() {
-            std::fs::copy(base_path, &backup_path)?;
-            let path_str = backup_path.to_string_lossy().to_string();
-            tracing::info!("📦 Backup created: {} ({} bytes)", path_str, std::fs::metadata(&backup_path).map(|m| m.len()).unwrap_or(0));
-            return Ok(path_str);
+    let (backup_vhd, backup_meta) = loop {
+        let vhd_name = format!("{}_backup{}.vhd", stem, idx);
+        let meta_name = format!("{}_backup{}.meta", stem, idx);
+        let vhd_path = dir.join(&vhd_name);
+        let meta_path = dir.join(&meta_name);
+        
+        if !vhd_path.exists() && !meta_path.exists() {
+            break (vhd_path, meta_path);
         }
         idx += 1;
+    };
+
+    // 1. Dapatkan metadata base image
+    let mut base_file = std::fs::OpenOptions::new().read(true).open(base_path)?;
+    let eof = base_file.seek(SeekFrom::End(0))?;
+    
+    // Baca BAT dari base image (Dynamic VHD header di 1536)
+    let base_vhd = VhdBackend::open(base_file)?;
+    let bat = &base_vhd.bat;
+
+    // 2. Simpan ke file .meta
+    let mut meta_file = std::fs::File::create(&backup_meta)?;
+    // Format meta sederhana:
+    // [8 bytes: EOF u64 le]
+    // [4 bytes: BAT len u32 le]
+    // [N bytes: BAT entries u32 le]
+    meta_file.write_all(&eof.to_le_bytes())?;
+    meta_file.write_all(&(bat.len() as u32).to_le_bytes())?;
+    for &entry in bat {
+        meta_file.write_all(&entry.to_le_bytes())?;
     }
+    meta_file.sync_all()?;
+
+    // 3. Copy super VHD sebagai referensi backup (1-2GB)
+    if Path::new(super_path).exists() {
+        std::fs::copy(super_path, &backup_vhd)?;
+    }
+
+    let path_str = backup_meta.to_string_lossy().to_string();
+    tracing::info!("📦 Metadata Backup created: {} (Restore point ke EOF {})", path_str, eof);
+    if backup_vhd.exists() {
+        tracing::info!("📦 Super VHD Backup copied: {} ({} bytes)", backup_vhd.display(), std::fs::metadata(&backup_vhd).map(|m| m.len()).unwrap_or(0));
+    }
+
+    Ok(path_str)
 }
 
 /// List semua backup yang tersedia untuk base path.
@@ -129,10 +165,10 @@ pub fn list_backups(base_path: &str) -> io::Result<Vec<(usize, String)>> {
         let entry = entry.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let name = entry.file_name().to_string_lossy().to_string();
 
-        // Cek pattern: {stem}_backup{N}.vhd
+        // Cek pattern: {stem}_backup{N}.meta (bukan .vhd karena restore menggunakan .meta)
         let prefix = format!("{}_backup", stem);
-        if name.starts_with(&prefix) && name.ends_with(".vhd") {
-            let num_part = &name[prefix.len()..name.len() - 4]; // hapus "_backup" dan ".vhd"
+        if name.starts_with(&prefix) && name.ends_with(".meta") {
+            let num_part = &name[prefix.len()..name.len() - 5]; // hapus "_backup" dan ".meta"
             if let Ok(idx) = num_part.parse::<usize>() {
                 backups.push((idx, entry.path().to_string_lossy().to_string()));
             }
@@ -143,6 +179,44 @@ pub fn list_backups(base_path: &str) -> io::Result<Vec<(usize, String)>> {
     backups.sort_by_key(|(idx, _)| *idx);
 
     Ok(backups)
+}
+
+/// Execute restore dari metadata file.
+fn restore_from_meta(base_path: &str, meta_path: &str) -> io::Result<String> {
+    let mut meta_file = std::fs::File::open(meta_path)?;
+    
+    let mut eof_bytes = [0u8; 8];
+    meta_file.read_exact(&mut eof_bytes)?;
+    let eof = u64::from_le_bytes(eof_bytes);
+
+    let mut len_bytes = [0u8; 4];
+    meta_file.read_exact(&mut len_bytes)?;
+    let bat_len = u32::from_le_bytes(len_bytes);
+
+    let mut bat = Vec::with_capacity(bat_len as usize);
+    for _ in 0..bat_len {
+        let mut entry_bytes = [0u8; 4];
+        meta_file.read_exact(&mut entry_bytes)?;
+        bat.push(u32::from_le_bytes(entry_bytes));
+    }
+
+    tracing::info!("🔄 Memulai restore {} ke ukuran {} bytes (Truncate)...", base_path, eof);
+
+    let mut base_file = std::fs::OpenOptions::new().write(true).open(base_path)?;
+    
+    // Truncate ke EOF awal
+    base_file.set_len(eof)?;
+
+    // Restore BAT
+    base_file.seek(SeekFrom::Start(1536))?;
+    for &entry in &bat {
+        base_file.write_all(&entry.to_be_bytes())?;
+    }
+    
+    base_file.sync_all()?;
+    
+    tracing::info!("✅ Base image restored successfully (Metadata based restore).");
+    Ok(meta_path.to_string())
 }
 
 /// Restore base image dari backup TERAKHIR.
@@ -156,9 +230,7 @@ pub fn restore_latest_backup(base_path: &str) -> io::Result<String> {
     }
 
     let (_, latest_path) = backups.last().unwrap();
-    std::fs::copy(&latest_path, base_path)?;
-    tracing::info!("✅ Base image restored from: {}", latest_path);
-    Ok(latest_path.clone())
+    restore_from_meta(base_path, latest_path)
 }
 
 /// Restore base image dari backup spesifik (by index).
@@ -183,7 +255,5 @@ pub fn restore_backup_by_index(base_path: &str, idx: usize) -> io::Result<String
         }
     };
 
-    std::fs::copy(backup_path, base_path)?;
-    tracing::info!("✅ Base image restored from backup [{}]: {}", idx, backup_path);
-    Ok(backup_path.clone())
+    restore_from_meta(base_path, backup_path)
 }
