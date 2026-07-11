@@ -51,9 +51,10 @@ impl Session {
             
             let target_address = format!("{}:{},1", ip, port);
             
-            if self.config.gamedisk_target.discovery {
-                info!("Discovery mengembalikan target portal: {} di {}", self.config.gamedisk_target.target_iqn, target_address);
-                resp_params.push(("TargetName".to_string(), self.config.gamedisk_target.target_iqn.clone()));
+            let config_guard = self.config.read();
+            if config_guard.gamedisk_target.discovery {
+                info!("Discovery mengembalikan target portal: {} di {}", config_guard.gamedisk_target.target_iqn, target_address);
+                resp_params.push(("TargetName".to_string(), config_guard.gamedisk_target.target_iqn.clone()));
                 resp_params.push(("TargetAddress".to_string(), target_address.clone()));
             }
         }

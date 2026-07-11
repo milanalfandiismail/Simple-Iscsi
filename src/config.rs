@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub gamedisk_target: GamediskTargetConfig,
@@ -54,14 +54,14 @@ pub struct ServerConfig {
     pub port: u16,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GamediskTargetConfig {
     pub target_iqn: String,
     pub discovery: bool,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GamediskConfig {
     pub physical_disk: String,
     pub block_size: u64,
@@ -70,7 +70,7 @@ pub struct GamediskConfig {
     pub product_revision: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct WindowsConfig {
     pub target_iqn_prefix: String,

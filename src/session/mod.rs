@@ -31,7 +31,7 @@ pub struct Session {
     client_ip: String,
     gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
     backends: HashMap<u8, Arc<Backend>>,
-    config: Arc<crate::config::Config>,
+    config: crate::config_manager::SharedConfig,
     client_caches: HashMap<u8, Arc<ClientCache>>,
     is_imagedisk: bool,
     child_vhd_path: Option<String>,
@@ -55,7 +55,7 @@ impl Session {
         stream: TcpStream,
         client_ip: IpAddr,
         gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
-        config: Arc<crate::config::Config>,
+        config: crate::config_manager::SharedConfig,
         stats: Arc<ServerStats>,
     ) -> Self {
         // Konfigurasi TCP: disable Nagle
@@ -270,14 +270,15 @@ impl Session {
         if self.is_discovery {
             target_name = "discovery".to_string();
             info!("Sesi adalah Discovery Session. Melewati inisialisasi backend.");
-        } else if self.target_iqn == self.config.gamedisk_target.target_iqn {
+        } else if self.target_iqn == self.config.read().gamedisk_target.target_iqn {
             target_name = "gamedisk".to_string();
             // Gamedisk target -> muat semua LUN gamedisk
             for (lun_id, backend) in self.gamedisk_backends.iter() {
                 self.backends.insert(*lun_id, Arc::clone(backend));
             }
-        } else if self.config.windows.as_ref().map_or(false, |win| self.target_iqn.starts_with(&win.target_iqn_prefix)) {
-            let win = self.config.windows.as_ref().unwrap();
+        } else if self.config.read().windows.as_ref().map_or(false, |win| self.target_iqn.starts_with(&win.target_iqn_prefix)) {
+            let config_guard = self.config.read();
+            let win = config_guard.windows.as_ref().unwrap();
             self.is_imagedisk = true;
             let suffix = &self.target_iqn[win.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
@@ -285,7 +286,7 @@ impl Session {
             // Gunakan writeback_imagedisk — kalo super client, serve super VHD langsung
             self.is_super = self.client_ip == win.super_client_ip;
             match writeback_imagedisk::init_child_vhd(
-                &self.config,
+                &config_guard,
                 &self.client_ip,
                 suffix,
                 self.is_super,
@@ -310,11 +311,11 @@ impl Session {
                 let cache_name = format!("{}_lun{}", target_name, lun_id);
                 info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
                 let cache = ClientCache::new(
-                    &self.config.writeback.writeback_dirs,
+                    &self.config.read().writeback.writeback_dirs,
                     &self.client_ip,
                     &cache_name,
                     backend.block_size(),
-                    self.config.writeback.max_cache_per_client_gb,
+                    self.config.read().writeback.max_cache_per_client_gb,
                     false, // ⚠️ FIX: gamedisk tidak boleh pakai is_super, selalu false
                 )?;
                 self.client_caches.insert(*lun_id, Arc::new(cache));
@@ -378,7 +379,7 @@ impl Session {
             writeback_imagedisk::cleanup_child_vhd(
                 self.child_vhd_path.as_deref(),
                 &self.client_ip,
-                &self.config,
+                &self.config.read(),
             );
         }
 

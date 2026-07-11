@@ -4,16 +4,18 @@ use std::sync::Arc;
 use crate::backend::Backend;
 use crate::session::Session;
 use crate::config::Config;
+use crate::config_manager::SharedConfig;
 use crate::stats::ServerStats;
 use std::collections::HashMap;
 
 pub async fn start_server(
-    config: Arc<Config>,
+    config: SharedConfig,
     gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
     stats: Arc<ServerStats>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let addrs = config.server.address.as_vec();
-    let port = config.server.port;
+    let current_config = config.read();
+    let addrs = current_config.server.address.as_vec();
+    let port = current_config.server.port;
     
     let mut handles = Vec::new();
 
@@ -29,7 +31,7 @@ pub async fn start_server(
         info!("Server iSCSI berjalan di: iSCSI://{}", bind_addr);
 
         let gamedisk_backends_clone = Arc::clone(&gamedisk_backends);
-        let config_clone = Arc::clone(&config);
+        let config_clone = config.clone();
         let stats_clone = Arc::clone(&stats);
 
         let handle = tokio::spawn(async move {
@@ -50,7 +52,7 @@ pub async fn start_server(
                 }
 
                 let session_gamedisk = Arc::clone(&gamedisk_backends_clone);
-                let session_config = Arc::clone(&config_clone);
+                let session_config = config_clone.clone();
                 let session_stats = Arc::clone(&stats_clone);
 
                 tokio::spawn(async move {

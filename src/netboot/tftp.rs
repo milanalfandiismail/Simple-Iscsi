@@ -6,6 +6,7 @@ use std::path::Path;
 use bytes::{BytesMut, BufMut, Buf};
 
 use crate::config::Config;
+use crate::config_manager::SharedConfig;
 
 const TFTP_PORT: u16 = 69;
 const TFTP_OP_RRQ: u16 = 1;
@@ -15,12 +16,12 @@ const TFTP_OP_ERROR: u16 = 5;
 const TFTP_OP_OACK: u16 = 6;
 
 pub struct TftpServer {
-    config: Arc<Config>,
+    config: SharedConfig,
     socket: Arc<UdpSocket>,
 }
 
 impl TftpServer {
-    pub async fn new(config: Arc<Config>) -> std::io::Result<Arc<Self>> {
+    pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
         let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, TFTP_PORT);
         let socket = UdpSocket::bind(addr).await?;
         
@@ -31,7 +32,7 @@ impl TftpServer {
     }
 
     pub async fn run(self: Arc<Self>) {
-        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.dhcp.as_ref().unwrap().tftp_dir);
+        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.read().dhcp.as_ref().unwrap().tftp_dir);
         let mut buf = [0u8; 2048];
         
         loop {
@@ -115,7 +116,8 @@ impl TftpServer {
         }
 
         let clean_filename = filename.replace("/", "\\");
-        let base_dir = Path::new(&self.config.dhcp.as_ref().unwrap().tftp_dir);
+        let base_dir_str = self.config.read().dhcp.as_ref().unwrap().tftp_dir.clone();
+        let base_dir = Path::new(&base_dir_str);
         let full_path = base_dir.join(clean_filename);
 
         let file_data = match std::fs::read(&full_path) {
@@ -132,7 +134,7 @@ impl TftpServer {
     }
 
     async fn transfer_file(&self, client_addr: SocketAddr, file_data: Vec<u8>, options: Vec<(String, String)>) {
-        let bind_ip = self.config.server.address.as_vec().first().cloned().unwrap_or_else(|| "0.0.0.0".to_string());
+        let bind_ip = self.config.read().server.address.as_vec().first().cloned().unwrap_or_else(|| "0.0.0.0".to_string());
         let bind_addr = format!("{}:0", bind_ip);
         
         let socket = match UdpSocket::bind(&bind_addr).await {
@@ -269,7 +271,7 @@ impl TftpServer {
     }
 
     async fn send_error(&self, addr: SocketAddr, error_code: u16, msg: &str) {
-        let bind_ip = self.config.server.address.as_vec().first().cloned().unwrap_or_else(|| "0.0.0.0".to_string());
+        let bind_ip = self.config.read().server.address.as_vec().first().cloned().unwrap_or_else(|| "0.0.0.0".to_string());
         if let Ok(socket) = UdpSocket::bind(format!("{}:0", bind_ip)).await {
             let mut packet = BytesMut::with_capacity(100);
             packet.put_u16(TFTP_OP_ERROR);

@@ -12,12 +12,15 @@ mod vhd;
 mod vhd_merge;
 mod netboot;
 mod stats;
+mod config_manager;
 
 use backend::Backend;
 use std::fs;
 use std::sync::Arc;
 use tracing::{info, error};
 use std::collections::HashMap;
+use config_manager::SharedConfig;
+use std::time::SystemTime;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -156,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // 1. Backup base image dulu
-                let backup_path = vhd_merge::backup_before_merge(&base_path)?;
+                let backup_path = vhd_merge::backup_before_merge(&base_path, &super_path)?;
                 info!("📦 Backup created: {}", backup_path);
 
                 // 2. Merge super VHD → base
@@ -186,7 +189,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // === Normal Server Start ===
-    let config = Arc::new(config::load_config(&config_path)?);
+    let config = config::load_config(&config_path)?;
+    let shared_config = SharedConfig::new(config.clone());
 
     info!(
         "Server dikonfigurasi untuk listen di {}:{}",
@@ -207,9 +211,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clients = config::load_clients(&clients_path)?;
     info!("Memuat {} konfigurasi klien DHCP.", clients.len());
 
+    // Inisialisasi file watcher
+    {
+        let shared_config_clone = shared_config.clone();
+        let config_path_clone = config_path.clone();
+        let clients_path_clone = clients_path.clone();
+        tokio::spawn(async move {
+            let mut last_config_mtime = std::fs::metadata(&config_path_clone).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+            let mut last_clients_mtime = std::fs::metadata(&clients_path_clone).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+            
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                
+                let current_config_mtime = std::fs::metadata(&config_path_clone).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                let current_clients_mtime = std::fs::metadata(&clients_path_clone).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                
+                let config_changed = current_config_mtime != last_config_mtime;
+                let clients_changed = current_clients_mtime != last_clients_mtime;
+                
+                if config_changed || clients_changed {
+                    info!("Mendeteksi perubahan pada file konfigurasi...");
+                    if let Some(ref dhcp_cfg) = shared_config_clone.read().dhcp {
+                        let dhcp_end = dhcp_cfg.end_ip.clone().unwrap_or_else(|| {
+                            let start_parts: Vec<&str> = dhcp_cfg.start_ip.split('.').collect();
+                            format!("{}.{}.{}.{}", start_parts[0], start_parts[1], start_parts[2], 200)
+                        });
+                        let _ = config::auto_fix_duplicate_ips(&clients_path_clone, &dhcp_cfg.start_ip, &dhcp_end);
+                    }
+
+                    match config::load_config(&config_path_clone) {
+                        Ok(new_config) => {
+                            shared_config_clone.update(new_config);
+                            info!("✅ Konfigurasi berhasil di-reload!");
+                            last_config_mtime = current_config_mtime;
+                            last_clients_mtime = current_clients_mtime;
+                        }
+                        Err(e) => {
+                            error!("❌ Gagal me-reload konfigurasi: {}", e);
+                            last_config_mtime = current_config_mtime;
+                            last_clients_mtime = current_clients_mtime;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     // Inisialisasi Netboot
     {
-        let clients_config = config.clone();
+        let clients_config = shared_config.clone();
         tokio::spawn(async move {
             crate::netboot::start_netboot(clients_config).await;
         });
@@ -254,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     stats::ServerStats::start_periodic_logging(stats.clone());
     
     if let Err(e) = server::start_server(
-        config.clone(),
+        shared_config.clone(),
         Arc::new(gamedisk_backends),
         stats,
     )

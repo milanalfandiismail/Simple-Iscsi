@@ -39,7 +39,7 @@ vendor_id = "RUSTISCS"
 product_id = "WindowsBoot"
 product_revision = "1.00"
 discovery = false
-super_client_ip = "192.168.137.101"
+super_client_ip = ""
 super_client_action = "none"
 
 [writeback]
@@ -47,6 +47,5 @@ writeback_dirs = ['C:\writeback']
 max_cache_per_client_gb = 10
 
 [image_manager]
-windows_10 = "win10.vhd"
 windows_11 = 'E:\W11-23H2-5335.vhd'
 windows_11_tm = 'E:\Windows 24H2\Windows_24H2_Modern.vhd'
