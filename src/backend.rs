@@ -481,7 +481,7 @@ impl Backend {
             product_id: product.to_string(),
             product_revision: rev.to_string(),
             read_cache,
-            io_semaphore: Arc::new(tokio::sync::Semaphore::new(64)),
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
 
@@ -548,7 +548,7 @@ impl Backend {
             product_id: product.to_string(),
             product_revision: rev.to_string(),
             read_cache,
-            io_semaphore: Arc::new(tokio::sync::Semaphore::new(64)),
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
 
@@ -662,7 +662,7 @@ impl Backend {
             product_id: product.to_string(),
             product_revision: rev.to_string(),
             read_cache,
-            io_semaphore: Arc::new(tokio::sync::Semaphore::new(64)),
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
 
