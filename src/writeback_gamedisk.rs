@@ -265,7 +265,7 @@ impl ClientCache {
         Ok(())
     }
 
-    fn throttle_write(&self, bytes_to_write: usize) {
+    pub async fn throttle_write_async(&self, bytes_to_write: usize) {
         if self.max_write_bytes_per_sec == 0 {
             return;
         }
@@ -289,13 +289,12 @@ impl ClientCache {
         if written + bytes_to_write as u64 > max_per_window {
             let sleep_ms = 100u64.saturating_sub(elapsed);
             if sleep_ms > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
             }
         }
     }
 
     pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
-        self.throttle_write(data.len());
         let block_size = self.block_size as usize;
         let start_lba = first_lba + buffer_byte_offset / self.block_size;
         let num_blocks = data.len() / block_size;

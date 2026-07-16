@@ -68,6 +68,10 @@ impl Session {
         let req_clone = req.clone();
 
         tokio::spawn(async move {
+            if let Some(ref cache) = cache_opt {
+                cache.throttle_write_async(write_buf_clone.len()).await;
+            }
+
             let res = tokio::task::spawn_blocking(move || {
                 if let Some(cache) = cache_opt {
                     cache.write_stream(lba, 0, &write_buf_clone)
