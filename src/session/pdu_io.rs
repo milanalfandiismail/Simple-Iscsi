@@ -13,7 +13,7 @@ fn pack_iov(slices: &[std::io::IoSlice<'_>]) -> Vec<u8> {
 
 impl Session {
     pub(super) async fn send_packet(&self, packet: Vec<u8>) -> Result<(), std::io::Error> {
-        self.writer_tx.send(packet).await
+        self.writer_tx.send(packet)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))
     }
 
