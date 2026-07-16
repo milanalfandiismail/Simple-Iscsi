@@ -73,8 +73,6 @@ impl Session {
                 cache.throttle_write_async(write_buf_clone.len()).await;
             }
 
-            let semaphore = backend_clone.io_semaphore.clone();
-            let _permit = semaphore.acquire().await;
             let res = tokio::task::spawn_blocking(move || {
                 if let Some(cache) = cache_opt {
                     cache.write_stream(lba, 0, &write_buf_clone)
