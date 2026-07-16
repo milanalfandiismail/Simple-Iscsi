@@ -388,25 +388,39 @@ impl ClientCache {
         Ok(())
     }
 
-    /// Pastikan kapasitas cache tidak melebihi max_cache_size.
-    /// Jika melebihi, evict oldest blocks sampai cukup.
     fn ensure_capacity(&self, needed: u64) -> io::Result<()> {
         let current = self.total_bytes_written.load(Ordering::Relaxed);
         if current + needed <= self.max_cache_size {
             return Ok(());
         }
-        // Evict oldest blocks: hapus entries dengan offset terkecil
-        let to_free = (current + needed).saturating_sub(self.max_cache_size);
-        let mut freed: u64 = 0;
-        let mut entries: Vec<(u64, u64)> = self.block_map.iter().map(|e| (*e.key(), *e.value())).collect();
-        entries.sort_by_key(|(_, off)| *off); // oldest first (lowest offset)
 
-        for (lba, _off) in entries {
-            if freed >= to_free { break; }
-            self.block_map.remove(&lba);
-            freed += self.block_size;
-        }
-        self.total_bytes_written.fetch_sub(freed.min(current), Ordering::SeqCst);
+        // Tentukan ukuran batch eviction (misal 256 MB atau 10% dari max cache, pilih yang terkecil)
+        let batch_free = (256 * 1024 * 1024).min(self.max_cache_size / 10).max(self.block_size);
+        let to_free = ((current + needed) - self.max_cache_size).max(batch_free);
+        
+        // Karena writeback ditulis secara sequential, offset berbanding lurus dengan umur block.
+        // Kita cukup menghapus semua block yang memiliki offset di bawah threshold ini.
+        let evict_threshold = (current + needed).saturating_sub(self.max_cache_size).saturating_add(to_free);
+
+        let mut freed_blocks = 0;
+        self.block_map.retain(|_lba, off| {
+            if *off < evict_threshold {
+                freed_blocks += 1;
+                false // Evict
+            } else {
+                true // Keep
+            }
+        });
+
+        let freed_bytes = (freed_blocks as u64) * self.block_size;
+        self.total_bytes_written.fetch_sub(freed_bytes.min(current), Ordering::SeqCst);
+        
+        info!(
+            "Writeback Cache Eviction: Berhasil membebaskan {} MB (threshold offset < {})",
+            freed_bytes / 1048576,
+            evict_threshold
+        );
+
         Ok(())
     }
 
