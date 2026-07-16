@@ -1,36 +1,22 @@
 use crate::pdu::{self, Pdu, OP_SCSI_RESP, OP_DATA_IN, OP_R2T};
 use crate::scsi_gamedisk::ScsiResult;
 use crate::session::Session;
-use tokio::io::AsyncWriteExt;
 
-async fn write_all_vectored(stream: &mut tokio::net::TcpStream, slices: &[std::io::IoSlice<'_>]) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let mut total_written = 0;
+fn pack_iov(slices: &[std::io::IoSlice<'_>]) -> Vec<u8> {
     let total_len: usize = slices.iter().map(|s| s.len()).sum();
-    
-    while total_written < total_len {
-        let mut current_slices = Vec::new();
-        let mut temp_written = 0;
-        for slice in slices {
-            if temp_written + slice.len() <= total_written {
-                temp_written += slice.len();
-                continue;
-            }
-            let offset = total_written.saturating_sub(temp_written);
-            current_slices.push(std::io::IoSlice::new(&slice[offset..]));
-            temp_written += slice.len();
-        }
-        
-        let n = stream.write_vectored(&current_slices).await?;
-        if n == 0 {
-            return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "failed to write whole buffer"));
-        }
-        total_written += n;
+    let mut buf = Vec::with_capacity(total_len);
+    for slice in slices {
+        buf.extend_from_slice(slice);
     }
-    Ok(())
+    buf
 }
 
 impl Session {
+    pub(super) async fn send_packet(&self, packet: Vec<u8>) -> Result<(), std::io::Error> {
+        self.writer_tx.send(packet).await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))
+    }
+
     pub(super) async fn send_r2t(
         &mut self,
         itt: u32,
@@ -56,8 +42,7 @@ impl Session {
         resp.custom_bhs[12..16].copy_from_slice(&desired_len.to_be_bytes());
 
         let packet = pdu::builder::build_pdu(&resp);
-        self.stream.write_all(&packet).await?;
-        Ok(())
+        self.send_packet(packet).await
     }
 
     pub(super) async fn send_scsi_data_in(
@@ -125,14 +110,16 @@ impl Session {
                     std::io::IoSlice::new(&pad_arr[..pad]),
                     std::io::IoSlice::new(&resp),
                 ];
-                write_all_vectored(&mut self.stream, &iov).await?;
+                let packet = pack_iov(&iov);
+                self.send_packet(packet).await?;
             } else {
                 let iov = [
                     std::io::IoSlice::new(&bhs),
                     std::io::IoSlice::new(&data[offset..offset + chunk_len]),
                     std::io::IoSlice::new(&pad_arr[..pad]),
                 ];
-                write_all_vectored(&mut self.stream, &iov).await?;
+                let packet = pack_iov(&iov);
+                self.send_packet(packet).await?;
             }
 
             offset += chunk_len;
@@ -178,8 +165,7 @@ impl Session {
         }
 
         let packet = pdu::builder::build_pdu(&resp);
-        self.stream.write_all(&packet).await?;
-        Ok(())
+        self.send_packet(packet).await
     }
 
     pub(super) async fn send_scsi_check_condition(
@@ -215,8 +201,7 @@ impl Session {
         resp.data = data;
 
         let packet = pdu::builder::build_pdu(&resp);
-        self.stream.write_all(&packet).await?;
-        Ok(())
+        self.send_packet(packet).await
     }
 
     /// Shared helper: convert ScsiResult → send response/data/check-condition
