@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 use crate::backend::Backend;
+use parking_lot::Mutex;
 
 #[cfg(windows)]
 use std::os::windows::fs::FileExt;
@@ -67,6 +68,7 @@ pub struct ClientCache {
     map_path: PathBuf,
     file_read: Arc<std::fs::File>,
     file_write: Arc<std::fs::File>,
+    map_file: Mutex<std::fs::File>,
     block_map: DashMap<u64, u64>,
     next_write_offset: AtomicU64,
     block_size: u64,
@@ -157,9 +159,21 @@ impl ClientCache {
         {
             use std::os::windows::fs::OpenOptionsExt;
             write_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
-            write_options.custom_flags(0x80000000); // FILE_FLAG_WRITE_THROUGH
         }
         let file_write = write_options.open(&file_path)?;
+        let file_write_arc = Arc::new(file_write);
+
+        let file_write_weak = Arc::downgrade(&file_write_arc);
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if let Some(file) = file_write_weak.upgrade() {
+                    let _ = file.sync_all();
+                } else {
+                    break;
+                }
+            }
+        });
 
         let mut read_options = OpenOptions::new();
         read_options.read(true);
@@ -167,14 +181,25 @@ impl ClientCache {
         {
             use std::os::windows::fs::OpenOptionsExt;
             read_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            read_options.custom_flags(0x20000000); // FILE_FLAG_NO_BUFFERING
         }
         let file_read = read_options.open(&file_path)?;
+
+        let mut map_options = OpenOptions::new();
+        map_options.create(true).append(true).write(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            map_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+        }
+        let map_file = map_options.open(&map_path)?;
 
         Ok(Self {
             file_path,
             map_path,
             file_read: Arc::new(file_read),
-            file_write: Arc::new(file_write),
+            file_write: file_write_arc,
+            map_file: Mutex::new(map_file),
             block_map,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
@@ -249,17 +274,21 @@ impl ClientCache {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data harus block-aligned"));
         }
 
-        // 1. Kumpulkan offset untuk setiap blok (gunakan yang sudah ada atau alokasikan baru)
-        let mut offsets = Vec::with_capacity(num_blocks);
-        let mut new_mappings = String::new();
-        
+        // 1. Kumpulkan status cached/offset untuk mengurangi lookup DashMap
+        let mut block_offsets = Vec::with_capacity(num_blocks);
         let mut new_blocks_count = 0;
+        
         for i in 0..num_blocks {
             let lba = start_lba + i as u64;
-            if self.block_map.get(&lba).is_none() {
+            if let Some(entry) = self.block_map.get(&lba) {
+                block_offsets.push(Some(*entry));
+            } else {
+                block_offsets.push(None);
                 new_blocks_count += 1;
             }
         }
+
+        let mut new_mappings = String::new();
 
         if new_blocks_count > 0 {
             let total_needed = (new_blocks_count as u64) * self.block_size;
@@ -269,11 +298,12 @@ impl ClientCache {
         // Alokasikan base offset untuk blok-blok baru secara berurutan agar sequential di disk
         let mut new_block_allocated = 0;
         let mut base_new_offset = 0;
+        let mut offsets = Vec::with_capacity(num_blocks);
 
         for i in 0..num_blocks {
             let lba = start_lba + i as u64;
-            let offset = if let Some(entry) = self.block_map.get(&lba) {
-                *entry
+            let offset = if let Some(off) = block_offsets[i] {
+                off
             } else {
                 if new_block_allocated == 0 {
                     let total_new_len = (new_blocks_count as u64) * self.block_size;
@@ -306,12 +336,9 @@ impl ClientCache {
             span_start = span_end;
         }
 
-        // 3. Tulis semua mapping baru ke .map dalam SATU file open/write
+        // 3. Tulis semua mapping baru ke .map menggunakan handle persisten
         if !new_mappings.is_empty() {
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.map_path)?;
+            let mut file = self.map_file.lock();
             use std::io::Write;
             file.write_all(new_mappings.as_bytes())?;
         }

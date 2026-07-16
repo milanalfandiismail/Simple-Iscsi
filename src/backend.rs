@@ -442,8 +442,19 @@ impl Backend {
 
         info!("Storage raw dibuka. Ukuran: {} byte", total_size);
 
+        // Re-open with FILE_FLAG_OVERLAPPED for concurrent lock-free reads
+        let mut ov_options = std::fs::OpenOptions::new();
+        ov_options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            ov_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            ov_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
+        }
+        let ov_file = ov_options.open(path)?;
+
         let inner = BackendInner {
-            backend: BackendType::RawDisk(file),
+            backend: BackendType::RawDisk(ov_file),
         };
 
         Ok(Backend {
@@ -477,8 +488,20 @@ impl Backend {
             }
         };
 
-        let vhd = VhdBackend::open(file)?;
+        let mut vhd = VhdBackend::open(file)?;
         let total_size = vhd.current_size;
+
+        // Re-open VHD file with FILE_FLAG_OVERLAPPED
+        let mut ov_options = std::fs::OpenOptions::new();
+        ov_options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            ov_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            ov_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
+        }
+        let ov_file = ov_options.open(path)?;
+        vhd.file = ov_file;
 
         info!("VHD backend dibuka. Ukuran: {} byte", total_size);
 
@@ -511,9 +534,20 @@ impl Backend {
 
         let child_file = child_options.open(child_path)
             .map_err(|e| { error!("Gagal membuka child VHD: {}", e); e })?;
-        let child = VhdBackend::open(child_file)?;
-
+        let mut child = VhdBackend::open(child_file)?;
         let total_size = child.current_size;
+
+        // Re-open child VHD with FILE_FLAG_OVERLAPPED
+        let mut ov_child_options = std::fs::OpenOptions::new();
+        ov_child_options.read(true).write(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            ov_child_options.share_mode(1 | 2 | 4); // READ|WRITE|DELETE
+            ov_child_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
+        }
+        let ov_child_file = ov_child_options.open(child_path)?;
+        child.file = ov_child_file;
 
         // Buka parent (read-only)
         let parent = if let Some(ref parent_path_str) = child.parent_path {
@@ -526,26 +560,42 @@ impl Backend {
                 parent_options.share_mode(1 | 2);
             }
 
-            match parent_options.open(parent_path_str) {
-                Ok(parent_file) => {
-                    let parent_vhd = VhdBackend::open(parent_file)?;
-                    info!("Parent VHD dibuka: {} (size={})", parent_path_str, parent_vhd.current_size);
-                    Some(parent_vhd)
+            let mut opened_path = None;
+            let parent_file_opt = match parent_options.open(parent_path_str) {
+                Ok(f) => {
+                    opened_path = Some(parent_path_str.clone());
+                    Some(f)
                 }
-                Err(_e) => {
-                    // Try the provided parent_path as fallback
-                    match parent_options.open(parent_path) {
-                        Ok(parent_file) => {
-                            let parent_vhd = VhdBackend::open(parent_file)?;
-                            info!("Parent VHD dibuka (fallback): {} (size={})", parent_path, parent_vhd.current_size);
-                            Some(parent_vhd)
-                        }
-                        Err(_) => {
-                            warn!("Parent VHD tidak ditemukan: {} (child parent_path: {}), running without parent fallback", parent_path, parent_path_str);
-                            None
-                        }
+                Err(_) => match parent_options.open(parent_path) {
+                    Ok(f) => {
+                        opened_path = Some(parent_path.to_string());
+                        Some(f)
                     }
+                    Err(_) => None,
                 }
+            };
+
+            if let Some(parent_file) = parent_file_opt {
+                let mut parent_vhd = VhdBackend::open(parent_file)?;
+                let path_str = opened_path.unwrap();
+
+                // Re-open parent VHD with FILE_FLAG_OVERLAPPED
+                let mut ov_parent_options = std::fs::OpenOptions::new();
+                ov_parent_options.read(true);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::OpenOptionsExt;
+                    ov_parent_options.share_mode(1 | 2);
+                    ov_parent_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
+                }
+                let ov_parent_file = ov_parent_options.open(&path_str)?;
+                parent_vhd.file = ov_parent_file;
+
+                info!("Parent VHD dibuka: {} (size={})", path_str, parent_vhd.current_size);
+                Some(parent_vhd)
+            } else {
+                warn!("Parent VHD tidak ditemukan: {} (child parent_path: {}), running without parent fallback", parent_path, parent_path_str);
+                None
             }
         } else {
             warn!("Child VHD tidak memiliki parent_path!");

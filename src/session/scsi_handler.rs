@@ -1,6 +1,6 @@
 use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP};
 use crate::session::Session;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, trace};
 use tokio::io::AsyncWriteExt;
 use std::time::Instant;
 
@@ -76,11 +76,15 @@ impl Session {
         Ok(())
     }
 
-    pub(super) async fn handle_scsi_cmd(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_scsi_cmd_pipelined(
+        &mut self,
+        req: Pdu,
+        tx: tokio::sync::mpsc::Sender<super::DiskOpResult>,
+    ) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
         let opcode = cdb[0];
         let lun_id = ((req.lun >> 48) & 0xFF) as u8;
-        info!("SCSI opcode=0x{:02X} LUN={} is_imagedisk={}", opcode, lun_id, self.is_imagedisk);
+        trace!("SCSI opcode=0x{:02X} LUN={} is_imagedisk={}", opcode, lun_id, self.is_imagedisk);
 
         let backend = match self.backends.get(&lun_id) {
             Some(b) => b,
@@ -108,43 +112,27 @@ impl Session {
                  u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
             };
             let total_bytes = (num_blocks as usize) * (backend.block_size() as usize);
-            let t0 = Instant::now();
-
-            let mut buf = std::mem::take(&mut self.read_buf);
-            if buf.len() < total_bytes {
-                buf.resize(total_bytes, 0);
-            }
-
-            // All reads via spawn_blocking to avoid blocking tokio worker threads
             let backend = backend.clone();
-            let handle = tokio::task::spawn_blocking(move || {
-                if let Some(cache) = cache_opt {
-                    cache.read_blocks_cached(&backend, lba, num_blocks, &mut buf[..total_bytes])?;
-                } else {
-                    backend.read_blocks(lba, num_blocks, &mut buf[..total_bytes])?;
-                }
-                Ok::<Vec<u8>, std::io::Error>(buf)
+            let itt = req.initiator_task_tag;
+
+            tokio::spawn(async move {
+                let res = tokio::task::spawn_blocking(move || {
+                    let mut buf = vec![0u8; total_bytes];
+                    if let Some(cache) = cache_opt {
+                        cache.read_blocks_cached(&backend, lba, num_blocks, &mut buf)?;
+                    } else {
+                        backend.read_blocks(lba, num_blocks, &mut buf)?;
+                    }
+                    Ok::<Vec<u8>, std::io::Error>(buf)
+                }).await.unwrap();
+
+                let _ = tx.send(super::DiskOpResult {
+                    itt,
+                    opcode,
+                    req,
+                    result: res,
+                }).await;
             });
-            match handle.await {
-                Ok(Ok(returned_buf)) => {
-                    self.read_buf = returned_buf;
-                    
-                    let ptr = self.read_buf.as_ptr();
-                    let data = unsafe { std::slice::from_raw_parts(ptr, total_bytes) };
-                    self.send_scsi_data_in(req.initiator_task_tag, data, 0x00, req.expected_data_len).await?;
-                    
-                    self.stats.bytes_read.fetch_add(total_bytes as u64, std::sync::atomic::Ordering::Relaxed);
-                    info!("READ{} LUN={} LBA={}: {} blocks done in {}µs", 
-                        if opcode == 0x88 { "16" } else { "10" }, lun_id, lba, num_blocks, t0.elapsed().as_micros());
-                }
-                Ok(Err(e)) => {
-                    error!("Gagal membaca disk backend LUN {} untuk LBA {}: {}", lun_id, lba, e);
-                    self.send_scsi_check_condition(req.initiator_task_tag, 0x03, 0x11, 0x00).await?;
-                }
-                Err(_) => {
-                    error!("spawn_blocking panicked untuk LUN {} LBA {}", lun_id, lba);
-                }
-            }
 
         // --- WRITE10/16: dispatch to specialized handlers ---
         } else if opcode == 0x2A || opcode == 0x8A {
@@ -158,12 +146,12 @@ impl Session {
             } else {
                 u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32
             };
-            info!("WRITE LUN={} LBA={} blocks={}", lun_id, lba, num_blocks);
+            trace!("WRITE LUN={} LBA={} blocks={}", lun_id, lba, num_blocks);
 
             if self.is_imagedisk {
-                self.handle_imagedisk_write(&req, lun_id, lba, num_blocks).await?;
+                self.handle_imagedisk_write_pipelined(&req, lun_id, lba, num_blocks, tx).await?;
             } else {
-                self.handle_gamedisk_write(&req, lun_id, lba, num_blocks).await?;
+                self.handle_gamedisk_write_pipelined(&req, lun_id, lba, num_blocks, tx).await?;
             }
 
         // --- Other SCSI commands: dispatch to specialized handlers ---
@@ -176,7 +164,11 @@ impl Session {
         Ok(())
     }
 
-    pub(super) async fn handle_data_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_data_out_pipelined(
+        &mut self,
+        req: Pdu,
+        tx: tokio::sync::mpsc::Sender<super::DiskOpResult>,
+    ) -> Result<(), std::io::Error> {
         let itt = req.initiator_task_tag;
         
         let mut is_complete = false;
@@ -201,35 +193,35 @@ impl Session {
             let pending_buffer = pending.buffer;
             let pending_lba = pending.lba;
             let pending_num_blocks = pending.num_blocks;
+            let expected_len = pending.expected_len;
+            let lun_id = pending.lun_id;
+            let req_clone = req.clone();
 
-            let handle = tokio::task::spawn_blocking(move || {
-                if is_imagedisk {
-                    backend.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
-                } else {
-                    if let Some(cache) = cache_opt {
-                        cache.write_stream(pending_lba, 0, &pending_buffer)
+            tokio::spawn(async move {
+                let res = tokio::task::spawn_blocking(move || {
+                    if is_imagedisk {
+                        backend.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
                     } else {
-                        Ok(())
+                        if let Some(cache) = cache_opt {
+                            cache.write_stream(pending_lba, 0, &pending_buffer)
+                        } else {
+                            Ok(())
+                        }
                     }
-                }
-            });
+                }).await.unwrap();
 
-            match handle.await {
-                Ok(Ok(())) => {
-                    self.stats.bytes_written.fetch_add(pending.expected_len as u64, std::sync::atomic::Ordering::Relaxed);
-                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                if res.is_ok() {
+                    trace!("WRITE LUN {} LBA {} selesai via Data-Out ({} bytes)", lun_id, pending_lba, expected_len);
                 }
-                Ok(Err(e)) => {
-                    error!("Gagal menulis blok pada LUN {}: {}", pending.lun_id, e);
-                    self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
-                }
-                Err(e) => {
-                    error!("Task panic saat menulis: {}", e);
-                    self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
-                }
-            }
+                let _ = tx.send(super::DiskOpResult {
+                    itt,
+                    opcode: 0x2A,
+                    req: req_clone,
+                    result: res.map(|_| Vec::new()),
+                }).await;
+            });
             
-            info!("WRITE LUN {} LBA {} selesai via Data-Out ({} bytes)", pending.lun_id, pending.lba, pending.expected_len);
+            self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
         }
         
         Ok(())
