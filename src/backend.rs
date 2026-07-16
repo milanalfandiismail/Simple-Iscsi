@@ -1,8 +1,60 @@
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use tracing::{info, warn, error};
+
+#[cfg(windows)]
+use std::os::windows::fs::FileExt;
+
+fn file_read_exact_at(file: &File, mut offset: u64, mut buf: &mut [u8]) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        while !buf.is_empty() {
+            match file.seek_read(buf, offset) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let tmp = buf;
+                    buf = &mut tmp[n..];
+                    offset += n as u64;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        if !buf.is_empty() {
+            Err(io::Error::new(io::ErrorKind::UnexpectedEof, "failed to fill whole buffer"))
+        } else {
+            Ok(())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        unimplemented!("Only windows is supported for concurrent I/O")
+    }
+}
+
+fn file_write_all_at(file: &File, mut offset: u64, mut buf: &[u8]) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        while !buf.is_empty() {
+            match file.seek_write(buf, offset) {
+                Ok(0) => return Err(io::Error::new(io::ErrorKind::WriteZero, "failed to write whole buffer")),
+                Ok(n) => {
+                    buf = &buf[n..];
+                    offset += n as u64;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        unimplemented!("Only windows is supported for concurrent I/O")
+    }
+}
 
 use crate::vhd::VhdBackend;
 
@@ -20,20 +72,83 @@ enum BackendType {
 }
 
 impl BackendType {
-    fn read_exact_at(&mut self, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+    fn read_exact_at(&self, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
         match self {
-            BackendType::RawDisk(ref mut file) => {
+            BackendType::RawDisk(ref file) => {
                 let offset = lba * block_size;
-                file.seek(SeekFrom::Start(offset))?;
-                file.read_exact(buf)
+                file_read_exact_at(file, offset, buf)
             }
-            BackendType::Vhd(ref mut vhd) => {
+            BackendType::Vhd(ref vhd) => {
                 Self::vhd_read_blocks(vhd, lba, block_size, buf)
             }
-            BackendType::VhdDiff { ref mut child, ref mut parent } => {
+            BackendType::VhdDiff { ref child, ref parent } => {
                 Self::vhd_diff_read_blocks(child, parent, lba, block_size, buf)
             }
         }
+    }
+
+    fn needs_allocation(&self, lba: u64, block_size: u64, buf_len: usize) -> bool {
+        match self {
+            BackendType::RawDisk(_) => false,
+            BackendType::Vhd(ref vhd) => Self::vhd_needs_allocation(vhd, lba, block_size, buf_len),
+            BackendType::VhdDiff { ref child, .. } => Self::vhd_needs_allocation(child, lba, block_size, buf_len),
+        }
+    }
+
+    fn vhd_needs_allocation(vhd: &VhdBackend, lba: u64, block_size: u64, buf_len: usize) -> bool {
+        let vhd_block_size = vhd.vhd_block_size as u64;
+        let start_block = (lba * block_size) / vhd_block_size;
+        let end_block = ((lba * block_size + buf_len as u64 - 1) / vhd_block_size) + 1;
+        for block_idx in start_block..end_block.min(vhd.bat.len() as u64) {
+            if vhd.bat[block_idx as usize] == 0xFFFFFFFF {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn write_concurrently(&self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+        match self {
+            BackendType::RawDisk(ref file) => {
+                let offset = lba * block_size;
+                file_write_all_at(file, offset, buf)?;
+                Ok(())
+            }
+            BackendType::Vhd(ref vhd) => {
+                Self::vhd_write_blocks_concurrent(vhd, lba, block_size, buf)
+            }
+            BackendType::VhdDiff { ref child, .. } => {
+                Self::vhd_write_blocks_concurrent(child, lba, block_size, buf)
+            }
+        }
+    }
+
+    fn vhd_write_blocks_concurrent(vhd: &VhdBackend, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+        let vhd_block_size = vhd.vhd_block_size as u64;
+        let bitmap_size = vhd.sector_bitmap_size as u64;
+        let mut buf_offset = 0;
+        let mut current_byte_offset = lba * block_size;
+        
+        while buf_offset < buf.len() {
+            let vhd_block_idx = current_byte_offset / vhd_block_size;
+            let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+            let chunk = std::cmp::min(
+                buf.len() - buf_offset,
+                (vhd_block_size - offset_in_vhd_block) as usize
+            );
+            
+            let bat_val = vhd.bat[vhd_block_idx as usize];
+            if bat_val == 0xFFFFFFFF {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "concurrent write hit unallocated block"));
+            }
+            
+            let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
+            file_write_all_at(&vhd.file, physical_offset, &buf[buf_offset..buf_offset + chunk])?;
+            
+            buf_offset += chunk;
+            current_byte_offset += chunk as u64;
+        }
+        Ok(())
     }
 
     fn write_at(&mut self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
@@ -42,7 +157,6 @@ impl BackendType {
                 let offset = lba * block_size;
                 file.seek(SeekFrom::Start(offset))?;
                 file.write_all(buf)?;
-                file.sync_all()?;
                 Ok(())
             }
             BackendType::Vhd(ref mut vhd) => {
@@ -64,7 +178,7 @@ impl BackendType {
     }
 
     /// Read from single VHD (dynamic or simple)
-    fn vhd_read_blocks(vhd: &mut VhdBackend, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+    fn vhd_read_blocks(vhd: &VhdBackend, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
         let mut buf_offset = 0;
         let mut current_byte_offset = lba * block_size;
         let vhd_block_size = vhd.vhd_block_size as u64;
@@ -85,8 +199,7 @@ impl BackendType {
                 }
             } else {
                 let physical_offset = (bat_val as u64) * 512 + (vhd.sector_bitmap_size as u64) + offset_in_vhd_block;
-                vhd.file.seek(SeekFrom::Start(physical_offset))?;
-                vhd.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                file_read_exact_at(&vhd.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
             }
             buf_offset += bytes_to_read;
             current_byte_offset += bytes_to_read as u64;
@@ -95,7 +208,7 @@ impl BackendType {
     }
 
     /// Read from differencing disk: child first, fallback to parent, fallback to zeros
-    fn vhd_diff_read_blocks(child: &mut VhdBackend, parent: &mut Option<VhdBackend>, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+    fn vhd_diff_read_blocks(child: &VhdBackend, parent: &Option<VhdBackend>, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
         let mut buf_offset = 0;
         let mut current_byte_offset = lba * block_size;
         let vhd_block_size = child.vhd_block_size as u64;
@@ -113,15 +226,13 @@ impl BackendType {
             if child_bat != 0xFFFFFFFF {
                 // Read from child
                 let physical_offset = (child_bat as u64) * 512 + (child.sector_bitmap_size as u64) + offset_in_vhd_block;
-                child.file.seek(SeekFrom::Start(physical_offset))?;
-                child.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
-            } else if let Some(ref mut parent) = parent {
+                file_read_exact_at(&child.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+            } else if let Some(ref parent) = parent {
                 let parent_bat = *parent.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
                 if parent_bat != 0xFFFFFFFF {
                     // Read from parent
                     let physical_offset = (parent_bat as u64) * 512 + (parent.sector_bitmap_size as u64) + offset_in_vhd_block;
-                    parent.file.seek(SeekFrom::Start(physical_offset))?;
-                    parent.file.read_exact(&mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                    file_read_exact_at(&parent.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
                 } else {
                     for i in 0..bytes_to_read {
                         buf[buf_offset + i] = 0;
@@ -140,7 +251,7 @@ impl BackendType {
 
     /// Write to differencing disk with Copy-on-Write: allocate child block,
     /// copy parent data first, then overlay write data.
-    fn vhd_diff_write_blocks(child: &mut VhdBackend, parent: &mut Option<VhdBackend>, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+    fn vhd_diff_write_blocks(child: &mut VhdBackend, parent: &Option<VhdBackend>, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
         let vhd_block_size = child.vhd_block_size as u64;
         let bitmap_size = child.sector_bitmap_size as u64;
         let start_block = (lba * block_size) / vhd_block_size;
@@ -161,12 +272,11 @@ impl BackendType {
                 child.file.write_all(&zero_bitmap)?;
 
                 // COPY-ON-WRITE: read full block from parent
-                if let Some(ref mut p) = parent {
+                if let Some(ref p) = parent {
                     let parent_bat = *p.bat.get(block_idx as usize).unwrap_or(&0xFFFFFFFF);
                     if parent_bat != 0xFFFFFFFF {
                         let parent_offset = (parent_bat as u64) * 512 + (p.sector_bitmap_size as u64);
-                        p.file.seek(SeekFrom::Start(parent_offset))?;
-                        p.file.read_exact(&mut block_data)?;
+                        file_read_exact_at(&p.file, parent_offset, &mut block_data)?;
                     } else {
                         block_data.fill(0);
                     }
@@ -209,7 +319,7 @@ impl BackendType {
             current_byte_offset += chunk as u64;
         }
 
-        child.file.sync_all()?;
+        
         Ok(())
     }
 
@@ -267,20 +377,17 @@ impl BackendType {
             current_byte_offset += chunk as u64;
         }
 
-        vhd.file.sync_all()?;
+        
         Ok(())
     }
 }
 
 struct BackendInner {
     backend: BackendType,
-    ra_buf: Vec<u8>,
-    ra_lba: u64,
-    ra_blocks: u32,
 }
 
 pub struct Backend {
-    inner: Arc<Mutex<BackendInner>>,
+    inner: Arc<RwLock<BackendInner>>,
     block_size: u64,
     total_size: u64,
     total_blocks: u64,
@@ -337,13 +444,10 @@ impl Backend {
 
         let inner = BackendInner {
             backend: BackendType::RawDisk(file),
-            ra_buf: vec![0u8; RA_SIZE],
-            ra_lba: u64::MAX,
-            ra_blocks: 0,
         };
 
         Ok(Backend {
-            inner: Arc::new(Mutex::new(inner)),
+            inner: Arc::new(RwLock::new(inner)),
             block_size,
             total_size,
             total_blocks: total_size / block_size,
@@ -380,13 +484,10 @@ impl Backend {
 
         let inner = BackendInner {
             backend: BackendType::Vhd(vhd),
-            ra_buf: vec![0u8; RA_SIZE],
-            ra_lba: u64::MAX,
-            ra_blocks: 0,
         };
 
         Ok(Backend {
-            inner: Arc::new(Mutex::new(inner)),
+            inner: Arc::new(RwLock::new(inner)),
             block_size,
             total_size,
             total_blocks: total_size / block_size,
@@ -455,13 +556,10 @@ impl Backend {
 
         let inner = BackendInner {
             backend: BackendType::VhdDiff { child, parent },
-            ra_buf: vec![0u8; RA_SIZE],
-            ra_lba: u64::MAX,
-            ra_blocks: 0,
         };
 
         Ok(Backend {
-            inner: Arc::new(Mutex::new(inner)),
+            inner: Arc::new(RwLock::new(inner)),
             block_size,
             total_size,
             total_blocks: total_size / block_size,
@@ -487,7 +585,7 @@ impl Backend {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil"));
         }
 
-        let mut inner = self.inner.lock();
+        let inner = self.inner.read();
         let total_blocks = self.total_blocks;
 
         if lba >= total_blocks {
@@ -497,28 +595,7 @@ impl Backend {
         let num = num_blocks.min(max_blocks);
         let actual_len = (num as u64) * bs;
 
-        if actual_len <= RA_SIZE as u64 {
-            if lba >= inner.ra_lba
-                && (lba - inner.ra_lba) < inner.ra_blocks as u64
-                && (lba - inner.ra_lba + num as u64) <= inner.ra_blocks as u64
-            {
-                let off = ((lba - inner.ra_lba) * bs) as usize;
-                buf[..actual_len as usize]
-                    .copy_from_slice(&inner.ra_buf[off..off + actual_len as usize]);
-                return Ok(());
-            }
-
-            // Read exactly what was requested — no forced 1MB read-ahead
-            let ra_slice = unsafe { &mut *std::ptr::addr_of_mut!(inner.ra_buf[..actual_len as usize]) };
-            inner.backend.read_exact_at(lba, bs, ra_slice)?;
-            inner.ra_lba = lba;
-            inner.ra_blocks = num;
-
-            buf[..actual_len as usize]
-                .copy_from_slice(&inner.ra_buf[..actual_len as usize]);
-        } else {
-            inner.backend.read_exact_at(lba, bs, &mut buf[..actual_len as usize])?;
-        }
+        inner.backend.read_exact_at(lba, bs, &mut buf[..actual_len as usize])?;
 
         Ok(())
     }
@@ -531,17 +608,25 @@ impl Backend {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil untuk write"));
         }
 
-        let mut inner = self.inner.lock();
-        inner.backend.write_at(lba, bs, &buf[..write_len as usize])?;
+        let needs_alloc = {
+            let inner = self.inner.read();
+            inner.backend.needs_allocation(lba, bs, write_len as usize)
+        };
 
-        // Invalidate read-ahead cache — data in child VHD has changed
-        inner.ra_blocks = 0;
+        if !needs_alloc {
+            let inner = self.inner.read();
+            inner.backend.write_concurrently(lba, bs, &buf[..write_len as usize])?;
+        } else {
+            let mut inner = self.inner.write();
+            inner.backend.write_at(lba, bs, &buf[..write_len as usize])?;
+        }
+
         Ok(())
     }
 
     /// Flush all pending writes to physical disk
     pub fn sync(&self) -> io::Result<()> {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.write();
         inner.backend.sync()
     }
 }
