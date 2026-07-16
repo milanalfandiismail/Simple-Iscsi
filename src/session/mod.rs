@@ -3,7 +3,7 @@ use crate::writeback_gamedisk::ClientCache;
 use crate::writeback_imagedisk;
 use crate::stats::ServerStats;
 use crate::pdu::{
-    self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD,
+    self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, OP_SCSI_CMD, OP_TMF_REQ,
     OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, OP_DATA_OUT, STAGE_FULL_FEATURE_PHASE,
 };
 use std::net::IpAddr;
@@ -385,6 +385,9 @@ impl Session {
                             }
                             OP_TEXT_REQ => {
                                 self.handle_text_req(req).await?;
+                            }
+                            OP_TMF_REQ => {
+                                self.handle_tmf_req(req).await?;
                             }
                             OP_SCSI_CMD => {
                                 self.handle_scsi_cmd_pipelined(req, response_tx.clone()).await?;
