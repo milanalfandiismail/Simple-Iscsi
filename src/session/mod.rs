@@ -18,6 +18,13 @@ pub mod scsi_handler_imagedisk;
 pub mod pdu_io;
 use tracing::{info, warn, error};
 
+pub struct DiskOpResult {
+    pub itt: u32,
+    pub opcode: u8,
+    pub req: Pdu,
+    pub result: Result<Vec<u8>, std::io::Error>,
+}
+
 pub struct PendingWrite {
     pub lun_id: u8,
     pub lba: u64,
@@ -45,8 +52,6 @@ pub struct Session {
     exp_cmd_sn: u32,
     max_cmd_sn: u32,
     max_recv_data_segment_len: usize,
-    /// Reusable read buffer – eliminate alloc per READ10.
-    read_buf: Vec<u8>,
     pub pending_writes: HashMap<u32, PendingWrite>,
 }
 
@@ -123,7 +128,6 @@ impl Session {
             exp_cmd_sn: 0,
             max_cmd_sn: 32,
             max_recv_data_segment_len: 16777216, // 16MB
-            read_buf: Vec::new(),
             pending_writes: HashMap::new(),
         }
     }
@@ -326,44 +330,77 @@ impl Session {
 
         // 3. FFP Message Loop
         let mut logged_out = false;
+        let (response_tx, mut response_rx) = tokio::sync::mpsc::channel::<DiskOpResult>(128);
         
         let loop_result: Result<(), std::io::Error> = async {
             loop {
-                let req = match pdu::parser::read_pdu(&mut self.stream).await {
-                    Ok(p) => p,
-                    Err(e) => {
-                        info!("TCP connection closed or errored: {}", e);
-                        break;
-                    }
-                };
+                tokio::select! {
+                    req_res = pdu::parser::read_pdu(&mut self.stream) => {
+                        let req = match req_res {
+                            Ok(p) => p,
+                            Err(e) => {
+                                info!("TCP connection closed or errored: {}", e);
+                                break;
+                            }
+                        };
 
-                let is_immediate = req.is_immediate;
-                if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
-                    self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-                    self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
-                }
+                        let is_immediate = req.is_immediate;
+                        if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
+                            self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
+                            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+                        }
 
-                match req.opcode {
-                    OP_NOP_OUT => {
-                        self.handle_nop_out(req).await?;
+                        match req.opcode {
+                            OP_NOP_OUT => {
+                                self.handle_nop_out(req).await?;
+                            }
+                            OP_LOGOUT_REQ => {
+                                // ignore error if client closes socket early after sending LOGOUT
+                                let _ = self.handle_logout(req).await;
+                                logged_out = true;
+                                break; // Selesai
+                            }
+                            OP_TEXT_REQ => {
+                                self.handle_text_req(req).await?;
+                            }
+                            OP_SCSI_CMD => {
+                                self.handle_scsi_cmd_pipelined(req, response_tx.clone()).await?;
+                            }
+                            OP_DATA_OUT => {
+                                self.handle_data_out_pipelined(req, response_tx.clone()).await?;
+                            }
+                            _ => {
+                                warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
+                            }
+                        }
                     }
-                    OP_LOGOUT_REQ => {
-                        // ignore error if client closes socket early after sending LOGOUT
-                        let _ = self.handle_logout(req).await;
-                        logged_out = true;
-                        break; // Selesai
-                    }
-                    OP_TEXT_REQ => {
-                        self.handle_text_req(req).await?;
-                    }
-                    OP_SCSI_CMD => {
-                        self.handle_scsi_cmd(req).await?;
-                    }
-                    OP_DATA_OUT => {
-                        self.handle_data_out(req).await?;
-                    }
-                    _ => {
-                        warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
+                    Some(op) = response_rx.recv() => {
+                        match op.opcode {
+                            0x28 | 0x88 => { // READ10/READ16 completion
+                                match op.result {
+                                    Ok(buf) => {
+                                        self.send_scsi_data_in(op.itt, &buf, 0x00, op.req.expected_data_len).await?;
+                                        self.stats.bytes_read.fetch_add(buf.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                                    }
+                                    Err(e) => {
+                                        error!("Gagal membaca disk LUN {} LBA {}: {}", op.req.lun, op.itt, e);
+                                        self.send_scsi_check_condition(op.itt, 0x03, 0x11, 0x00).await?;
+                                    }
+                                }
+                            }
+                            0x2A | 0x8A => { // WRITE10/WRITE16 completion (either Immediate or Data-Out)
+                                match op.result {
+                                    Ok(_) => {
+                                        self.send_scsi_response(op.itt, 0x00, 0, 0, 0).await?;
+                                    }
+                                    Err(e) => {
+                                        error!("Gagal menulis disk LUN {} LBA {}: {}", op.req.lun, op.itt, e);
+                                        self.send_scsi_response(op.itt, 0x02, 0x03, 0x0C, 0x00).await?;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }

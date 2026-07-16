@@ -57,7 +57,6 @@ impl Session {
 
         let packet = pdu::builder::build_pdu(&resp);
         self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
         Ok(())
     }
 
@@ -180,7 +179,6 @@ impl Session {
 
         let packet = pdu::builder::build_pdu(&resp);
         self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
         Ok(())
     }
 
@@ -218,7 +216,6 @@ impl Session {
 
         let packet = pdu::builder::build_pdu(&resp);
         self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
         Ok(())
     }
 
