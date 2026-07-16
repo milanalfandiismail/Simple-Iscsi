@@ -173,7 +173,6 @@ impl ClientCache {
         {
             use std::os::windows::fs::OpenOptionsExt;
             read_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
-            read_options.custom_flags(0x20000000); // FILE_FLAG_NO_BUFFERING
         }
         let file_read = read_options.open(&file_path)?;
 
