@@ -35,7 +35,7 @@ pub struct PendingWrite {
 
 pub struct Session {
     read_half: tokio::net::tcp::OwnedReadHalf,
-    writer_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    writer_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     peer_addr: std::net::SocketAddr,
     local_addr: std::net::SocketAddr,
     client_ip: String,
@@ -117,7 +117,7 @@ impl Session {
         let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
 
         let (read_half, write_half) = stream.into_split();
-        let (writer_tx, mut writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+        let (writer_tx, mut writer_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
         // Spawn dedicated TCP writer task to prevent head-of-line blocking on TCP writes
         tokio::spawn(async move {
@@ -286,7 +286,7 @@ impl Session {
             resp.data = pdu::builder::build_text_parameters(&resp_params);
 
             let packet = pdu::builder::build_pdu(&resp);
-            self.writer_tx.send(packet).await.map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))?;
+            self.writer_tx.send(packet).map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))?;
         }
 
         info!("Transisi login sukses. Client masuk ke FFP (Full Feature Phase).");
