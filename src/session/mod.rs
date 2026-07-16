@@ -126,7 +126,7 @@ impl Session {
             is_discovery: false,
             stat_sn: 1,
             exp_cmd_sn: 0,
-            max_cmd_sn: 32,
+            max_cmd_sn: 256,
             max_recv_data_segment_len: 16777216, // 16MB
             pending_writes: HashMap::new(),
         }
@@ -254,7 +254,7 @@ impl Session {
             self.stat_sn = self.stat_sn.wrapping_add(1);
             
             self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(256);
             
             resp.exp_stat_sn = self.exp_cmd_sn;
             resp.max_cmd_sn = self.max_cmd_sn;
@@ -348,7 +348,7 @@ impl Session {
                         let is_immediate = req.is_immediate;
                         if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
                             self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-                            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+                            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(256);
                         }
 
                         match req.opcode {
