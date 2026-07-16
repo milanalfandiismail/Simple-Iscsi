@@ -16,9 +16,7 @@ impl Session {
         resp.max_cmd_sn = self.max_cmd_sn;
 
         let packet = pdu::builder::build_pdu(&resp);
-        self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
-        Ok(())
+        self.send_packet(packet).await
     }
 
     pub(super) async fn handle_logout(&mut self, req: Pdu) -> Result<(), std::io::Error> {
@@ -33,9 +31,7 @@ impl Session {
         resp.max_cmd_sn = self.max_cmd_sn;
 
         let packet = pdu::builder::build_pdu(&resp);
-        self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
-        Ok(())
+        self.send_packet(packet).await
     }
 
     pub(super) async fn handle_text_req(&mut self, req: Pdu) -> Result<(), std::io::Error> {
@@ -45,7 +41,7 @@ impl Session {
         let mut resp_params = Vec::new();
 
         if params.get("SendTargets").map(|s| s.as_str()) == Some("All") {
-            let local_addr = self.stream.local_addr()?;
+            let local_addr = self.local_addr;
             let ip = local_addr.ip();
             let port = local_addr.port();
             
@@ -71,9 +67,7 @@ impl Session {
         resp.data = pdu::builder::build_text_parameters(&resp_params);
 
         let packet = pdu::builder::build_pdu(&resp);
-        self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
-        Ok(())
+        self.send_packet(packet).await
     }
 
     pub(super) async fn handle_scsi_cmd_pipelined(

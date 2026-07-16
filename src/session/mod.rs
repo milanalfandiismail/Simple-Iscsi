@@ -34,7 +34,10 @@ pub struct PendingWrite {
 }
 
 pub struct Session {
-    stream: TcpStream,
+    read_half: tokio::net::tcp::OwnedReadHalf,
+    writer_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    peer_addr: std::net::SocketAddr,
+    local_addr: std::net::SocketAddr,
     client_ip: String,
     gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
     backends: HashMap<u8, Arc<Backend>>,
@@ -110,8 +113,28 @@ impl Session {
             }
         }
 
+        let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
+        let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
+
+        let (read_half, write_half) = stream.into_split();
+        let (writer_tx, mut writer_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+
+        // Spawn dedicated TCP writer task to prevent head-of-line blocking on TCP writes
+        tokio::spawn(async move {
+            let mut write_half = write_half;
+            while let Some(packet) = writer_rx.recv().await {
+                if let Err(e) = write_half.write_all(&packet).await {
+                    error!("TCP Writer task error: {}", e);
+                    break;
+                }
+            }
+        });
+
         Session {
-            stream,
+            read_half,
+            writer_tx,
+            peer_addr,
+            local_addr,
             client_ip: client_ip.to_string(),
             gamedisk_backends,
             backends: HashMap::new(),
@@ -142,13 +165,13 @@ impl Drop for Session {
 impl Session {
     /// Menjalankan state machine sesi.
     pub async fn run(mut self) -> Result<(), std::io::Error> {
-        let peer_addr = self.stream.peer_addr()?;
+        let peer_addr = self.peer_addr;
         info!("Sesi baru dimulai dari client: {}", peer_addr);
 
         // 1. Fase Login
         let mut in_login = true;
         while in_login {
-            let req = pdu::parser::read_pdu(&mut self.stream).await?;
+            let req = pdu::parser::read_pdu(&mut self.read_half).await?;
             if req.opcode != OP_LOGIN_REQ {
                 warn!("Menerima opcode non-login selama fase login: 0x{:02X}", req.opcode);
                 return Ok(());
@@ -263,8 +286,7 @@ impl Session {
             resp.data = pdu::builder::build_text_parameters(&resp_params);
 
             let packet = pdu::builder::build_pdu(&resp);
-            self.stream.write_all(&packet).await?;
-            self.stream.flush().await?;
+            self.writer_tx.send(packet).await.map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))?;
         }
 
         info!("Transisi login sukses. Client masuk ke FFP (Full Feature Phase).");
@@ -336,7 +358,7 @@ impl Session {
         let loop_result: Result<(), std::io::Error> = async {
             loop {
                 tokio::select! {
-                    req_res = pdu::parser::read_pdu(&mut self.stream) => {
+                    req_res = pdu::parser::read_pdu(&mut self.read_half) => {
                         let req = match req_res {
                             Ok(p) => p,
                             Err(e) => {
