@@ -394,10 +394,11 @@ pub struct Backend {
     pub vendor_id: String,
     pub product_id: String,
     pub product_revision: String,
+    read_cache: Option<moka::sync::Cache<u64, Arc<Vec<u8>>>>,
 }
 
 impl Backend {
-    pub fn new_raw(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
+    pub fn new_raw(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
         info!("Membuka storage backend raw: {}", path);
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
@@ -457,6 +458,19 @@ impl Backend {
             backend: BackendType::RawDisk(ov_file),
         };
 
+        let read_cache = if read_cache_gb > 0 {
+            let max_chunks = read_cache_gb * 4096;
+            info!("Inisialisasi Read-Ahead cache: {} GB ({} chunks)", read_cache_gb, max_chunks);
+            Some(
+                moka::sync::Cache::builder()
+                    .max_capacity(max_chunks)
+                    .time_to_idle(std::time::Duration::from_secs(300))
+                    .build()
+            )
+        } else {
+            None
+        };
+
         Ok(Backend {
             inner: Arc::new(RwLock::new(inner)),
             block_size,
@@ -465,11 +479,12 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
+            read_cache,
         })
     }
 
     #[allow(dead_code)]
-    pub fn new_vhd(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
+    pub fn new_vhd(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
         info!("Membuka storage backend VHD: {}", path);
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
@@ -509,6 +524,19 @@ impl Backend {
             backend: BackendType::Vhd(vhd),
         };
 
+        let read_cache = if read_cache_gb > 0 {
+            let max_chunks = read_cache_gb * 4096;
+            info!("Inisialisasi Read-Ahead cache: {} GB ({} chunks)", read_cache_gb, max_chunks);
+            Some(
+                moka::sync::Cache::builder()
+                    .max_capacity(max_chunks)
+                    .time_to_idle(std::time::Duration::from_secs(300))
+                    .build()
+            )
+        } else {
+            None
+        };
+
         Ok(Backend {
             inner: Arc::new(RwLock::new(inner)),
             block_size,
@@ -517,10 +545,11 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
+            read_cache,
         })
     }
 
-    pub fn new_vhd_diff(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str) -> io::Result<Self> {
+    pub fn new_vhd_diff(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
         info!("Membuka VHD differencing child: {}, parent: {}", child_path, parent_path);
 
         let mut child_options = std::fs::OpenOptions::new();
@@ -608,6 +637,19 @@ impl Backend {
             backend: BackendType::VhdDiff { child, parent },
         };
 
+        let read_cache = if read_cache_gb > 0 {
+            let max_chunks = read_cache_gb * 4096;
+            info!("Inisialisasi Read-Ahead cache: {} GB ({} chunks)", read_cache_gb, max_chunks);
+            Some(
+                moka::sync::Cache::builder()
+                    .max_capacity(max_chunks)
+                    .time_to_idle(std::time::Duration::from_secs(300))
+                    .build()
+            )
+        } else {
+            None
+        };
+
         Ok(Backend {
             inner: Arc::new(RwLock::new(inner)),
             block_size,
@@ -616,6 +658,7 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
+            read_cache,
         })
     }
 
@@ -629,15 +672,13 @@ impl Backend {
 
     pub fn read_blocks(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> io::Result<()> {
         let bs = self.block_size;
-        let _read_len = (num_blocks as u64) * bs;
+        let read_len = (num_blocks as u64) * bs;
 
-        if buf.len() < _read_len as usize {
+        if buf.len() < read_len as usize {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil"));
         }
 
-        let inner = self.inner.read();
         let total_blocks = self.total_blocks;
-
         if lba >= total_blocks {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "LBA melebihi batas"));
         }
@@ -645,7 +686,56 @@ impl Backend {
         let num = num_blocks.min(max_blocks);
         let actual_len = (num as u64) * bs;
 
-        inner.backend.read_exact_at(lba, bs, &mut buf[..actual_len as usize])?;
+        let cache = match &self.read_cache {
+            Some(c) => c,
+            None => {
+                let inner = self.inner.read();
+                return inner.backend.read_exact_at(lba, bs, &mut buf[..actual_len as usize]);
+            }
+        };
+
+        let chunk_size_bytes = 256 * 1024;
+        let blocks_per_chunk = if bs > 0 { chunk_size_bytes / bs } else { 1 };
+
+        let start_byte = lba * bs;
+        let end_byte = start_byte + actual_len;
+
+        let start_chunk = start_byte / chunk_size_bytes;
+        let end_chunk = if end_byte > 0 { (end_byte - 1) / chunk_size_bytes } else { 0 };
+
+        let mut buf_offset = 0;
+
+        for chunk_id in start_chunk..=end_chunk {
+            let chunk_start_byte = chunk_id * chunk_size_bytes;
+            let chunk_end_byte = chunk_start_byte + chunk_size_bytes;
+
+            let read_start = start_byte.max(chunk_start_byte);
+            let read_end = end_byte.min(chunk_end_byte);
+            let bytes_to_copy = (read_end - read_start) as usize;
+
+            let chunk_data = if let Some(data) = cache.get(&chunk_id) {
+                data
+            } else {
+                let mut chunk_buf = vec![0u8; chunk_size_bytes as usize];
+                let chunk_lba = chunk_start_byte / bs;
+                let chunk_blocks = if chunk_lba + blocks_per_chunk > total_blocks {
+                    (total_blocks - chunk_lba) as u32
+                } else {
+                    blocks_per_chunk as u32
+                };
+
+                let inner = self.inner.read();
+                inner.backend.read_exact_at(chunk_lba, bs, &mut chunk_buf[.. (chunk_blocks as u64 * bs) as usize])?;
+
+                let data = Arc::new(chunk_buf);
+                cache.insert(chunk_id, Arc::clone(&data));
+                data
+            };
+
+            let offset_in_chunk = (read_start - chunk_start_byte) as usize;
+            buf[buf_offset..buf_offset + bytes_to_copy].copy_from_slice(&chunk_data[offset_in_chunk..offset_in_chunk + bytes_to_copy]);
+            buf_offset += bytes_to_copy;
+        }
 
         Ok(())
     }
@@ -656,6 +746,18 @@ impl Backend {
 
         if buf.len() < write_len as usize {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil untuk write"));
+        }
+
+        // Invalidate read cache chunks affected by this write
+        if let Some(ref cache) = self.read_cache {
+            let chunk_size_bytes = 256 * 1024;
+            let start_byte = lba * bs;
+            let end_byte = start_byte + write_len;
+            let start_chunk = start_byte / chunk_size_bytes;
+            let end_chunk = if end_byte > 0 { (end_byte - 1) / chunk_size_bytes } else { 0 };
+            for chunk_id in start_chunk..=end_chunk {
+                cache.invalidate(&chunk_id);
+            }
         }
 
         let needs_alloc = {

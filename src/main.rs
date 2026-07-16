@@ -278,6 +278,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &gd_cfg.vendor_id,
             &gd_cfg.product_id,
             &gd_cfg.product_revision,
+            config.server.read_cache_gb,
         ) {
             Ok(b) => {
                 gamedisk_backends.insert(lun_id, Arc::new(b));

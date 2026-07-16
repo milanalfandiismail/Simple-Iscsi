@@ -44,6 +44,7 @@ pub fn init_child_vhd(
             &config.windows.as_ref().unwrap().vendor_id,
             &config.windows.as_ref().unwrap().product_id,
             &config.windows.as_ref().unwrap().product_revision,
+            config.server.read_cache_gb,
         ).map_err(|e| {
             error!("Gagal membuka super VHD {}: {}", super_path, e);
             e
@@ -85,6 +86,7 @@ pub fn init_child_vhd(
             &config.windows.as_ref().unwrap().vendor_id,
             &config.windows.as_ref().unwrap().product_id,
             &config.windows.as_ref().unwrap().product_revision,
+            config.server.read_cache_gb,
         ).map_err(|e| {
             error!("Gagal membuka VHD differencing {}: {}", child_path, e);
             e

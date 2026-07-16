@@ -1,6 +1,7 @@
 [server]
 address = "192.168.137.1"
 port = 3260
+read_cache_gb = 2
 
 [dhcp]
 enabled = true

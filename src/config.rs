@@ -52,6 +52,8 @@ impl AddressConfig {
 pub struct ServerConfig {
     pub address: AddressConfig,
     pub port: u16,
+    #[serde(default)]
+    pub read_cache_gb: u64,
 }
 
 #[derive(Deserialize, Debug, Clone)]
