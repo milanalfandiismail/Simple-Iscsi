@@ -75,6 +75,9 @@ pub struct ClientCache {
     max_cache_size: u64,
     is_super: bool,
     total_bytes_written: AtomicU64,
+    max_write_bytes_per_sec: u64,
+    throttle_bytes_this_window: AtomicU64,
+    throttle_window_start: AtomicU64,
 }
 
 impl ClientCache {
@@ -85,6 +88,7 @@ impl ClientCache {
         block_size: u64,
         max_cache_gb: u64,
         is_super: bool,
+        max_write_speed_mbps: u64,
     ) -> io::Result<Self> {
         // Round-robin drive picker for load balancing across writeback drives
         static NEXT_DRIVE: AtomicUsize = AtomicUsize::new(0);
@@ -206,6 +210,14 @@ impl ClientCache {
             max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
             is_super,
             total_bytes_written: AtomicU64::new(next_write_offset),
+            max_write_bytes_per_sec: max_write_speed_mbps * 1024 * 1024,
+            throttle_bytes_this_window: AtomicU64::new(0),
+            throttle_window_start: AtomicU64::new(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64
+            ),
         })
     }
 
@@ -265,7 +277,37 @@ impl ClientCache {
         Ok(())
     }
 
+    fn throttle_write(&self, bytes_to_write: usize) {
+        if self.max_write_bytes_per_sec == 0 {
+            return;
+        }
+
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        let window_start = self.throttle_window_start.load(Ordering::Relaxed);
+        let elapsed = now_ms.saturating_sub(window_start);
+
+        if elapsed >= 100 {
+            self.throttle_window_start.store(now_ms, Ordering::Relaxed);
+            self.throttle_bytes_this_window.store(0, Ordering::Relaxed);
+        }
+
+        let max_per_window = self.max_write_bytes_per_sec / 10;
+        let written = self.throttle_bytes_this_window.fetch_add(bytes_to_write as u64, Ordering::Relaxed);
+
+        if written + bytes_to_write as u64 > max_per_window {
+            let sleep_ms = 100u64.saturating_sub(elapsed);
+            if sleep_ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+            }
+        }
+    }
+
     pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
+        self.throttle_write(data.len());
         let block_size = self.block_size as usize;
         let start_lba = first_lba + buffer_byte_offset / self.block_size;
         let num_blocks = data.len() / block_size;
