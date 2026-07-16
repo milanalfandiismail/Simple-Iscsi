@@ -135,7 +135,9 @@ impl Session {
                 let res = if cache_hit {
                     Ok(buf)
                 } else {
-                    // Cache miss: panggil thread pool blocking langsung
+                    // Cache miss: Antre di semaphore LUN dan panggil thread pool blocking
+                    let semaphore = backend_clone.io_semaphore.clone();
+                    let _permit = semaphore.acquire().await;
                     tokio::task::spawn_blocking(move || {
                         let mut buf = vec![0u8; total_bytes];
                         if let Some(cache) = cache_opt {
@@ -163,6 +165,8 @@ impl Session {
             let req_clone = req.clone();
 
             tokio::spawn(async move {
+                let semaphore = backend_clone.io_semaphore.clone();
+                let _permit = semaphore.acquire().await;
                 let res = tokio::task::spawn_blocking(move || {
                     if let Some(cache) = cache_opt {
                         cache.flush()
@@ -248,6 +252,8 @@ impl Session {
                     }
                 }
 
+                let semaphore = backend_clone.io_semaphore.clone();
+                let _permit = semaphore.acquire().await;
                 let res = tokio::task::spawn_blocking(move || {
                     if is_imagedisk {
                         backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
