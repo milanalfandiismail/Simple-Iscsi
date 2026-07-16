@@ -299,22 +299,23 @@ pub fn handle_scsi_command(
             let mut data = Vec::with_capacity(total_bytes as usize);
             unsafe { data.set_len(total_bytes as usize); }
 
-            // Baca dari backend (baseline — data asli disk)
-            if let Err(e) = backend.read_blocks(lba, num_blocks, &mut data) {
-                error!("Gagal membaca disk backend untuk LBA {}: {}", lba, e);
-                return ScsiResult::CheckCondition {
-                    key: 0x03,
-                    asc: 0x11,
-                    ascq: 0x00,
-                };
-            }
-
-            // Overlay data dari cache untuk block yang pernah di-WRITE
             if let Some(cache) = cache {
-                if let Some(res) = cache.read_partial_blocks(lba, num_blocks, &mut data) {
-                    if let Err(e) = res {
-                        // ignore error in this dead code path, or log it
-                    }
+                if let Err(e) = cache.read_blocks_cached(backend, lba, num_blocks, &mut data) {
+                    error!("Gagal membaca disk cache/backend untuk LBA {}: {}", lba, e);
+                    return ScsiResult::CheckCondition {
+                        key: 0x03,
+                        asc: 0x11,
+                        ascq: 0x00,
+                    };
+                }
+            } else {
+                if let Err(e) = backend.read_blocks(lba, num_blocks, &mut data) {
+                    error!("Gagal membaca disk backend untuk LBA {}: {}", lba, e);
+                    return ScsiResult::CheckCondition {
+                        key: 0x03,
+                        asc: 0x11,
+                        ascq: 0x00,
+                    };
                 }
             }
 

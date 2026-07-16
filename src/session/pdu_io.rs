@@ -3,6 +3,33 @@ use crate::scsi_gamedisk::ScsiResult;
 use crate::session::Session;
 use tokio::io::AsyncWriteExt;
 
+async fn write_all_vectored(stream: &mut tokio::net::TcpStream, slices: &[std::io::IoSlice<'_>]) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut total_written = 0;
+    let total_len: usize = slices.iter().map(|s| s.len()).sum();
+    
+    while total_written < total_len {
+        let mut current_slices = Vec::new();
+        let mut temp_written = 0;
+        for slice in slices {
+            if temp_written + slice.len() <= total_written {
+                temp_written += slice.len();
+                continue;
+            }
+            let offset = total_written.saturating_sub(temp_written);
+            current_slices.push(std::io::IoSlice::new(&slice[offset..]));
+            temp_written += slice.len();
+        }
+        
+        let n = stream.write_vectored(&current_slices).await?;
+        if n == 0 {
+            return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "failed to write whole buffer"));
+        }
+        total_written += n;
+    }
+    Ok(())
+}
+
 impl Session {
     pub(super) async fn send_r2t(
         &mut self,
@@ -93,25 +120,20 @@ impl Session {
                     resp[44..48].copy_from_slice(&(residual as u32).to_be_bytes());
                 }
 
-                // write_vectored BHS + data, lalu pad, baru RESP
                 let iov = [
                     std::io::IoSlice::new(&bhs),
                     std::io::IoSlice::new(&data[offset..offset + chunk_len]),
+                    std::io::IoSlice::new(&pad_arr[..pad]),
+                    std::io::IoSlice::new(&resp),
                 ];
-                self.stream.write_vectored(&iov).await?;
-                if pad > 0 {
-                    self.stream.write_all(&pad_arr[..pad]).await?;
-                }
-                self.stream.write_all(&resp).await?;
+                write_all_vectored(&mut self.stream, &iov).await?;
             } else {
                 let iov = [
                     std::io::IoSlice::new(&bhs),
                     std::io::IoSlice::new(&data[offset..offset + chunk_len]),
+                    std::io::IoSlice::new(&pad_arr[..pad]),
                 ];
-                self.stream.write_vectored(&iov).await?;
-                if pad > 0 {
-                    self.stream.write_all(&pad_arr[..pad]).await?;
-                }
+                write_all_vectored(&mut self.stream, &iov).await?;
             }
 
             offset += chunk_len;

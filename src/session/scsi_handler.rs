@@ -118,10 +118,10 @@ impl Session {
             // All reads via spawn_blocking to avoid blocking tokio worker threads
             let backend = backend.clone();
             let handle = tokio::task::spawn_blocking(move || {
-                backend.read_blocks(lba, num_blocks, &mut buf[..total_bytes])?;
-                // Cache overlay (gamedisk only — imagedisk has no .bin cache)
                 if let Some(cache) = cache_opt {
-                    let _ = cache.read_partial_blocks(lba, num_blocks, &mut buf[..total_bytes]);
+                    cache.read_blocks_cached(&backend, lba, num_blocks, &mut buf[..total_bytes])?;
+                } else {
+                    backend.read_blocks(lba, num_blocks, &mut buf[..total_bytes])?;
                 }
                 Ok::<Vec<u8>, std::io::Error>(buf)
             });

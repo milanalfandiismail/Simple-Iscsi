@@ -1,25 +1,77 @@
-use dashmap::DashMap;
-use std::fs::{self, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
+use crate::backend::Backend;
 
-const FLUSH_THRESHOLD: u64 = 512;
+#[cfg(windows)]
+use std::os::windows::fs::FileExt;
+
+fn file_read_exact_at(file: &std::fs::File, mut offset: u64, mut buf: &mut [u8]) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        while !buf.is_empty() {
+            match file.seek_read(buf, offset) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let tmp = buf;
+                    buf = &mut tmp[n..];
+                    offset += n as u64;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        if !buf.is_empty() {
+            Err(io::Error::new(io::ErrorKind::UnexpectedEof, "failed to fill whole buffer"))
+        } else {
+            Ok(())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        unimplemented!("Only windows is supported for concurrent I/O")
+    }
+}
+
+fn file_write_all_at(file: &std::fs::File, mut offset: u64, mut buf: &[u8]) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        while !buf.is_empty() {
+            match file.seek_write(buf, offset) {
+                Ok(0) => return Err(io::Error::new(io::ErrorKind::WriteZero, "failed to write whole buffer")),
+                Ok(n) => {
+                    buf = &buf[n..];
+                    offset += n as u64;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        unimplemented!("Only windows is supported for concurrent I/O")
+    }
+}
+
+use dashmap::DashMap;
+use std::fs::{self, OpenOptions};
+use std::io;
+use std::path::{Path, PathBuf};
+
 const CACHE_VERSION: u32 = 1; // bump to auto-invalidate stale .bin from old code
 
 pub struct ClientCache {
     file_path: PathBuf,
     map_path: PathBuf,
-    file: Arc<Mutex<std::fs::File>>,
+    file_read: Arc<std::fs::File>,
+    file_write: Arc<std::fs::File>,
     block_map: DashMap<u64, u64>,
     next_write_offset: AtomicU64,
     block_size: u64,
     max_cache_size: u64,
     is_super: bool,
-    unflushed_writes: AtomicU64,
     total_bytes_written: AtomicU64,
 }
 
@@ -99,40 +151,57 @@ impl ClientCache {
             }
         }
 
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            // NEVER truncate — .bin adalah write layer untuk gamedisk.
-            // Cleanup di-handle eksplisit saat LOGOUT, bukan saat reconnect.
-            .open(&file_path)?;
+        let mut write_options = OpenOptions::new();
+        write_options.write(true).create(true).read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            write_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            write_options.custom_flags(0x80000000); // FILE_FLAG_WRITE_THROUGH
+        }
+        let file_write = write_options.open(&file_path)?;
 
-        Ok(ClientCache {
+        let mut read_options = OpenOptions::new();
+        read_options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            read_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+        }
+        let file_read = read_options.open(&file_path)?;
+
+        Ok(Self {
             file_path,
             map_path,
-            file: Arc::new(Mutex::new(file)),
+            file_read: Arc::new(file_read),
+            file_write: Arc::new(file_write),
             block_map,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
             max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
             is_super,
-            unflushed_writes: AtomicU64::new(0),
             total_bytes_written: AtomicU64::new(next_write_offset),
         })
     }
 
-    pub fn read_partial_blocks(&self, first_lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<io::Result<()>> {
+    pub fn read_blocks_cached(
+        &self,
+        backend: &Backend,
+        first_lba: u64,
+        num_blocks: u32,
+        buf: &mut [u8],
+    ) -> io::Result<()> {
         let n = num_blocks as usize;
-        let mut spans = Vec::new();
-        
+        let block_size = self.block_size as usize;
+
         let mut i = 0;
         while i < n {
             let lba = first_lba + i as u64;
             if let Some(offset_ref) = self.block_map.get(&lba) {
+                // Blok yang ada di cache (contigous)
                 let start_idx = i;
                 let mut current_off = *offset_ref;
                 let base_off = current_off;
-
                 i += 1;
                 while i < n {
                     let next_lba = first_lba + i as u64;
@@ -142,38 +211,33 @@ impl ClientCache {
                             current_off = next_off;
                             i += 1;
                         } else {
-                            break; // Not contiguous in cache file
+                            break;
                         }
                     } else {
-                        break; // Block not in cache
+                        break;
                     }
                 }
-                spans.push((start_idx, i, base_off));
+                let byte_start = start_idx * block_size;
+                let byte_end = i * block_size;
+                file_read_exact_at(&self.file_read, base_off, &mut buf[byte_start..byte_end])?;
             } else {
-                i += 1; // Skip blocks not in cache
+                // Blok yang tidak ada di cache (baca dari base VHD)
+                let start_idx = i;
+                i += 1;
+                while i < n {
+                    let next_lba = first_lba + i as u64;
+                    if self.block_map.contains_key(&next_lba) {
+                        break;
+                    }
+                    i += 1;
+                }
+                let span_blocks = (i - start_idx) as u32;
+                let byte_start = start_idx * block_size;
+                let byte_end = i * block_size;
+                backend.read_blocks(lba, span_blocks, &mut buf[byte_start..byte_end])?;
             }
         }
-
-        if spans.is_empty() {
-            return None;
-        }
-
-        let mut file = self.file.lock();
-
-        let block_size = self.block_size as usize;
-        for (start_idx, end_idx, base_off) in spans {
-            let byte_start = start_idx * block_size;
-            let byte_end = end_idx * block_size;
-
-            if let Err(e) = file.seek(SeekFrom::Start(base_off)) {
-                return Some(Err(e));
-            }
-            if let Err(e) = file.read_exact(&mut buf[byte_start..byte_end]) {
-                return Some(Err(e));
-            }
-        }
-        
-        Some(Ok(()))
+        Ok(())
     }
 
     pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
@@ -185,66 +249,73 @@ impl ClientCache {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data harus block-aligned"));
         }
 
-        if self.block_map.get(&start_lba).is_none() {
-            let total_len = data.len() as u64;
-            self.ensure_capacity(total_len)?;
-            let base = self.next_write_offset.fetch_add(total_len, Ordering::SeqCst);
-            self.total_bytes_written.fetch_add(total_len, Ordering::SeqCst);
-
-            for i in 0..num_blocks {
-                let lba = start_lba + i as u64;
-                let offset = base + (i as u64) * self.block_size;
-                self.block_map.insert(lba, offset);
-                self.append_map(lba, offset);
+        // 1. Kumpulkan offset untuk setiap blok (gunakan yang sudah ada atau alokasikan baru)
+        let mut offsets = Vec::with_capacity(num_blocks);
+        let mut new_mappings = String::new();
+        
+        let mut new_blocks_count = 0;
+        for i in 0..num_blocks {
+            let lba = start_lba + i as u64;
+            if self.block_map.get(&lba).is_none() {
+                new_blocks_count += 1;
             }
-
-            let mut file = self.file.lock();
-            file.seek(SeekFrom::Start(base))?;
-            file.write_all(data)?;
-            // Removed sync_all() to prevent blocking Tokio worker thread.
-            // OS page cache will flush it asynchronously.
-            drop(file);
-
-            self.maybe_flush(num_blocks as u64);
-            return Ok(());
         }
 
-        let mut offsets = Vec::with_capacity(num_blocks);
+        if new_blocks_count > 0 {
+            let total_needed = (new_blocks_count as u64) * self.block_size;
+            self.ensure_capacity(total_needed)?;
+        }
+
+        // Alokasikan base offset untuk blok-blok baru secara berurutan agar sequential di disk
+        let mut new_block_allocated = 0;
+        let mut base_new_offset = 0;
+
         for i in 0..num_blocks {
             let lba = start_lba + i as u64;
             let offset = if let Some(entry) = self.block_map.get(&lba) {
                 *entry
             } else {
-                self.ensure_capacity(self.block_size)?;
-                let off = self.next_write_offset.fetch_add(self.block_size, Ordering::SeqCst);
-                self.total_bytes_written.fetch_add(self.block_size, Ordering::SeqCst);
+                if new_block_allocated == 0 {
+                    let total_new_len = (new_blocks_count as u64) * self.block_size;
+                    base_new_offset = self.next_write_offset.fetch_add(total_new_len, Ordering::SeqCst);
+                    self.total_bytes_written.fetch_add(total_new_len, Ordering::SeqCst);
+                }
+                let off = base_new_offset + (new_block_allocated as u64) * self.block_size;
+                new_block_allocated += 1;
+                
                 self.block_map.insert(lba, off);
-                self.append_map(lba, off);
+                new_mappings.push_str(&format!("{}:{}\n", lba, off));
                 off
             };
             offsets.push(offset);
         }
 
-        let mut file = self.file.lock();
-
+        // 2. Tulis data ke .bin dalam bentuk span kontigu
         let mut span_start = 0;
         while span_start < num_blocks {
             let base_off = offsets[span_start];
             let mut span_end = span_start + 1;
-            while span_end < num_blocks && offsets[span_end] == base_off + (span_end - span_start) as u64 * self.block_size {
+            while span_end < num_blocks && offsets[span_end] == base_off + ((span_end - span_start) as u64) * self.block_size {
                 span_end += 1;
             }
 
             let byte_start = span_start * block_size;
             let byte_end = span_end * block_size;
 
-            file.seek(SeekFrom::Start(base_off))?;
-            file.write_all(&data[byte_start..byte_end])?;
-
+            file_write_all_at(&self.file_write, base_off, &data[byte_start..byte_end])?;
             span_start = span_end;
         }
-        drop(file);
-        self.maybe_flush(num_blocks as u64);
+
+        // 3. Tulis semua mapping baru ke .map dalam SATU file open/write
+        if !new_mappings.is_empty() {
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.map_path)?;
+            use std::io::Write;
+            file.write_all(new_mappings.as_bytes())?;
+        }
+
         Ok(())
     }
 
@@ -270,16 +341,6 @@ impl ClientCache {
         Ok(())
     }
 
-    /// Flush ke disk hanya jika counter melebihi threshold
-    fn maybe_flush(&self, blocks: u64) {
-        let count = self.unflushed_writes.fetch_add(blocks, Ordering::Relaxed) + blocks;
-        if count >= FLUSH_THRESHOLD {
-            let mut file = self.file.lock();
-            let _ = file.sync_all(); // ensure data hits physical disk
-            self.unflushed_writes.store(0, Ordering::Relaxed);
-        }
-    }
-
     fn save_map(&self) {
         let mut map_content = format!("@V:{}\n", CACHE_VERSION);
         for entry in self.block_map.iter() {
@@ -290,20 +351,9 @@ impl ClientCache {
         }
     }
 
-    fn append_map(&self, lba: u64, offset: u64) {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&self.map_path) {
-            let _ = writeln!(file, "{}:{}", lba, offset);
-        }
-    }
 
     pub fn flush(&self) -> io::Result<()> {
-        let mut file = self.file.lock();
-        file.sync_all()?;
-        drop(file);
-        
         self.save_map();
-        
         Ok(())
     }
 
@@ -337,11 +387,6 @@ impl ClientCache {
 
 impl Drop for ClientCache {
     fn drop(&mut self) {
-        // Flush on drop but DON'T auto-delete — cleanup handled explicitly
-        // by session state (logout vs TCP disconnect)
-        if !self.is_super {
-            let file = self.file.lock();
-            let _ = file.sync_all();
-        }
+        self.save_map();
     }
 }
