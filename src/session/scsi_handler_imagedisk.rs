@@ -23,13 +23,12 @@ impl Session {
 
 
 
-    pub(super) async fn handle_imagedisk_write_pipelined(
+    pub(super) async fn handle_imagedisk_write(
         &mut self,
         req: &Pdu,
         lun_id: u8,
         lba: u64,
         num_blocks: u32,
-        tx: tokio::sync::mpsc::Sender<super::DiskOpResult>,
     ) -> Result<(), std::io::Error> {
         let backend = self.backends.get(&lun_id).cloned().unwrap();
         let block_size = backend.block_size();
@@ -64,25 +63,22 @@ impl Session {
         let backend_clone = backend.clone();
         let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
-        let opcode = req.custom_bhs[0];
-        let req_clone = req.clone();
 
-        tokio::spawn(async move {
-            let semaphore = backend_clone.io_semaphore.clone();
-            let _permit = semaphore.acquire().await;
-            let res = tokio::task::spawn_blocking(move || {
-                backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
-            }).await.unwrap();
-            
-            let _ = tx.send(super::DiskOpResult {
-                itt,
-                opcode,
-                req: req_clone,
-                result: res.map(|_| Vec::new()),
-            }).await;
-        });
+        let res = tokio::task::spawn_blocking(move || {
+            backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
+        }).await.unwrap();
 
-        self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+        match res {
+            Ok(_) => {
+                self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+            }
+            Err(e) => {
+                error!("Gagal menulis disk LUN {} LBA {}: {}", lun_id, lba, e);
+                self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
+            }
+        }
+
         Ok(())
     }
 }

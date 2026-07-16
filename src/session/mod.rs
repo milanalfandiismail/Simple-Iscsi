@@ -18,12 +18,7 @@ pub mod scsi_handler_imagedisk;
 pub mod pdu_io;
 use tracing::{info, warn, error};
 
-pub struct DiskOpResult {
-    pub itt: u32,
-    pub opcode: u8,
-    pub req: Pdu,
-    pub result: Result<Vec<u8>, std::io::Error>,
-}
+
 
 pub struct PendingWrite {
     pub lun_id: u8,
@@ -34,8 +29,7 @@ pub struct PendingWrite {
 }
 
 pub struct Session {
-    read_half: tokio::net::tcp::OwnedReadHalf,
-    writer_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    stream: TcpStream,
     peer_addr: std::net::SocketAddr,
     local_addr: std::net::SocketAddr,
     client_ip: String,
@@ -116,23 +110,8 @@ impl Session {
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
         let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
 
-        let (read_half, write_half) = stream.into_split();
-        let (writer_tx, mut writer_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
-
-        // Spawn dedicated TCP writer task to prevent head-of-line blocking on TCP writes
-        tokio::spawn(async move {
-            let mut write_half = write_half;
-            while let Some(packet) = writer_rx.recv().await {
-                if let Err(e) = write_half.write_all(&packet).await {
-                    error!("TCP Writer task error: {}", e);
-                    break;
-                }
-            }
-        });
-
         Session {
-            read_half,
-            writer_tx,
+            stream,
             peer_addr,
             local_addr,
             client_ip: client_ip.to_string(),
@@ -171,7 +150,7 @@ impl Session {
         // 1. Fase Login
         let mut in_login = true;
         while in_login {
-            let req = pdu::parser::read_pdu(&mut self.read_half).await?;
+            let req = pdu::parser::read_pdu(&mut self.stream).await?;
             if req.opcode != OP_LOGIN_REQ {
                 warn!("Menerima opcode non-login selama fase login: 0x{:02X}", req.opcode);
                 return Ok(());
@@ -220,19 +199,15 @@ impl Session {
                 resp_params.push(("ImmediateData".to_string(), val.clone()));
             }
             if params.contains_key("InitialR2T") {
-                // Force No supaya initiator kirim unsolicited data seluas FirstBurstLength
                 resp_params.push(("InitialR2T".to_string(), "No".to_string()));
             }
             if params.contains_key("MaxOutstandingR2T") {
-                // Kita hanya mendukung 1 outstanding R2T
                 resp_params.push(("MaxOutstandingR2T".to_string(), "1".to_string()));
             }
             if params.contains_key("MaxConnections") {
-                // 4 koneksi per sesi
                 resp_params.push(("MaxConnections".to_string(), "4".to_string()));
             }
             if params.contains_key("ErrorRecoveryLevel") {
-                // Kita hanya mendukung level 0
                 resp_params.push(("ErrorRecoveryLevel".to_string(), "0".to_string()));
             }
             if let Some(val) = params.get("DefaultTime2Wait") {
@@ -277,7 +252,7 @@ impl Session {
             self.stat_sn = self.stat_sn.wrapping_add(1);
             
             self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(256);
+            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
             
             resp.exp_stat_sn = self.exp_cmd_sn;
             resp.max_cmd_sn = self.max_cmd_sn;
@@ -286,7 +261,8 @@ impl Session {
             resp.data = pdu::builder::build_text_parameters(&resp_params);
 
             let packet = pdu::builder::build_pdu(&resp);
-            self.writer_tx.send(packet).map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))?;
+            self.stream.write_all(&packet).await?;
+            self.stream.flush().await?;
         }
 
         info!("Transisi login sukses. Client masuk ke FFP (Full Feature Phase).");
@@ -353,91 +329,47 @@ impl Session {
 
         // 3. FFP Message Loop
         let mut logged_out = false;
-        let (response_tx, mut response_rx) = tokio::sync::mpsc::channel::<DiskOpResult>(128);
         
         let loop_result: Result<(), std::io::Error> = async {
             loop {
-                tokio::select! {
-                    req_res = pdu::parser::read_pdu(&mut self.read_half) => {
-                        let req = match req_res {
-                            Ok(p) => p,
-                            Err(e) => {
-                                info!("TCP connection closed or errored: {}", e);
-                                break;
-                            }
-                        };
-
-                        let is_immediate = req.is_immediate;
-                        if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
-                            self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-                            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(256);
-                        }
-
-                        match req.opcode {
-                            OP_NOP_OUT => {
-                                self.handle_nop_out(req).await?;
-                            }
-                            OP_LOGOUT_REQ => {
-                                // ignore error if client closes socket early after sending LOGOUT
-                                let _ = self.handle_logout(req).await;
-                                logged_out = true;
-                                break; // Selesai
-                            }
-                            OP_TEXT_REQ => {
-                                self.handle_text_req(req).await?;
-                            }
-                            OP_TMF_REQ => {
-                                self.handle_tmf_req(req).await?;
-                            }
-                            OP_SCSI_CMD => {
-                                self.handle_scsi_cmd_pipelined(req, response_tx.clone()).await?;
-                            }
-                            OP_DATA_OUT => {
-                                self.handle_data_out_pipelined(req, response_tx.clone()).await?;
-                            }
-                            _ => {
-                                warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
-                            }
-                        }
+                let req = match pdu::parser::read_pdu(&mut self.stream).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        info!("TCP connection closed or errored: {}", e);
+                        break;
                     }
-                    Some(op) = response_rx.recv() => {
-                        match op.opcode {
-                            0x28 | 0x88 => { // READ10/READ16 completion
-                                match op.result {
-                                    Ok(buf) => {
-                                        self.send_scsi_data_in(op.itt, &buf, 0x00, op.req.expected_data_len).await?;
-                                        self.stats.bytes_read.fetch_add(buf.len() as u64, std::sync::atomic::Ordering::Relaxed);
-                                    }
-                                    Err(e) => {
-                                        error!("Gagal membaca disk LUN {} LBA {}: {}", op.req.lun, op.itt, e);
-                                        self.send_scsi_check_condition(op.itt, 0x03, 0x11, 0x00).await?;
-                                    }
-                                }
-                            }
-                            0x2A | 0x8A => { // WRITE10/WRITE16 completion (either Immediate or Data-Out)
-                                match op.result {
-                                    Ok(_) => {
-                                        self.send_scsi_response(op.itt, 0x00, 0, 0, 0).await?;
-                                    }
-                                    Err(e) => {
-                                        error!("Gagal menulis disk LUN {} LBA {}: {}", op.req.lun, op.itt, e);
-                                        self.send_scsi_response(op.itt, 0x02, 0x03, 0x0C, 0x00).await?;
-                                    }
-                                }
-                            }
-                            0x35 | 0x91 => { // SYNCHRONIZE CACHE (10/16) completion
-                                match op.result {
-                                    Ok(_) => {
-                                        self.send_scsi_response(op.itt, 0x00, 0, 0, 0).await?;
-                                    }
-                                    Err(e) => {
-                                        error!("Gagal melakukan sinkronisasi cache LUN {}: {}", op.req.lun, e);
-                                        self.send_scsi_check_condition(op.itt, 0x03, 0x0C, 0x00).await?;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
+                };
+
+                let is_immediate = req.is_immediate;
+                if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
+                    self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
+                    self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+                }
+
+                match req.opcode {
+                    OP_NOP_OUT => {
+                        self.handle_nop_out(req).await?;
+                    }
+                    OP_LOGOUT_REQ => {
+                        // ignore error if client closes socket early after sending LOGOUT
+                        let _ = self.handle_logout(req).await;
+                        logged_out = true;
+                        break; // Selesai
+                    }
+                    OP_TEXT_REQ => {
+                        self.handle_text_req(req).await?;
+                    }
+                    OP_TMF_REQ => {
+                        self.handle_tmf_req(req).await?;
+                    }
+                    OP_SCSI_CMD => {
+                        self.handle_scsi_cmd(req).await?;
+                    }
+                    OP_DATA_OUT => {
+                        self.handle_data_out(req).await?;
+                    }
+                    _ => {
+                        warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
                     }
                 }
             }

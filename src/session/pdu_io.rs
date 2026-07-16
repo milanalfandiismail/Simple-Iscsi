@@ -1,6 +1,7 @@
 use crate::pdu::{self, Pdu, OP_SCSI_RESP, OP_DATA_IN, OP_R2T};
 use crate::scsi_gamedisk::ScsiResult;
 use crate::session::Session;
+use tokio::io::AsyncWriteExt;
 
 fn pack_iov(slices: &[std::io::IoSlice<'_>]) -> Vec<u8> {
     let total_len: usize = slices.iter().map(|s| s.len()).sum();
@@ -12,9 +13,10 @@ fn pack_iov(slices: &[std::io::IoSlice<'_>]) -> Vec<u8> {
 }
 
 impl Session {
-    pub(super) async fn send_packet(&self, packet: Vec<u8>) -> Result<(), std::io::Error> {
-        self.writer_tx.send(packet)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::WriteZero, e.to_string()))
+    pub(super) async fn send_packet(&mut self, packet: Vec<u8>) -> Result<(), std::io::Error> {
+        self.stream.write_all(&packet).await?;
+        self.stream.flush().await?;
+        Ok(())
     }
 
     pub(super) async fn send_r2t(

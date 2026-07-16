@@ -92,11 +92,7 @@ impl Session {
         self.send_packet(packet).await
     }
 
-    pub(super) async fn handle_scsi_cmd_pipelined(
-        &mut self,
-        req: Pdu,
-        tx: tokio::sync::mpsc::Sender<super::DiskOpResult>,
-    ) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_scsi_cmd(&mut self, req: Pdu) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
         let opcode = cdb[0];
         let lun_id = ((req.lun >> 48) & 0xFF) as u8;
@@ -131,79 +127,76 @@ impl Session {
             let backend_clone = backend.clone();
             let itt = req.initiator_task_tag;
 
-            tokio::spawn(async move {
-                let mut buf = vec![0u8; total_bytes];
+            let mut buf = vec![0u8; total_bytes];
 
-                // Fast-Path: Cek apakah ada di RAM Cache gamedisk langsung (Zero spawn_blocking)
-                let cache_hit = {
-                    let mut hit = false;
-                    if let Some(ref cache) = cache_opt {
-                        let mut in_writeback = false;
-                        for i in 0..num_blocks {
-                            if cache.contains_lba(lba + i as u64) {
-                                in_writeback = true;
-                                break;
-                            }
+            // Fast-Path: Cek apakah ada di RAM Cache gamedisk langsung (Zero spawn_blocking)
+            let cache_hit = {
+                let mut hit = false;
+                if let Some(ref cache) = cache_opt {
+                    let mut in_writeback = false;
+                    for i in 0..num_blocks {
+                        if cache.contains_lba(lba + i as u64) {
+                            in_writeback = true;
+                            break;
                         }
-                        if !in_writeback {
-                            hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
-                        }
-                    } else {
+                    }
+                    if !in_writeback {
                         hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
                     }
-                    hit
-                };
-
-                let res = if cache_hit {
-                    Ok(buf)
                 } else {
-                    // Cache miss: Antre di semaphore LUN dan panggil thread pool blocking
-                    let semaphore = backend_clone.io_semaphore.clone();
-                    let _permit = semaphore.acquire().await;
-                    tokio::task::spawn_blocking(move || {
-                        let mut buf = vec![0u8; total_bytes];
-                        if let Some(cache) = cache_opt {
-                            cache.read_blocks_cached(&backend_clone, lba, num_blocks, &mut buf)?;
-                        } else {
-                            backend_clone.read_blocks(lba, num_blocks, &mut buf)?;
-                        }
-                        Ok::<Vec<u8>, std::io::Error>(buf)
-                    }).await.unwrap()
-                };
+                    hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
+                }
+                hit
+            };
 
-                let _ = tx.send(super::DiskOpResult {
-                    itt,
-                    opcode,
-                    req,
-                    result: res,
-                }).await;
-            });
+            let res = if cache_hit {
+                Ok(buf)
+            } else {
+                tokio::task::spawn_blocking(move || {
+                    let mut buf = vec![0u8; total_bytes];
+                    if let Some(cache) = cache_opt {
+                        cache.read_blocks_cached(&backend_clone, lba, num_blocks, &mut buf)?;
+                    } else {
+                        backend_clone.read_blocks(lba, num_blocks, &mut buf)?;
+                    }
+                    Ok::<Vec<u8>, std::io::Error>(buf)
+                }).await.unwrap()
+            };
+
+            match res {
+                Ok(buf) => {
+                    self.send_scsi_data_in(itt, &buf, 0x00, req.expected_data_len).await?;
+                    self.stats.bytes_read.fetch_add(buf.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                }
+                Err(e) => {
+                    error!("Gagal membaca disk LUN {} LBA {}: {}", req.lun, itt, e);
+                    self.send_scsi_check_condition(itt, 0x03, 0x11, 0x00).await?;
+                }
+            }
 
         // --- SYNCHRONIZE CACHE (10/16) ---
         } else if opcode == 0x35 || opcode == 0x91 {
             let cache_opt = cache_opt.clone();
             let backend_clone = backend.clone();
             let itt = req.initiator_task_tag;
-            let req_clone = req.clone();
 
-            tokio::spawn(async move {
-                let semaphore = backend_clone.io_semaphore.clone();
-                let _permit = semaphore.acquire().await;
-                let res = tokio::task::spawn_blocking(move || {
-                    if let Some(cache) = cache_opt {
-                        cache.flush()
-                    } else {
-                        backend_clone.sync()
-                    }
-                }).await.unwrap();
+            let res = tokio::task::spawn_blocking(move || {
+                if let Some(cache) = cache_opt {
+                    cache.flush()
+                } else {
+                    backend_clone.sync()
+                }
+            }).await.unwrap();
 
-                let _ = tx.send(super::DiskOpResult {
-                    itt,
-                    opcode,
-                    req: req_clone,
-                    result: res.map(|_| Vec::new()),
-                }).await;
-            });
+            match res {
+                Ok(_) => {
+                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                }
+                Err(e) => {
+                    error!("Gagal melakukan sinkronisasi cache LUN {}: {}", req.lun, e);
+                    self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
+                }
+            }
 
         // --- WRITE10/16: dispatch to specialized handlers ---
         } else if opcode == 0x2A || opcode == 0x8A {
@@ -220,9 +213,9 @@ impl Session {
             trace!("WRITE LUN={} LBA={} blocks={}", lun_id, lba, num_blocks);
 
             if self.is_imagedisk {
-                self.handle_imagedisk_write_pipelined(&req, lun_id, lba, num_blocks, tx).await?;
+                self.handle_imagedisk_write(&req, lun_id, lba, num_blocks).await?;
             } else {
-                self.handle_gamedisk_write_pipelined(&req, lun_id, lba, num_blocks, tx).await?;
+                self.handle_gamedisk_write(&req, lun_id, lba, num_blocks).await?;
             }
 
         // --- Other SCSI commands: dispatch to specialized handlers ---
@@ -235,11 +228,7 @@ impl Session {
         Ok(())
     }
 
-    pub(super) async fn handle_data_out_pipelined(
-        &mut self,
-        req: Pdu,
-        tx: tokio::sync::mpsc::Sender<super::DiskOpResult>,
-    ) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_data_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
         let itt = req.initiator_task_tag;
         
         let mut is_complete = false;
@@ -264,42 +253,35 @@ impl Session {
             let pending_lba = pending.lba;
             let pending_num_blocks = pending.num_blocks;
             let expected_len = pending.expected_len;
-            let lun_id = pending.lun_id;
-            let req_clone = req.clone();
 
-            tokio::spawn(async move {
-                if !is_imagedisk {
-                    if let Some(ref cache) = cache_opt {
-                        cache.throttle_write_async(pending_buffer.len()).await;
-                    }
+            if !is_imagedisk {
+                if let Some(ref cache) = cache_opt {
+                    cache.throttle_write_async(pending_buffer.len()).await;
                 }
+            }
 
-                let semaphore = backend_clone.io_semaphore.clone();
-                let _permit = semaphore.acquire().await;
-                let res = tokio::task::spawn_blocking(move || {
-                    if is_imagedisk {
-                        backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
+            let res = tokio::task::spawn_blocking(move || {
+                if is_imagedisk {
+                    backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
+                } else {
+                    if let Some(cache) = cache_opt {
+                        cache.write_stream(pending_lba, 0, &pending_buffer)
                     } else {
-                        if let Some(cache) = cache_opt {
-                            cache.write_stream(pending_lba, 0, &pending_buffer)
-                        } else {
-                            Ok(())
-                        }
+                        Ok(())
                     }
-                }).await.unwrap();
-
-                if res.is_ok() {
-                    trace!("WRITE LUN {} LBA {} selesai via Data-Out ({} bytes)", lun_id, pending_lba, expected_len);
                 }
-                let _ = tx.send(super::DiskOpResult {
-                    itt,
-                    opcode: 0x2A,
-                    req: req_clone,
-                    result: res.map(|_| Vec::new()),
-                }).await;
-            });
-            
-            self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+            }).await.unwrap();
+
+            match res {
+                Ok(_) => {
+                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                    self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+                }
+                Err(e) => {
+                    error!("Gagal menulis disk LUN {} LBA {}: {}", pending.lun_id, pending_lba, e);
+                    self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
+                }
+            }
         }
         
         Ok(())
