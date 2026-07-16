@@ -395,6 +395,7 @@ pub struct Backend {
     pub product_id: String,
     pub product_revision: String,
     read_cache: Option<moka::sync::Cache<u64, Arc<Vec<u8>>>>,
+    pub io_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 impl Backend {
@@ -480,6 +481,7 @@ impl Backend {
             product_id: product.to_string(),
             product_revision: rev.to_string(),
             read_cache,
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(64)),
         })
     }
 
@@ -546,6 +548,7 @@ impl Backend {
             product_id: product.to_string(),
             product_revision: rev.to_string(),
             read_cache,
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(64)),
         })
     }
 
@@ -659,6 +662,7 @@ impl Backend {
             product_id: product.to_string(),
             product_revision: rev.to_string(),
             read_cache,
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(64)),
         })
     }
 
@@ -668,6 +672,45 @@ impl Backend {
 
     pub fn total_size(&self) -> u64 {
         self.total_size
+    }
+
+    pub fn try_read_from_cache(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<()> {
+        let bs = self.block_size;
+        let cache = self.read_cache.as_ref()?;
+
+        let chunk_size_bytes = 256 * 1024;
+        let start_byte = lba * bs;
+        let actual_len = (num_blocks as u64) * bs;
+        let end_byte = start_byte + actual_len;
+
+        let start_chunk = start_byte / chunk_size_bytes;
+        let end_chunk = if end_byte > 0 { (end_byte - 1) / chunk_size_bytes } else { 0 };
+
+        let mut chunks = Vec::with_capacity((end_chunk - start_chunk + 1) as usize);
+        for chunk_id in start_chunk..=end_chunk {
+            if let Some(data) = cache.get(&chunk_id) {
+                chunks.push(data);
+            } else {
+                return None; // Cache miss
+            }
+        }
+
+        let mut buf_offset = 0;
+        for (i, chunk_id) in (start_chunk..=end_chunk).enumerate() {
+            let chunk_start_byte = chunk_id * chunk_size_bytes;
+            let chunk_end_byte = chunk_start_byte + chunk_size_bytes;
+
+            let read_start = start_byte.max(chunk_start_byte);
+            let read_end = end_byte.min(chunk_end_byte);
+            let bytes_to_copy = (read_end - read_start) as usize;
+
+            let chunk_data = &chunks[i];
+            let offset_in_chunk = (read_start - chunk_start_byte) as usize;
+            buf[buf_offset..buf_offset + bytes_to_copy].copy_from_slice(&chunk_data[offset_in_chunk..offset_in_chunk + bytes_to_copy]);
+            buf_offset += bytes_to_copy;
+        }
+
+        Some(())
     }
 
     pub fn read_blocks(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> io::Result<()> {

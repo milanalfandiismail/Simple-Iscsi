@@ -208,6 +208,10 @@ impl ClientCache {
         })
     }
 
+    pub fn contains_lba(&self, lba: u64) -> bool {
+        self.block_map.contains_key(&lba)
+    }
+
     pub fn read_blocks_cached(
         &self,
         backend: &Backend,
