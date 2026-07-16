@@ -62,6 +62,7 @@ impl Session {
         }
 
         let cache_opt = self.client_caches.get(&lun_id).cloned();
+        let backend_clone = backend.clone();
         let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
         let opcode = req.custom_bhs[0];
@@ -72,6 +73,8 @@ impl Session {
                 cache.throttle_write_async(write_buf_clone.len()).await;
             }
 
+            let semaphore = backend_clone.io_semaphore.clone();
+            let _permit = semaphore.acquire().await;
             let res = tokio::task::spawn_blocking(move || {
                 if let Some(cache) = cache_opt {
                     cache.write_stream(lba, 0, &write_buf_clone)

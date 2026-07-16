@@ -68,6 +68,8 @@ impl Session {
         let req_clone = req.clone();
 
         tokio::spawn(async move {
+            let semaphore = backend_clone.io_semaphore.clone();
+            let _permit = semaphore.acquire().await;
             let res = tokio::task::spawn_blocking(move || {
                 backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
             }).await.unwrap();

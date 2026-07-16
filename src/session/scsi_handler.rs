@@ -112,19 +112,48 @@ impl Session {
                  u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
             };
             let total_bytes = (num_blocks as usize) * (backend.block_size() as usize);
-            let backend = backend.clone();
+            let backend_clone = backend.clone();
             let itt = req.initiator_task_tag;
 
             tokio::spawn(async move {
-                let res = tokio::task::spawn_blocking(move || {
-                    let mut buf = vec![0u8; total_bytes];
-                    if let Some(cache) = cache_opt {
-                        cache.read_blocks_cached(&backend, lba, num_blocks, &mut buf)?;
+                let mut buf = vec![0u8; total_bytes];
+
+                // Fast-Path: Cek apakah ada di RAM Cache gamedisk langsung (Zero spawn_blocking)
+                let cache_hit = {
+                    let mut hit = false;
+                    if let Some(ref cache) = cache_opt {
+                        let mut in_writeback = false;
+                        for i in 0..num_blocks {
+                            if cache.contains_lba(lba + i as u64) {
+                                in_writeback = true;
+                                break;
+                            }
+                        }
+                        if !in_writeback {
+                            hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
+                        }
                     } else {
-                        backend.read_blocks(lba, num_blocks, &mut buf)?;
+                        hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
                     }
-                    Ok::<Vec<u8>, std::io::Error>(buf)
-                }).await.unwrap();
+                    hit
+                };
+
+                let res = if cache_hit {
+                    Ok(buf)
+                } else {
+                    // Cache miss: Antre di semaphore LUN dan panggil thread pool blocking
+                    let semaphore = backend_clone.io_semaphore.clone();
+                    let _permit = semaphore.acquire().await;
+                    tokio::task::spawn_blocking(move || {
+                        let mut buf = vec![0u8; total_bytes];
+                        if let Some(cache) = cache_opt {
+                            cache.read_blocks_cached(&backend_clone, lba, num_blocks, &mut buf)?;
+                        } else {
+                            backend_clone.read_blocks(lba, num_blocks, &mut buf)?;
+                        }
+                        Ok::<Vec<u8>, std::io::Error>(buf)
+                    }).await.unwrap()
+                };
 
                 let _ = tx.send(super::DiskOpResult {
                     itt,
@@ -137,16 +166,18 @@ impl Session {
         // --- SYNCHRONIZE CACHE (10/16) ---
         } else if opcode == 0x35 || opcode == 0x91 {
             let cache_opt = cache_opt.clone();
-            let backend = backend.clone();
+            let backend_clone = backend.clone();
             let itt = req.initiator_task_tag;
             let req_clone = req.clone();
 
             tokio::spawn(async move {
+                let semaphore = backend_clone.io_semaphore.clone();
+                let _permit = semaphore.acquire().await;
                 let res = tokio::task::spawn_blocking(move || {
                     if let Some(cache) = cache_opt {
                         cache.flush()
                     } else {
-                        backend.sync()
+                        backend_clone.sync()
                     }
                 }).await.unwrap();
 
@@ -210,8 +241,7 @@ impl Session {
 
         if is_complete {
             let pending = self.pending_writes.remove(&itt).unwrap();
-            
-            let backend = self.backends.get(&pending.lun_id).unwrap().clone();
+            let backend_clone = self.backends.get(&pending.lun_id).unwrap().clone();
             let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
             let is_imagedisk = self.is_imagedisk;
             let pending_buffer = pending.buffer;
@@ -228,9 +258,11 @@ impl Session {
                     }
                 }
 
+                let semaphore = backend_clone.io_semaphore.clone();
+                let _permit = semaphore.acquire().await;
                 let res = tokio::task::spawn_blocking(move || {
                     if is_imagedisk {
-                        backend.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
+                        backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
                     } else {
                         if let Some(cache) = cache_opt {
                             cache.write_stream(pending_lba, 0, &pending_buffer)
