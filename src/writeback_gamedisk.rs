@@ -167,18 +167,6 @@ impl ClientCache {
         let file_write = write_options.open(&file_path)?;
         let file_write_arc = Arc::new(file_write);
 
-        let file_write_weak = Arc::downgrade(&file_write_arc);
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                if let Some(file) = file_write_weak.upgrade() {
-                    let _ = file.sync_all();
-                } else {
-                    break;
-                }
-            }
-        });
-
         let mut read_options = OpenOptions::new();
         read_options.read(true);
         #[cfg(windows)]
@@ -436,7 +424,9 @@ impl ClientCache {
 
 
     pub fn flush(&self) -> io::Result<()> {
-        self.save_map();
+        self.file_write.sync_all()?;
+        let map = self.map_file.lock();
+        map.sync_all()?;
         Ok(())
     }
 
