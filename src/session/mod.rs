@@ -400,6 +400,17 @@ impl Session {
                                     }
                                 }
                             }
+                            0x35 | 0x91 => { // SYNCHRONIZE CACHE (10/16) completion
+                                match op.result {
+                                    Ok(_) => {
+                                        self.send_scsi_response(op.itt, 0x00, 0, 0, 0).await?;
+                                    }
+                                    Err(e) => {
+                                        error!("Gagal melakukan sinkronisasi cache LUN {}: {}", op.req.lun, e);
+                                        self.send_scsi_check_condition(op.itt, 0x03, 0x0C, 0x00).await?;
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }

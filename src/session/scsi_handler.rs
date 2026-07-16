@@ -134,6 +134,30 @@ impl Session {
                 }).await;
             });
 
+        // --- SYNCHRONIZE CACHE (10/16) ---
+        } else if opcode == 0x35 || opcode == 0x91 {
+            let cache_opt = cache_opt.clone();
+            let backend = backend.clone();
+            let itt = req.initiator_task_tag;
+            let req_clone = req.clone();
+
+            tokio::spawn(async move {
+                let res = tokio::task::spawn_blocking(move || {
+                    if let Some(cache) = cache_opt {
+                        cache.flush()
+                    } else {
+                        backend.sync()
+                    }
+                }).await.unwrap();
+
+                let _ = tx.send(super::DiskOpResult {
+                    itt,
+                    opcode,
+                    req: req_clone,
+                    result: res.map(|_| Vec::new()),
+                }).await;
+            });
+
         // --- WRITE10/16: dispatch to specialized handlers ---
         } else if opcode == 0x2A || opcode == 0x8A {
             let lba = if opcode == 0x8A {
