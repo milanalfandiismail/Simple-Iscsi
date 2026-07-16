@@ -222,6 +222,12 @@ impl Session {
             let req_clone = req.clone();
 
             tokio::spawn(async move {
+                if !is_imagedisk {
+                    if let Some(ref cache) = cache_opt {
+                        cache.throttle_write_async(pending_buffer.len()).await;
+                    }
+                }
+
                 let res = tokio::task::spawn_blocking(move || {
                     if is_imagedisk {
                         backend.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
