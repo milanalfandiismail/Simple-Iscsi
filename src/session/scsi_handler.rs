@@ -1,4 +1,4 @@
-use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP};
+use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP, OP_TMF_RESP};
 use crate::session::Session;
 use tracing::{error, info, warn, trace};
 use tokio::io::AsyncWriteExt;
@@ -14,6 +14,28 @@ impl Session {
         self.stat_sn = self.stat_sn.wrapping_add(1);
         resp.exp_stat_sn = self.exp_cmd_sn;
         resp.max_cmd_sn = self.max_cmd_sn;
+
+        let packet = pdu::builder::build_pdu(&resp);
+        self.send_packet(packet).await
+    }
+
+    pub(super) async fn handle_tmf_req(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+        info!("Menerima TMF Request. ITT: {}, Function: 0x{:02X}", req.initiator_task_tag, req.flags & 0x7F);
+
+        let mut resp = Pdu::default();
+        resp.opcode = OP_TMF_RESP;
+        resp.flags = 0x80; // F (Final)
+        resp.initiator_task_tag = req.initiator_task_tag;
+        
+        // StatSN dialokasikan dan diincrement untuk target-response
+        resp.cmd_sn = self.stat_sn;
+        self.stat_sn = self.stat_sn.wrapping_add(1);
+        
+        resp.exp_stat_sn = self.exp_cmd_sn;
+        resp.max_cmd_sn = self.max_cmd_sn;
+
+        // Byte 2: Response. 0x00 = Function Complete
+        resp.opcode_specific[0] = 0x00;
 
         let packet = pdu::builder::build_pdu(&resp);
         self.send_packet(packet).await

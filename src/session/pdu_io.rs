@@ -98,7 +98,8 @@ impl Session {
                 self.stat_sn = self.stat_sn.wrapping_add(1);
                 resp[28..32].copy_from_slice(&self.exp_cmd_sn.to_be_bytes());
                 resp[32..36].copy_from_slice(&self.max_cmd_sn.to_be_bytes());
-                resp[36..40].copy_from_slice(&(data_sn as u32).to_be_bytes());
+                let next_exp_data_sn = (data_sn as u32) + 1;
+                resp[36..40].copy_from_slice(&next_exp_data_sn.to_be_bytes());
                 if total_len < expected_len as usize {
                     let residual = expected_len as usize - total_len;
                     resp[44..48].copy_from_slice(&(residual as u32).to_be_bytes());

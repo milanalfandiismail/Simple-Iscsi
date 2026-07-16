@@ -7,6 +7,7 @@ pub mod imagedisk;
 // Opcode iSCSI Initiator (Client -> Target)
 pub const OP_NOP_OUT: u8 = 0x00;
 pub const OP_SCSI_CMD: u8 = 0x01;
+pub const OP_TMF_REQ: u8 = 0x02;
 pub const OP_LOGIN_REQ: u8 = 0x03;
 pub const OP_TEXT_REQ: u8 = 0x04;
 pub const OP_DATA_OUT: u8 = 0x05;
@@ -15,6 +16,7 @@ pub const OP_LOGOUT_REQ: u8 = 0x06;
 // Opcode iSCSI Target (Target -> Client)
 pub const OP_NOP_IN: u8 = 0x20;
 pub const OP_SCSI_RESP: u8 = 0x21;
+pub const OP_TMF_RESP: u8 = 0x22;
 pub const OP_LOGIN_RESP: u8 = 0x23;
 pub const OP_TEXT_RESP: u8 = 0x24;
 pub const OP_DATA_IN: u8 = 0x25;
