@@ -88,6 +88,8 @@ pub struct WindowsConfig {
 pub struct WritebackConfig {
     pub writeback_dirs: Vec<String>,
     pub max_cache_per_client_gb: u64,
+    #[serde(default)]
+    pub max_write_speed_mbps: u64,
 }
 
 pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {

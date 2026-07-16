@@ -321,6 +321,7 @@ impl Session {
                     backend.block_size(),
                     self.config.read().writeback.max_cache_per_client_gb,
                     false, // ⚠️ FIX: gamedisk tidak boleh pakai is_super, selalu false
+                    self.config.read().writeback.max_write_speed_mbps,
                 )?;
                 self.client_caches.insert(*lun_id, Arc::new(cache));
             }
