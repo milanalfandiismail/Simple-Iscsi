@@ -583,3 +583,29 @@
   next_server     = "192.168.137.1"
   image_manager   = ""
 
+[[client]]
+  hostname        = "PC-46"
+  mac             = "80:3A:F7:D6:F5:22"
+  ip              = "192.168.137.145"
+  gateway         = "192.168.137.1"
+  dns             = "8.8.8.8"
+  pxe             = "sb-custom"
+  bootfile_uefi   = ""
+  bootfile_legacy = ""
+  bootfile_ipxe   = ""
+  next_server     = "192.168.137.1"
+  image_manager   = ""
+
+[[client]]
+  hostname        = "PC-47"
+  mac             = "21:00:61:53:50:D0"
+  ip              = "192.168.137.146"
+  gateway         = "192.168.137.1"
+  dns             = "8.8.8.8"
+  pxe             = "sb-custom"
+  bootfile_uefi   = ""
+  bootfile_legacy = ""
+  bootfile_ipxe   = ""
+  next_server     = "192.168.137.1"
+  image_manager   = ""
+

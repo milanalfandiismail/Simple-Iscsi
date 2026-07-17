@@ -59,15 +59,15 @@ cargo run -- --discard PC-01
 
 ## 📋 Restore List — Lihat Daftar Backup
 
-Lihat semua file backup yang tersedia untuk image milik suatu client.
+Lihat semua file backup yang tersedia untuk suatu base image.
 
 ```bash
-cargo run -- --restore-list <hostname>
+cargo run -- --restore-list <image_key>
 ```
 
 **Contoh:**
 ```bash
-cargo run -- --restore-list PC-01
+cargo run -- --restore-list windows_11_tm
 ```
 
 **Output:**
@@ -85,19 +85,19 @@ Kembalikan base image dari file backup.
 
 ### Restore backup terakhir:
 ```bash
-cargo run -- --restore <hostname>
+cargo run -- --restore <image_key>
 ```
 
 ### Restore backup spesifik:
 ```bash
-cargo run -- --restore <hostname> <index>
+cargo run -- --restore <image_key> <index>
 ```
 
 **Contoh:**
 ```bash
-cargo run -- --restore PC-01         # backup terakhir
-cargo run -- --restore PC-01 1       # backup ke-1
-cargo run -- --restore PC-01 2       # backup ke-2
+cargo run -- --restore windows_11_tm         # backup terakhir
+cargo run -- --restore windows_11_tm 1       # backup ke-1
+cargo run -- --restore windows_11_tm 2       # backup ke-2
 ```
 
 **Alur:**
