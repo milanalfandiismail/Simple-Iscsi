@@ -64,6 +64,8 @@ impl Session {
         let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
 
+        self.throttle_write(expected_len).await;
+
         let res = tokio::task::spawn_blocking(move || {
             backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
         }).await.unwrap();

@@ -50,6 +50,8 @@ pub struct Session {
     max_cmd_sn: u32,
     max_recv_data_segment_len: usize,
     pub pending_writes: HashMap<u32, PendingWrite>,
+    throttle_window_start: std::sync::atomic::AtomicU64,
+    throttle_bytes_this_window: std::sync::atomic::AtomicU64,
 }
 
 impl Session {
@@ -131,6 +133,8 @@ impl Session {
             max_cmd_sn: 256,
             max_recv_data_segment_len: 16777216, // 16MB
             pending_writes: HashMap::new(),
+            throttle_window_start: std::sync::atomic::AtomicU64::new(0),
+            throttle_bytes_this_window: std::sync::atomic::AtomicU64::new(0),
         }
     }
 }
@@ -403,4 +407,34 @@ impl Session {
         Ok(())
     }
 
+    pub async fn throttle_write(&self, bytes_to_write: usize) {
+        let max_speed_mbps = self.config.read().writeback.max_write_speed_mbps;
+        if max_speed_mbps == 0 {
+            return;
+        }
+
+        let max_write_bytes_per_sec = max_speed_mbps * 1024 * 1024;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        let window_start = self.throttle_window_start.load(std::sync::atomic::Ordering::Relaxed);
+        let elapsed = now_ms.saturating_sub(window_start);
+
+        if elapsed >= 100 {
+            self.throttle_window_start.store(now_ms, std::sync::atomic::Ordering::Relaxed);
+            self.throttle_bytes_this_window.store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let max_per_window = max_write_bytes_per_sec / 10;
+        let written = self.throttle_bytes_this_window.fetch_add(bytes_to_write as u64, std::sync::atomic::Ordering::Relaxed);
+
+        if written + bytes_to_write as u64 > max_per_window {
+            let sleep_ms = 100u64.saturating_sub(elapsed);
+            if sleep_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+            }
+        }
+    }
 }
