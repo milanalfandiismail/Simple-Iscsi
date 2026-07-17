@@ -33,6 +33,82 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = "config.toml".to_string();
     let clients_path = "clients.toml".to_string();
 
+    // Auto-create config.toml if missing
+    if !std::path::Path::new(&config_path).exists() {
+        info!("{} tidak ditemukan. Membuat template default...", config_path);
+        let default_config = r#"[server]
+  address        = "0.0.0.0"
+  port           = 3300
+  read_cache_gb  = 2
+
+[dhcp]
+  enabled        = false
+  start_ip       = "192.168.137.100"
+  end_ip         = "192.168.137.200"
+  subnet_mask    = "255.255.255.0"
+  router         = "192.168.137.1"
+  dns            = "8.8.8.8"
+  next_server    = "192.168.137.1"
+  tftp_dir       = "pxe"
+  pxe_default    = "sb-custom"
+
+[gamedisk_target]
+  target_iqn     = "iqn.2024-01.com.tmdebug:gamedisks"
+  discovery      = true
+
+# [[gamedisk]]
+#   physical_disk    = '\\.\PhysicalDrive1'
+#   block_size       = 512
+#   vendor_id        = "TM"
+#   product_id       = "GameDisk-1"
+#   product_revision = "1.00"
+
+[windows]
+  target_iqn_prefix   = "iqn.2024-01.com.tmdebug:vhd-"
+  vhd_dir             = 'C:\vhd'
+  block_size          = 512
+  vendor_id           = "RUSTISCS"
+  product_id          = "WindowsBoot"
+  product_revision    = "1.00"
+  discovery           = false
+  super_client_ip     = ""
+  super_client_action = "none"
+
+[writeback]
+  writeback_dirs          = ['C:\writeback']
+  max_cache_per_client_gb = 10
+  max_write_speed_mbps    = 20
+
+[image_manager]
+  # windows_11 = 'C:\vhd\windows_11.vhd'
+"#;
+        if let Err(e) = std::fs::write(&config_path, default_config) {
+            error!("Gagal membuat {}: {}", config_path, e);
+        }
+    }
+
+    // Auto-create clients.toml if missing
+    if !std::path::Path::new(&clients_path).exists() {
+        info!("{} tidak ditemukan. Membuat template default...", clients_path);
+        let default_clients = r#"# clients.toml - DHCP Clients configuration
+# Make sure to indent client properties with 2 spaces for a clean structure.
+
+# Example client entry:
+# [[client]]
+#   hostname        = "PC-01"
+#   mac             = "00:0C:29:A4:BC:F2"
+#   ip              = "192.168.137.100"
+#   gateway         = "192.168.137.1"
+#   dns             = "8.8.8.8"
+#   pxe             = "sb-custom"
+#   next_server     = "192.168.137.1"
+#   image_manager   = "windows_11"
+"#;
+        if let Err(e) = std::fs::write(&clients_path, default_clients) {
+            error!("Gagal membuat {}: {}", clients_path, e);
+        }
+    }
+
     let args: Vec<String> = std::env::args().collect();
 
     // === CLI: --reload (validasi clients.toml tanpa restart) ===
