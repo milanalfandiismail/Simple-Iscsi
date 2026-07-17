@@ -61,13 +61,18 @@ impl Session {
         }
 
         let backend_clone = backend.clone();
+        let cache_opt = self.client_caches.get(&lun_id).cloned();
         let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
 
         self.throttle_write(expected_len).await;
 
         let res = tokio::task::spawn_blocking(move || {
-            backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
+            if let Some(cache) = cache_opt {
+                cache.write_stream(lba, 0, &write_buf_clone)
+            } else {
+                backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
+            }
         }).await.unwrap();
 
         match res {

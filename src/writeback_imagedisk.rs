@@ -57,34 +57,9 @@ pub fn init_child_vhd(
             child_path: None, // No cleanup — super VHD persistent
         })
     } else {
-        // === NORMAL CLIENT: create temporary child VHD ===
-        static NEXT_DRIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let child_dir = if !config.writeback.writeback_dirs.is_empty() {
-            let idx = NEXT_DRIVE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % config.writeback.writeback_dirs.len();
-            config.writeback.writeback_dirs[idx].clone()
-        } else {
-            config.windows.as_ref().unwrap().vhd_dir.clone()
-        };
-        let _ = std::fs::create_dir_all(&child_dir);
-        let safe_ip = client_ip.chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
-            .collect::<String>();
-        let child_path = format!("{}\\{}-{}.vhd", child_dir, safe_ip, target_suffix);
-
-        // Buat child VHD — hapus dulu kalo sudah ada (diskless)
-        if std::path::Path::new(&child_path).exists() {
-            info!("Menghapus child VHD lama: {}", child_path);
-            let _ = std::fs::remove_file(&child_path);
-        }
-        VhdBackend::create_differencing(&base_path, &child_path)
-            .map_err(|e| {
-                error!("Gagal membuat child VHD {}: {}", child_path, e);
-                std::io::Error::new(std::io::ErrorKind::Other, e)
-            })?;
-
-        // Buka differencing backend
-        let backend = Backend::new_vhd_diff(
-            &child_path,
+        // === NORMAL CLIENT: open base VHD directly as read-only ===
+        // Note: writeback cache (.bin) will be managed dynamically by Session
+        let backend = Backend::new_vhd(
             &base_path,
             config.windows.as_ref().unwrap().block_size,
             &config.windows.as_ref().unwrap().vendor_id,
@@ -92,15 +67,15 @@ pub fn init_child_vhd(
             &config.windows.as_ref().unwrap().product_revision,
             config.server.read_cache_gb,
         ).map_err(|e| {
-            error!("Gagal membuka VHD differencing {}: {}", child_path, e);
+            error!("Gagal membuka base VHD {}: {}", base_path, e);
             e
         })?;
 
-        info!("Child VHD siap: {} (parent: {})", child_path, base_path);
+        info!("Normal Client: membuka base VHD {} (menggunakan sparse cache)", base_path);
 
         Ok(ChildVhdResult {
             backend: Arc::new(backend),
-            child_path: Some(child_path),
+            child_path: None, // No child VHD to cleanup!
         })
     }
 }
