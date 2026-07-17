@@ -44,7 +44,7 @@ super_client_ip = ""
 super_client_action = "none"
 
 [writeback]
-writeback_dirs = ['C:\writeback']
+writeback_dirs = ['C:\writeback', 'E:\Writeback']
 max_cache_per_client_gb = 10
 max_write_speed_mbps = 20
 

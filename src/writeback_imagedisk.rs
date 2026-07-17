@@ -58,9 +58,13 @@ pub fn init_child_vhd(
         })
     } else {
         // === NORMAL CLIENT: create temporary child VHD ===
-        let child_dir = config.writeback.writeback_dirs.first()
-            .cloned()
-            .unwrap_or_else(|| config.windows.as_ref().unwrap().vhd_dir.clone());
+        static NEXT_DRIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let child_dir = if !config.writeback.writeback_dirs.is_empty() {
+            let idx = NEXT_DRIVE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % config.writeback.writeback_dirs.len();
+            config.writeback.writeback_dirs[idx].clone()
+        } else {
+            config.windows.as_ref().unwrap().vhd_dir.clone()
+        };
         let _ = std::fs::create_dir_all(&child_dir);
         let safe_ip = client_ip.chars()
             .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
