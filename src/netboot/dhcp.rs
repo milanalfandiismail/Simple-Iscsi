@@ -277,12 +277,7 @@ impl DhcpServer {
     }
 
     pub async fn run(self: Arc<Self>) {
-        let current_config = self.config.read();
-        let server_addr = Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
-            .unwrap_or(Ipv4Addr::UNSPECIFIED);
-        info!("Memulai DHCP Server di {}:67...", server_addr);
-        drop(current_config);
-        
+        info!("Memulai DHCP Server di 0.0.0.0:67...");
         let mut buf = [0u8; 2048];
         
         loop {
