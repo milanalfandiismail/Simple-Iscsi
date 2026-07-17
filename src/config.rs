@@ -6,10 +6,12 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(default)]
 pub struct Config {
     pub server: ServerConfig,
     pub gamedisk_target: GamediskTargetConfig,
+    #[serde(default)]
     pub gamedisk: Vec<GamediskConfig>,
     pub windows: Option<WindowsConfig>,
     pub writeback: WritebackConfig,
@@ -48,6 +50,12 @@ impl AddressConfig {
     }
 }
 
+impl Default for AddressConfig {
+    fn default() -> Self {
+        AddressConfig::Single("0.0.0.0".to_string())
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct ServerConfig {
     pub address: AddressConfig,
@@ -56,11 +64,30 @@ pub struct ServerConfig {
     pub read_cache_gb: u64,
 }
 
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            address: AddressConfig::default(),
+            port: 3300,
+            read_cache_gb: 2,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GamediskTargetConfig {
     pub target_iqn: String,
     pub discovery: bool,
+}
+
+impl Default for GamediskTargetConfig {
+    fn default() -> Self {
+        Self {
+            target_iqn: "iqn.2024-01.com.tmdebug:gamedisks".to_string(),
+            discovery: true,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -92,6 +119,16 @@ pub struct WritebackConfig {
     pub max_cache_per_client_gb: u64,
     #[serde(default)]
     pub max_write_speed_mbps: u64,
+}
+
+impl Default for WritebackConfig {
+    fn default() -> Self {
+        Self {
+            writeback_dirs: vec!["C:\\writeback".to_string()],
+            max_cache_per_client_gb: 10,
+            max_write_speed_mbps: 20,
+        }
+    }
 }
 
 pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
@@ -263,17 +300,17 @@ pub fn auto_fix_duplicate_ips(clients_path: &str, start_ip: &str, end_ip: &str) 
     let mut buf = String::new();
     for client in &fixed_clients {
         buf.push_str("[[client]]\n");
-        buf.push_str(&format!("hostname = \"{}\"\n", client.hostname.as_deref().unwrap_or("")));
-        buf.push_str(&format!("mac = \"{}\"\n", client.mac));
-        buf.push_str(&format!("ip = \"{}\"\n", client.ip));
-        buf.push_str(&format!("gateway = \"{}\"\n", client.gateway.as_deref().unwrap_or("")));
-        buf.push_str(&format!("dns = \"{}\"\n", client.dns.as_deref().unwrap_or("")));
-        buf.push_str(&format!("pxe = \"{}\"\n", client.pxe.as_deref().unwrap_or("")));
-        buf.push_str(&format!("bootfile_uefi = \"{}\"\n", client.bootfile_uefi.as_deref().unwrap_or("")));
-        buf.push_str(&format!("bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
-        buf.push_str(&format!("bootfile_ipxe = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
-        buf.push_str(&format!("next_server = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
-        buf.push_str(&format!("image_manager = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  hostname        = \"{}\"\n", client.hostname.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  mac             = \"{}\"\n", client.mac));
+        buf.push_str(&format!("  ip              = \"{}\"\n", client.ip));
+        buf.push_str(&format!("  gateway         = \"{}\"\n", client.gateway.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  dns             = \"{}\"\n", client.dns.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  pxe             = \"{}\"\n", client.pxe.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  bootfile_uefi   = \"{}\"\n", client.bootfile_uefi.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  bootfile_ipxe   = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  next_server     = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  image_manager   = \"{}\"\n\n", client.image_manager.as_deref().unwrap_or("")));
     }
 
     fs::write(clients_path, buf)?;
@@ -304,17 +341,17 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
 
     let mut buf = String::new();
     buf.push_str("\n[[client]]\n");
-    buf.push_str(&format!("hostname = \"{}\"\n", client.hostname.as_deref().unwrap_or("")));
-    buf.push_str(&format!("mac = \"{}\"\n", client.mac));
-    buf.push_str(&format!("ip = \"{}\"\n", client.ip));
-    buf.push_str(&format!("gateway = \"{}\"\n", client.gateway.as_deref().unwrap_or("")));
-    buf.push_str(&format!("dns = \"{}\"\n", client.dns.as_deref().unwrap_or("")));
-    buf.push_str(&format!("pxe = \"{}\"\n", client.pxe.as_deref().unwrap_or("")));
-    buf.push_str(&format!("bootfile_uefi = \"{}\"\n", client.bootfile_uefi.as_deref().unwrap_or("")));
-    buf.push_str(&format!("bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
-    buf.push_str(&format!("bootfile_ipxe = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
-    buf.push_str(&format!("next_server = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
-    buf.push_str(&format!("image_manager = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  hostname        = \"{}\"\n", client.hostname.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  mac             = \"{}\"\n", client.mac));
+    buf.push_str(&format!("  ip              = \"{}\"\n", client.ip));
+    buf.push_str(&format!("  gateway         = \"{}\"\n", client.gateway.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  dns             = \"{}\"\n", client.dns.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  pxe             = \"{}\"\n", client.pxe.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  bootfile_uefi   = \"{}\"\n", client.bootfile_uefi.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  bootfile_ipxe   = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  next_server     = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  image_manager   = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
 
     file.write_all(buf.as_bytes())?;
     info!("Client '{}' ({}) appended to {}", 
