@@ -33,13 +33,7 @@ impl TftpServer {
     }
 
     pub async fn run(self: Arc<Self>) {
-        let current_config = self.config.read();
-        let server_addr = std::net::Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
-            .unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
-        
-        info!("Memulai TFTP Server di {}:69 (dir: {})...", server_addr, current_config.dhcp.as_ref().unwrap().tftp_dir);
-        drop(current_config);
-        
+        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.read().dhcp.as_ref().unwrap().tftp_dir);
         let mut buf = [0u8; 2048];
         
         loop {
