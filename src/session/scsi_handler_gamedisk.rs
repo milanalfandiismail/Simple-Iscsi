@@ -1,7 +1,7 @@
-use crate::pdu::{self, Pdu};
+use crate::pdu::Pdu;
 use crate::scsi_gamedisk;
 use crate::session::Session;
-use tracing::{error, info, warn, trace};
+use tracing::{error, trace};
 
 impl Session {
     /// Execute gamedisk SCSI command dispatch (non-READ, non-WRITE)

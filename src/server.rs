@@ -3,7 +3,6 @@ use tracing::{info, error};
 use std::sync::Arc;
 use crate::backend::Backend;
 use crate::session::Session;
-use crate::config::Config;
 use crate::config_manager::SharedConfig;
 use crate::stats::ServerStats;
 use std::collections::HashMap;

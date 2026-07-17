@@ -7,6 +7,8 @@ mod pdu;
 mod scsi_gamedisk;
 mod scsi_imagedisk;
 mod server;
+pub mod fs_utils;
+pub mod read_ahead;
 mod session;
 mod config;
 mod vhd;
@@ -18,10 +20,9 @@ mod config_manager;
 use backend::Backend;
 use std::fs;
 use std::sync::Arc;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 use std::collections::HashMap;
 use config_manager::SharedConfig;
-use std::time::SystemTime;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,7 +1,7 @@
-use crate::pdu::{self, Pdu};
+use crate::pdu::Pdu;
 use crate::scsi_imagedisk;
 use crate::session::Session;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 impl Session {
     /// Execute imagedisk SCSI command dispatch (intercepts Windows-specific commands)

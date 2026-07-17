@@ -5,7 +5,6 @@
 
 use crate::backend::Backend;
 use crate::config::Config;
-use crate::vhd::VhdBackend;
 use crate::writeback_super;
 use std::sync::Arc;
 use tracing::{info, error};
@@ -22,7 +21,7 @@ pub struct ChildVhdResult {
 /// - Normal client → create temporary child VHD dari base (diskless)
 pub fn init_child_vhd(
     config: &Config,
-    client_ip: &str,
+    _client_ip: &str,
     target_suffix: &str,
     is_super: bool,
 ) -> Result<ChildVhdResult, std::io::Error> {

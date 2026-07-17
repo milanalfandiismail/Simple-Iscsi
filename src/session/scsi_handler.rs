@@ -1,8 +1,6 @@
 use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP, OP_TMF_RESP};
 use crate::session::Session;
 use tracing::{error, info, warn, trace};
-use tokio::io::AsyncWriteExt;
-use std::time::Instant;
 
 impl Session {
     pub(super) async fn handle_nop_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
@@ -248,7 +246,6 @@ impl Session {
             let pending = self.pending_writes.remove(&itt).unwrap();
             let backend_clone = self.backends.get(&pending.lun_id).unwrap().clone();
             let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
-            let is_imagedisk = self.is_imagedisk;
             let pending_buffer = pending.buffer;
             let pending_lba = pending.lba;
             let pending_num_blocks = pending.num_blocks;
