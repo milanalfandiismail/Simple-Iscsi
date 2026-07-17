@@ -254,11 +254,7 @@ impl Session {
             let pending_num_blocks = pending.num_blocks;
             let expected_len = pending.expected_len;
 
-            if !is_imagedisk {
-                if let Some(ref cache) = cache_opt {
-                    cache.throttle_write_async(pending_buffer.len()).await;
-                }
-            }
+            self.throttle_write(pending_buffer.len()).await;
 
             let res = tokio::task::spawn_blocking(move || {
                 if is_imagedisk {

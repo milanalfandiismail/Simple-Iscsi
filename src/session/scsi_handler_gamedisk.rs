@@ -64,9 +64,7 @@ impl Session {
         let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
 
-        if let Some(ref cache) = cache_opt {
-            cache.throttle_write_async(write_buf_clone.len()).await;
-        }
+        self.throttle_write(write_buf_clone.len()).await;
 
         let res = tokio::task::spawn_blocking(move || {
             if let Some(cache) = cache_opt {
