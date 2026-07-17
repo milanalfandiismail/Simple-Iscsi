@@ -257,14 +257,10 @@ impl Session {
             self.throttle_write(pending_buffer.len()).await;
 
             let res = tokio::task::spawn_blocking(move || {
-                if is_imagedisk {
-                    backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
+                if let Some(cache) = cache_opt {
+                    cache.write_stream(pending_lba, 0, &pending_buffer)
                 } else {
-                    if let Some(cache) = cache_opt {
-                        cache.write_stream(pending_lba, 0, &pending_buffer)
-                    } else {
-                        Ok(())
-                    }
+                    backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
                 }
             }).await.unwrap();
 

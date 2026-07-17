@@ -311,24 +311,28 @@ impl Session {
             return Ok(()); // Putuskan koneksi
         }
 
-        // 2. Inisialisasi Cache — SKIP untuk imagedisk (child VHD handles writes directly)
-        if !self.is_discovery && !self.is_imagedisk {
-            for (lun_id, backend) in self.backends.iter() {
-                let cache_name = format!("{}_lun{}", target_name, lun_id);
-                info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
-                let cache = ClientCache::new(
-                    &self.config.read().writeback.writeback_dirs,
-                    &self.client_ip,
-                    &cache_name,
-                    backend.block_size(),
-                    self.config.read().writeback.max_cache_per_client_gb,
-                    false, // ⚠️ FIX: gamedisk tidak boleh pakai is_super, selalu false
-                    self.config.read().writeback.max_write_speed_mbps,
-                )?;
-                self.client_caches.insert(*lun_id, Arc::new(cache));
+        // 2. Inisialisasi Cache
+        if !self.is_discovery {
+            // Buat cache untuk gamedisk, dan untuk imagedisk (normal client saja)
+            let is_imagedisk_normal = self.is_imagedisk && !self.is_super;
+            if !self.is_imagedisk || is_imagedisk_normal {
+                for (lun_id, backend) in self.backends.iter() {
+                    let cache_name = format!("{}_lun{}", target_name, lun_id);
+                    info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
+                    let cache = ClientCache::new(
+                        &self.config.read().writeback.writeback_dirs,
+                        &self.client_ip,
+                        &cache_name,
+                        backend.block_size(),
+                        self.config.read().writeback.max_cache_per_client_gb,
+                        false, // is_super is always false for cache
+                        self.config.read().writeback.max_write_speed_mbps,
+                    )?;
+                    self.client_caches.insert(*lun_id, Arc::new(cache));
+                }
+            } else {
+                info!("Super Client ImageDisk session — write langsung ke differencing VHD, tanpa cache");
             }
-        } else if self.is_imagedisk {
-            info!("ImageDisk session — write langsung ke child VHD, tanpa cache .bin");
         }
 
         // 3. FFP Message Loop
