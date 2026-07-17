@@ -1,45 +1,53 @@
 [server]
-  address        = "0.0.0.0"
-  port           = 3300
-  read_cache_gb  = 2
+address = "192.168.137.1"
+port = 3260
+read_cache_gb = 2
 
 [dhcp]
-  enabled        = false
-  start_ip       = "192.168.137.100"
-  end_ip         = "192.168.137.200"
-  subnet_mask    = "255.255.255.0"
-  router         = "192.168.137.1"
-  dns            = "8.8.8.8"
-  next_server    = "192.168.137.1"
-  tftp_dir       = "pxe"
-  pxe_default    = "sb-custom"
+enabled = true
+start_ip = "192.168.137.100"
+end_ip = "192.168.137.200"
+subnet_mask = "255.255.255.0"
+router = "192.168.137.1"
+dns = "8.8.8.8"
+next_server = "192.168.137.1"
+tftp_dir = "pxe"
+pxe_default = "sb-custom"
 
 [gamedisk_target]
-  target_iqn     = "iqn.2024-01.com.tmdebug:gamedisks"
-  discovery      = true
+target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"
+discovery = true
+
+[[gamedisk]]
+physical_disk = '\\.\PhysicalDrive1'
+block_size = 512
+vendor_id = "TM"
+product_id = "GameDisk-1"
+product_revision = "1.00"
 
 # [[gamedisk]]
-#   physical_disk    = '\\.\PhysicalDrive1'
-#   block_size       = 512
-#   vendor_id        = "TM"
-#   product_id       = "GameDisk-1"
-#   product_revision = "1.00"
+# physical_disk = '\\.\PhysicalDrive3'
+# block_size = 512
+# vendor_id = "TM"
+# product_id = "GameDisk-2"
+# product_revision = "1.00"
 
 [windows]
-  target_iqn_prefix   = "iqn.2024-01.com.tmdebug:vhd-"
-  vhd_dir             = 'C:\vhd'
-  block_size          = 512
-  vendor_id           = "RUSTISCS"
-  product_id          = "WindowsBoot"
-  product_revision    = "1.00"
-  discovery           = false
-  super_client_ip     = ""
-  super_client_action = "none"
+target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
+vhd_dir = 'E:\vhd'
+block_size = 512
+vendor_id = "RUSTISCS"
+product_id = "WindowsBoot"
+product_revision = "1.00"
+discovery = false
+super_client_ip = ""
+super_client_action = "none"
 
 [writeback]
-  writeback_dirs          = ['C:\writeback']
-  max_cache_per_client_gb = 10
-  max_write_speed_mbps    = 20
+writeback_dirs = ['C:\writeback']
+max_cache_per_client_gb = 10
+max_write_speed_mbps = 20
 
 [image_manager]
-  # windows_11 = 'C:\vhd\windows_11.vhd'
+windows_11 = 'E:\W11-23H2-5335.vhd'
+windows_11_tm = 'E:\Windows 24H2\Windows_24H2_Modern.vhd'
