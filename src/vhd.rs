@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use tracing::info;
+use crate::fs_utils::{file_read_exact_at, file_write_all_at};
 
 #[allow(dead_code)]
 pub struct VhdBackend {
@@ -281,4 +282,236 @@ impl VhdBackend {
 
         Ok(())
     }
+
+
+    /// Read from single VHD (dynamic or simple)
+        pub fn read_blocks(&self, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+            let mut buf_offset = 0;
+            let mut current_byte_offset = lba * block_size;
+            let vhd_block_size = self.vhd_block_size as u64;
+    
+            while buf_offset < buf.len() {
+                let vhd_block_idx = current_byte_offset / vhd_block_size;
+                let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+    
+                let bytes_to_read = std::cmp::min(
+                    buf.len() - buf_offset,
+                    (vhd_block_size - offset_in_vhd_block) as usize
+                );
+    
+                let bat_val = *self.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                if bat_val == 0xFFFFFFFF {
+                    for i in 0..bytes_to_read {
+                        buf[buf_offset + i] = 0;
+                    }
+                } else {
+                    let physical_offset = (bat_val as u64) * 512 + (self.sector_bitmap_size as u64) + offset_in_vhd_block;
+                    file_read_exact_at(&self.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                }
+                buf_offset += bytes_to_read;
+                current_byte_offset += bytes_to_read as u64;
+            }
+            Ok(())
+        }
+
+    /// Read from differencing disk: child first, fallback to parent, fallback to zeros
+        pub fn diff_read_blocks(&self, parent: &Option<VhdBackend>, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+            let mut buf_offset = 0;
+            let mut current_byte_offset = lba * block_size;
+            let vhd_block_size = self.vhd_block_size as u64;
+    
+            while buf_offset < buf.len() {
+                let vhd_block_idx = current_byte_offset / vhd_block_size;
+                let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+    
+                let bytes_to_read = std::cmp::min(
+                    buf.len() - buf_offset,
+                    (vhd_block_size - offset_in_vhd_block) as usize
+                );
+    
+                let child_bat = *self.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                if child_bat != 0xFFFFFFFF {
+                    // Read from child
+                    let physical_offset = (child_bat as u64) * 512 + (self.sector_bitmap_size as u64) + offset_in_vhd_block;
+                    file_read_exact_at(&self.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                } else if let Some(ref parent) = parent {
+                    let parent_bat = *parent.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                    if parent_bat != 0xFFFFFFFF {
+                        // Read from parent
+                        let physical_offset = (parent_bat as u64) * 512 + (parent.sector_bitmap_size as u64) + offset_in_vhd_block;
+                        file_read_exact_at(&parent.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                    } else {
+                        for i in 0..bytes_to_read {
+                            buf[buf_offset + i] = 0;
+                        }
+                    }
+                } else {
+                    for i in 0..bytes_to_read {
+                        buf[buf_offset + i] = 0;
+                    }
+                }
+                buf_offset += bytes_to_read;
+                current_byte_offset += bytes_to_read as u64;
+            }
+            Ok(())
+        }
+
+    /// copy parent data first, then overlay write data.
+        pub fn diff_write_blocks(&mut self, parent: &Option<VhdBackend>, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+            let vhd_block_size = self.vhd_block_size as u64;
+            let bitmap_size = self.sector_bitmap_size as u64;
+            let start_block = (lba * block_size) / vhd_block_size;
+            let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
+    
+            // Pre-allocate reusable zero buffers ONCE (no per-block heap alloc)
+            let zero_bitmap = vec![0u8; bitmap_size as usize];
+            let mut block_data = vec![0u8; vhd_block_size as usize];
+            let mut bat_updates: Vec<(u64, u32)> = Vec::new();
+    
+            // Phase 1: Allocate + CoW copy — batch BAT updates
+            for block_idx in start_block..end_block.min(self.bat.len() as u64) {
+                if self.bat[block_idx as usize] == 0xFFFFFFFF {
+                    let mut eof = self.file.metadata()?.len();
+                    let bat_entry = (eof / 512) as u32;
+    
+                    // Write sector bitmap (reuse zero buffer)
+                    file_write_all_at(&self.file, eof, &zero_bitmap)?;
+                    eof += zero_bitmap.len() as u64;
+    
+                    // COPY-ON-WRITE: read full block from parent
+                    if let Some(ref p) = parent {
+                        let parent_bat = *p.bat.get(block_idx as usize).unwrap_or(&0xFFFFFFFF);
+                        if parent_bat != 0xFFFFFFFF {
+                            let parent_offset = (parent_bat as u64) * 512 + (p.sector_bitmap_size as u64);
+                            file_read_exact_at(&p.file, parent_offset, &mut block_data)?;
+                        } else {
+                            block_data.fill(0);
+                        }
+                    } else {
+                        block_data.fill(0);
+                    }
+    
+                    file_write_all_at(&self.file, eof, &block_data)?;
+    
+                    // Buffer BAT update
+                    self.bat[block_idx as usize] = bat_entry;
+                    bat_updates.push((block_idx, bat_entry));
+                }
+            }
+    
+            // Batch write all BAT updates in one sequential pass
+            if !bat_updates.is_empty() {
+                let mut first_off = 1536 + (bat_updates[0].0 * 4) as u64;
+                for (_, entry) in &bat_updates {
+                    file_write_all_at(&self.file, first_off, &entry.to_be_bytes())?;
+                    first_off += 4;
+                }
+            }
+    
+            // Phase 2: Overlay write data — contiguous blocks = 1 seek
+            let mut buf_offset = 0;
+            let mut current_byte_offset = lba * block_size;
+            while buf_offset < buf.len() {
+                let vhd_block_idx = current_byte_offset / vhd_block_size;
+                let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+                let chunk = std::cmp::min(
+                    buf.len() - buf_offset,
+                    (vhd_block_size - offset_in_vhd_block) as usize
+                );
+                let bat_val = self.bat[vhd_block_idx as usize];
+                let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
+                file_write_all_at(&self.file, physical_offset, &buf[buf_offset..buf_offset + chunk])?;
+                buf_offset += chunk;
+                current_byte_offset += chunk as u64;
+            }
+    
+            
+            Ok(())
+        }
+
+    /// Write blocks to VHD — allocate new BAT entries, update sector bitmap
+        pub fn write_blocks(&mut self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+            let vhd_block_size = self.vhd_block_size as u64;
+            let bitmap_size = self.sector_bitmap_size as u64;
+            let start_block = (lba * block_size) / vhd_block_size;
+            let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
+    
+            // Pre-allocate reusable zero buffers ONCE
+            let zero_bitmap = vec![0u8; bitmap_size as usize];
+            let zero_data = vec![0u8; vhd_block_size as usize];
+            let mut bat_updates: Vec<(u64, u32)> = Vec::new();
+    
+            // Phase 1: Allocate new blocks — batch BAT updates
+            for block_idx in start_block..end_block.min(self.bat.len() as u64) {
+                if self.bat[block_idx as usize] == 0xFFFFFFFF {
+                    let mut eof = self.file.metadata()?.len();
+                    let bat_entry = (eof / 512) as u32;
+    
+                    // Write bitmap + zero data (reuse buffers)
+                    file_write_all_at(&self.file, eof, &zero_bitmap)?;
+                    eof += zero_bitmap.len() as u64;
+                    
+                    file_write_all_at(&self.file, eof, &zero_data)?;
+    
+                    self.bat[block_idx as usize] = bat_entry;
+                    bat_updates.push((block_idx, bat_entry));
+                }
+            }
+    
+            // Batch write all BAT updates sequentially
+            if !bat_updates.is_empty() {
+                let mut first_off = 1536 + (bat_updates[0].0 * 4) as u64;
+                for (_, entry) in &bat_updates {
+                    file_write_all_at(&self.file, first_off, &entry.to_be_bytes())?;
+                    first_off += 4;
+                }
+            }
+    
+            // Phase 2: Write data — contiguous per VHD block = 1 seek per VHD block
+            let mut buf_offset = 0;
+            let mut current_byte_offset = lba * block_size;
+            while buf_offset < buf.len() {
+                let vhd_block_idx = current_byte_offset / vhd_block_size;
+                let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+                let chunk = std::cmp::min(
+                    buf.len() - buf_offset,
+                    (vhd_block_size - offset_in_vhd_block) as usize
+                );
+                let bat_val = self.bat[vhd_block_idx as usize];
+                let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
+                file_write_all_at(&self.file, physical_offset, &buf[buf_offset..buf_offset + chunk])?;
+                buf_offset += chunk;
+                current_byte_offset += chunk as u64;
+            }
+    
+            Ok(())
+        }
+
+    pub fn write_blocks_concurrent(&self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+            let vhd_block_size = self.vhd_block_size as u64;
+            let bitmap_size = self.sector_bitmap_size as u64;
+            let mut buf_offset = 0;
+            let mut current_byte_offset = lba * block_size;
+            
+            while buf_offset < buf.len() {
+                let vhd_block_idx = current_byte_offset / vhd_block_size;
+                let offset_in_vhd_block = current_byte_offset % vhd_block_size;
+                let chunk = std::cmp::min(
+                    buf.len() - buf_offset,
+                    (vhd_block_size - offset_in_vhd_block) as usize
+                );
+                
+                let bat_val = self.bat[vhd_block_idx as usize];
+                if bat_val == 0xFFFFFFFF {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "concurrent write hit unallocated block"));
+                }
+                
+                let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
+                file_write_all_at(&self.file, physical_offset, &buf[buf_offset..buf_offset + chunk])?;
+                
+                buf_offset += chunk;
+                current_byte_offset += chunk as u64;
+            }
+            Ok(())
+        }
 }

@@ -1,12 +1,10 @@
 use tokio::net::UdpSocket;
 use std::sync::Arc;
 use tracing::{info, warn, error, debug};
-use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr};
-use std::str::FromStr;
+use std::net::{SocketAddrV4, SocketAddr};
 use std::path::Path;
 use bytes::{BytesMut, BufMut, Buf};
 
-use crate::config::Config;
 use crate::config_manager::SharedConfig;
 
 const TFTP_PORT: u16 = 69;
