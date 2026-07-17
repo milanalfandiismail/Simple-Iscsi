@@ -265,11 +265,12 @@ impl BackendType {
         // Phase 1: Allocate + CoW copy — batch BAT updates
         for block_idx in start_block..end_block.min(child.bat.len() as u64) {
             if child.bat[block_idx as usize] == 0xFFFFFFFF {
-                let eof = child.file.seek(SeekFrom::End(0))?;
+                let mut eof = child.file.metadata()?.len();
                 let bat_entry = (eof / 512) as u32;
 
                 // Write sector bitmap (reuse zero buffer)
-                child.file.write_all(&zero_bitmap)?;
+                file_write_all_at(&child.file, eof, &zero_bitmap)?;
+                eof += zero_bitmap.len() as u64;
 
                 // COPY-ON-WRITE: read full block from parent
                 if let Some(ref p) = parent {
@@ -284,7 +285,7 @@ impl BackendType {
                     block_data.fill(0);
                 }
 
-                child.file.write_all(&block_data)?;
+                file_write_all_at(&child.file, eof, &block_data)?;
 
                 // Buffer BAT update
                 child.bat[block_idx as usize] = bat_entry;
@@ -294,10 +295,10 @@ impl BackendType {
 
         // Batch write all BAT updates in one sequential pass
         if !bat_updates.is_empty() {
-            let first_off = 1536 + (bat_updates[0].0 * 4) as u64;
-            child.file.seek(SeekFrom::Start(first_off))?;
+            let mut first_off = 1536 + (bat_updates[0].0 * 4) as u64;
             for (_, entry) in &bat_updates {
-                child.file.write_all(&entry.to_be_bytes())?;
+                file_write_all_at(&child.file, first_off, &entry.to_be_bytes())?;
+                first_off += 4;
             }
         }
 
@@ -313,8 +314,7 @@ impl BackendType {
             );
             let bat_val = child.bat[vhd_block_idx as usize];
             let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
-            child.file.seek(SeekFrom::Start(physical_offset))?;
-            child.file.write_all(&buf[buf_offset..buf_offset + chunk])?;
+            file_write_all_at(&child.file, physical_offset, &buf[buf_offset..buf_offset + chunk])?;
             buf_offset += chunk;
             current_byte_offset += chunk as u64;
         }
@@ -338,12 +338,14 @@ impl BackendType {
         // Phase 1: Allocate new blocks — batch BAT updates
         for block_idx in start_block..end_block.min(vhd.bat.len() as u64) {
             if vhd.bat[block_idx as usize] == 0xFFFFFFFF {
-                let eof = vhd.file.seek(SeekFrom::End(0))?;
+                let mut eof = vhd.file.metadata()?.len();
                 let bat_entry = (eof / 512) as u32;
 
                 // Write bitmap + zero data (reuse buffers)
-                vhd.file.write_all(&zero_bitmap)?;
-                vhd.file.write_all(&zero_data)?;
+                file_write_all_at(&vhd.file, eof, &zero_bitmap)?;
+                eof += zero_bitmap.len() as u64;
+                
+                file_write_all_at(&vhd.file, eof, &zero_data)?;
 
                 vhd.bat[block_idx as usize] = bat_entry;
                 bat_updates.push((block_idx, bat_entry));
@@ -352,10 +354,10 @@ impl BackendType {
 
         // Batch write all BAT updates sequentially
         if !bat_updates.is_empty() {
-            let first_off = 1536 + (bat_updates[0].0 * 4) as u64;
-            vhd.file.seek(SeekFrom::Start(first_off))?;
+            let mut first_off = 1536 + (bat_updates[0].0 * 4) as u64;
             for (_, entry) in &bat_updates {
-                vhd.file.write_all(&entry.to_be_bytes())?;
+                file_write_all_at(&vhd.file, first_off, &entry.to_be_bytes())?;
+                first_off += 4;
             }
         }
 
@@ -371,13 +373,11 @@ impl BackendType {
             );
             let bat_val = vhd.bat[vhd_block_idx as usize];
             let physical_offset = (bat_val as u64) * 512 + bitmap_size + offset_in_vhd_block;
-            vhd.file.seek(SeekFrom::Start(physical_offset))?;
-            vhd.file.write_all(&buf[buf_offset..buf_offset + chunk])?;
+            file_write_all_at(&vhd.file, physical_offset, &buf[buf_offset..buf_offset + chunk])?;
             buf_offset += chunk;
             current_byte_offset += chunk as u64;
         }
 
-        
         Ok(())
     }
 }
