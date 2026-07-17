@@ -183,9 +183,7 @@ fn parse_mac(mac: &str) -> Option<[u8; 6]> {
 impl DhcpServer {
     pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
         let current_config = config.read();
-        let server_addr_ip = Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
-            .unwrap_or(Ipv4Addr::UNSPECIFIED);
-        let addr = SocketAddrV4::new(server_addr_ip, DHCP_SERVER_PORT);
+        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT);
         let socket = UdpSocket::bind(addr).await?;
         socket.set_broadcast(true)?;
 
