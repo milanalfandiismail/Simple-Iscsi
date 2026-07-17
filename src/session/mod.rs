@@ -52,6 +52,7 @@ pub struct Session {
     pub pending_writes: HashMap<u32, PendingWrite>,
     throttle_window_start: std::sync::atomic::AtomicU64,
     throttle_bytes_this_window: std::sync::atomic::AtomicU64,
+    chosen_writeback_dir: String,
 }
 
 impl Session {
@@ -112,6 +113,15 @@ impl Session {
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
         let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
 
+        static NEXT_SESSION_DRIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let writeback_dirs = &config.read().writeback.writeback_dirs;
+        let chosen_dir = if !writeback_dirs.is_empty() {
+            let idx = NEXT_SESSION_DRIVE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % writeback_dirs.len();
+            writeback_dirs[idx].clone()
+        } else {
+            String::new()
+        };
+
         Session {
             stream,
             peer_addr,
@@ -135,6 +145,7 @@ impl Session {
             pending_writes: HashMap::new(),
             throttle_window_start: std::sync::atomic::AtomicU64::new(0),
             throttle_bytes_this_window: std::sync::atomic::AtomicU64::new(0),
+            chosen_writeback_dir: chosen_dir,
         }
     }
 }
@@ -319,8 +330,14 @@ impl Session {
                 for (lun_id, backend) in self.backends.iter() {
                     let cache_name = format!("{}_lun{}", target_name, lun_id);
                     info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
+                    let dirs = if self.chosen_writeback_dir.is_empty() {
+                        vec![]
+                    } else {
+                        vec![self.chosen_writeback_dir.clone()]
+                    };
+                    
                     let cache = ClientCache::new(
-                        &self.config.read().writeback.writeback_dirs,
+                        &dirs,
                         &self.client_ip,
                         &cache_name,
                         backend.block_size(),
