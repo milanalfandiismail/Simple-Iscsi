@@ -144,27 +144,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // === CLI: --restore-list <hostname> ===
+    // === CLI: --restore-list <image_key> ===
     if args.len() >= 3 && args[1] == "--restore-list" {
-        let hostname = &args[2];
+        let image_key = &args[2];
         let config = Arc::new(config::load_config(&config_path)?);
-        let clients = config::load_clients(&clients_path)?;
 
-        let client = clients.values().find(|c| c.hostname.as_deref() == Some(hostname));
-        let image_key = match client {
-            Some(c) => c.image_manager.as_deref().unwrap_or(""),
-            None => {
-                error!("Client dengan hostname '{}' tidak ditemukan", hostname);
-                std::process::exit(1);
-            }
-        };
-
-        if image_key.is_empty() {
-            error!("Client '{}' tidak memiliki image_manager", hostname);
+        let base_path = writeback_super::resolve_base_path(&config, image_key);
+        if base_path.is_empty() {
+            error!("Image key '{}' tidak ditemukan di config.toml [image_manager]", image_key);
             std::process::exit(1);
         }
 
-        let base_path = writeback_super::resolve_base_path(&config, image_key);
         let backups = vhd_merge::list_backups(&base_path)?;
 
         if backups.is_empty() {
@@ -178,29 +168,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // === CLI: --restore <hostname> [index] ===
+    // === CLI: --restore <image_key> [index] ===
     if args.len() >= 3 && args[1] == "--restore" {
-        let hostname = &args[2];
+        let image_key = &args[2];
         let restore_idx: Option<usize> = args.get(3).and_then(|s| s.parse().ok());
 
         let config = Arc::new(config::load_config(&config_path)?);
-        let clients = config::load_clients(&clients_path)?;
-
-        let client = clients.values().find(|c| c.hostname.as_deref() == Some(hostname));
-        let image_key = match client {
-            Some(c) => c.image_manager.as_deref().unwrap_or(""),
-            None => {
-                error!("Client dengan hostname '{}' tidak ditemukan", hostname);
-                std::process::exit(1);
-            }
-        };
-
-        if image_key.is_empty() {
-            error!("Client '{}' tidak memiliki image_manager", hostname);
-            std::process::exit(1);
-        }
 
         let base_path = writeback_super::resolve_base_path(&config, image_key);
+        if base_path.is_empty() {
+            error!("Image key '{}' tidak ditemukan di config.toml [image_manager]", image_key);
+            std::process::exit(1);
+        }
 
         let backup_path = if let Some(idx) = restore_idx {
             vhd_merge::restore_backup_by_index(&base_path, idx)?
