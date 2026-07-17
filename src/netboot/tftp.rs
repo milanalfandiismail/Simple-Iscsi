@@ -2,6 +2,7 @@ use tokio::net::UdpSocket;
 use std::sync::Arc;
 use tracing::{info, warn, error, debug};
 use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr};
+use std::str::FromStr;
 use std::path::Path;
 use bytes::{BytesMut, BufMut, Buf};
 
@@ -22,7 +23,10 @@ pub struct TftpServer {
 
 impl TftpServer {
     pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
-        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, TFTP_PORT);
+        let current_config = config.read();
+        let server_addr = std::net::Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
+            .unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+        let addr = SocketAddrV4::new(server_addr, TFTP_PORT);
         let socket = UdpSocket::bind(addr).await?;
         
         Ok(Arc::new(TftpServer {
@@ -32,7 +36,13 @@ impl TftpServer {
     }
 
     pub async fn run(self: Arc<Self>) {
-        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.read().dhcp.as_ref().unwrap().tftp_dir);
+        let current_config = self.config.read();
+        let server_addr = std::net::Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
+            .unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+        
+        info!("Memulai TFTP Server di {}:69 (dir: {})...", server_addr, current_config.dhcp.as_ref().unwrap().tftp_dir);
+        drop(current_config);
+        
         let mut buf = [0u8; 2048];
         
         loop {
