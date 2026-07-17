@@ -22,6 +22,30 @@ use std::collections::HashMap;
 use config_manager::SharedConfig;
 use std::time::SystemTime;
 
+fn clear_super_client_config(config_path: &str) -> std::io::Result<()> {
+    use std::io::{BufRead, Write};
+    let file = std::fs::File::open(config_path)?;
+    let reader = std::io::BufReader::new(file);
+    let mut new_lines = Vec::new();
+    
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().starts_with("super_client_ip") {
+            new_lines.push("super_client_ip = \"\"".to_string());
+        } else if line.trim().starts_with("super_client_action") {
+            new_lines.push("super_client_action = \"\"".to_string());
+        } else {
+            new_lines.push(line);
+        }
+    }
+    
+    let mut out = std::fs::File::create(config_path)?;
+    for line in new_lines {
+        writeln!(out, "{}", line)?;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -246,6 +270,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 writeback_super::delete_super(&super_path)?;
 
                 info!("✅ Commit selesai! Image '{}' diperbarui.", image_key);
+                if let Err(e) = clear_super_client_config(&config_path) {
+                    error!("Gagal membersihkan super_client_ip di config.toml: {}", e);
+                }
             }
             "--discard" => {
                 if !writeback_super::super_exists(&super_path) {
@@ -255,6 +282,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("Membuang super VHD: {}", super_path);
                 writeback_super::delete_super(&super_path)?;
                 info!("✅ Discard selesai! Perubahan di '{}' dibuang.", image_key);
+                if let Err(e) = clear_super_client_config(&config_path) {
+                    error!("Gagal membersihkan super_client_ip di config.toml: {}", e);
+                }
             }
             _ => {
                 error!("Argumen tidak dikenal: {}. Gunakan --commit <hostname> atau --discard <hostname>", action);
