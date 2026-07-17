@@ -113,10 +113,18 @@ impl Session {
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
         let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
 
-        static NEXT_SESSION_DRIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let writeback_dirs = &config.read().writeback.writeback_dirs;
         let chosen_dir = if !writeback_dirs.is_empty() {
-            let idx = NEXT_SESSION_DRIVE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % writeback_dirs.len();
+            let client_ip_str = client_ip.to_string();
+            let idx = if let Some(last_octet_str) = client_ip_str.split('.').last() {
+                if let Ok(octet) = last_octet_str.parse::<usize>() {
+                    octet % writeback_dirs.len()
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
             writeback_dirs[idx].clone()
         } else {
             String::new()
