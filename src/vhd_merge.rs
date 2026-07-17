@@ -16,7 +16,10 @@ use std::path::Path;
 pub fn merge_vhd_sync(child_path: &str, parent_path: &str) -> io::Result<()> {
     let child_file = std::fs::File::open(child_path)?;
     let mut child = VhdBackend::open(child_file)?;
-    let parent_file = std::fs::File::open(parent_path)?;
+    let parent_file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(parent_path)?;
     let mut parent = VhdBackend::open(parent_file)?;
 
     // Child dan parent harus punya ukuran block yang sama

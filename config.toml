@@ -40,8 +40,8 @@ vendor_id = "RUSTISCS"
 product_id = "WindowsBoot"
 product_revision = "1.00"
 discovery = false
-super_client_ip = ""
-super_client_action = "none"
+super_client_ip = "192.168.137.111"
+super_client_action = ""
 
 [writeback]
 writeback_dirs = ['C:\writeback', 'E:\Writeback']
