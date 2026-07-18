@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tracing::{info, warn};
 use crate::backend::Backend;
-use parking_lot::Mutex;
 
 use crate::fs_utils::{file_read_exact_at, file_write_all_at};
 
@@ -18,7 +17,6 @@ pub struct ClientCache {
     map_path: PathBuf,
     file_read: Arc<std::fs::File>,
     file_write: Arc<std::fs::File>,
-    map_file: Mutex<std::fs::File>,
     block_map: DashMap<u64, u64>,
     next_write_offset: AtomicU64,
     block_size: u64,
@@ -126,21 +124,11 @@ impl ClientCache {
         }
         let file_read = read_options.open(&file_path)?;
 
-        let mut map_options = OpenOptions::new();
-        map_options.create(true).append(true).write(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            map_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
-        }
-        let map_file = map_options.open(&map_path)?;
-
         Ok(Self {
             file_path,
             map_path,
             file_read: Arc::new(file_read),
             file_write: file_write_arc,
-            map_file: Mutex::new(map_file),
             block_map,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
@@ -318,13 +306,6 @@ impl ClientCache {
             span_start = span_end;
         }
 
-        // 3. Tulis semua mapping baru ke .map menggunakan handle persisten
-        if !new_mappings.is_empty() {
-            let mut file = self.map_file.lock();
-            use std::io::Write;
-            file.write_all(new_mappings.as_bytes())?;
-        }
-
         Ok(())
     }
 
@@ -377,8 +358,6 @@ impl ClientCache {
 
     pub fn flush(&self) -> io::Result<()> {
         self.file_write.sync_all()?;
-        let map = self.map_file.lock();
-        map.sync_all()?;
         Ok(())
     }
 

@@ -330,9 +330,6 @@ impl DhcpServer {
 
         resp.options.insert(53, vec![msg_type.clone() as u8]);
 
-        // Option 60: Vendor Class Identifier — Wajib untuk PXE client
-        resp.options.insert(60, b"PXEClient".to_vec());
-
         // Option 54: Server Identifier — IP DHCP server
         let dhcp_server_ip = {
             let ip = Ipv4Addr::from_str(&self.config.read().server.address.as_vec().first().cloned().unwrap_or_default()).unwrap_or(Ipv4Addr::UNSPECIFIED);
@@ -343,9 +340,6 @@ impl DhcpServer {
             }
         };
         resp.options.insert(54, dhcp_server_ip.octets().to_vec());
-
-        // Option 43: Vendor-Specific — PXE Discovery Control (sub-opt 6 = 8: PXE boot server)
-        resp.options.insert(43, vec![6u8, 1u8, 8u8]);
 
         // Option 93: Echo-back Client System Architecture (required by EDK2 UEFI)
         if let Some(arch_data) = req.options.get(&93) {

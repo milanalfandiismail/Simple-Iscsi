@@ -21,15 +21,39 @@ pub fn get_clients_json() -> String {
 pub fn post_clients_json(body: &str) -> String {
     match serde_json::from_str::<ClientsConfig>(body) {
         Ok(clients_cfg) => {
-            match toml::to_string(&clients_cfg) {
-                Ok(toml_str) => {
-                    if let Err(e) = fs::write("clients.toml", &toml_str) {
-                        crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string())
-                    } else {
-                        crate::server_api::build_response(200, "OK", "text/plain", "Clients saved successfully")
-                    }
+            if clients_cfg.clients.is_empty() {
+                // If there are no clients, write a template instead of `client = []`
+                // because `client = []` followed by manual `[[client]]` causes a TOML syntax error.
+                let default_clients = r#"# clients.toml - DHCP Clients configuration
+# Make sure to indent client properties with 2 spaces for a clean structure.
+
+# Example client entry:
+# [[client]]
+#   hostname        = "PC-01"
+#   mac             = "00:0C:29:A4:BC:F2"
+#   ip              = "192.168.137.100"
+#   gateway         = "192.168.137.1"
+#   dns             = "8.8.8.8"
+#   pxe             = "sb-custom"
+#   next_server     = "192.168.137.1"
+#   image_manager   = "windows_11"
+"#;
+                if let Err(e) = fs::write("clients.toml", default_clients) {
+                    crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string())
+                } else {
+                    crate::server_api::build_response(200, "OK", "text/plain", "Clients saved successfully (empty)")
                 }
-                Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+            } else {
+                match toml::to_string(&clients_cfg) {
+                    Ok(toml_str) => {
+                        if let Err(e) = fs::write("clients.toml", &toml_str) {
+                            crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string())
+                        } else {
+                            crate::server_api::build_response(200, "OK", "text/plain", "Clients saved successfully")
+                        }
+                    }
+                    Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+                }
             }
         }
         Err(e) => crate::server_api::build_response(400, "Bad Request", "text/plain", &format!("Invalid JSON: {}", e)),
