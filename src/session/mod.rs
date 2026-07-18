@@ -161,6 +161,7 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.stats.active_sessions.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.stats.record_session_end(&self.client_ip);
     }
 }
 
@@ -171,6 +172,7 @@ impl Session {
         info!("Sesi baru dimulai dari client: {}", peer_addr);
 
         self.handle_login_phase().await?;
+        self.stats.record_session_start(&self.client_ip);
 
         let target_name: String;
 

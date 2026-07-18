@@ -78,7 +78,7 @@ impl Session {
         match res {
             Ok(_) => {
                 self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-                self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+                self.stats.record_write(&self.client_ip, expected_len as u64);
             }
             Err(e) => {
                 error!("Gagal menulis disk LUN {} LBA {}: {}", lun_id, lba, e);

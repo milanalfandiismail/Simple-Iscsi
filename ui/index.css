@@ -1,0 +1,522 @@
+/* ==========================================================================
+   DESIGN SYSTEM INSPIRED BY LOVABLE - STYLING GUIDE (STRICT LIGHT CREAM/CHARCOAL)
+   ========================================================================== */
+
+:root {
+    --color-bg: #f7f4ed;
+    --color-text: #1c1c1c;
+    --color-muted: #5f5f5d;
+    --color-border: #eceae4;
+    --color-white: #fcfbf8;
+    --color-border-active: rgba(28, 28, 28, 0.4);
+    
+    --shadow-inset: rgba(255,255,255,0.2) 0px 0.5px 0px 0px inset, rgba(0,0,0,0.2) 0px 0px 0px 0.5px inset, rgba(0,0,0,0.05) 0px 1px 2px 0px;
+    --shadow-focus: rgba(0,0,0,0.1) 0px 4px 12px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    height: 100vh;
+    overflow: hidden;
+}
+
+h1, h2, h3, h4 {
+    font-family: 'Outfit', 'Camera Plain Variable', sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.9px;
+}
+
+h1 {
+    font-size: 36px;
+    margin-bottom: 8px;
+}
+
+h2 {
+    font-size: 24px;
+    margin-bottom: 16px;
+}
+
+.subtitle {
+    color: var(--color-muted);
+    font-size: 16px;
+    margin-bottom: 24px;
+}
+
+/* Layout Framework */
+.layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Sidebar Kiri */
+.sidebar {
+    width: 260px;
+    background-color: var(--color-bg);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    margin-bottom: 32px;
+}
+
+.brand-logo {
+    font-size: 24px;
+}
+
+.brand-name {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: -0.5px;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 15px;
+    border-radius: 6px;
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.nav-item:hover {
+    background-color: rgba(28, 28, 28, 0.04);
+}
+
+.nav-item.active {
+    background-color: var(--color-white);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.sidebar-footer {
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+}
+
+.system-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--color-muted);
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-indicator.online {
+    background-color: #22c55e;
+}
+
+/* Main Content Area */
+.main-content {
+    flex: 1;
+    padding: 40px;
+    overflow-y: auto;
+}
+
+.content-header {
+    margin-bottom: 32px;
+}
+
+/* Tab Panels */
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* Cards & Containers */
+.card {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.card h2 {
+    margin-bottom: 0;
+}
+
+/* Metrik Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stat-label {
+    color: var(--color-muted);
+    font-size: 14px;
+}
+
+.stat-value {
+    font-family: 'Outfit', sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+/* Services Status Row */
+.services-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.service-card {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.service-info h3 {
+    font-size: 16px;
+    margin-bottom: 2px;
+}
+
+.service-info p {
+    font-size: 13px;
+    color: var(--color-muted);
+}
+
+.pill-status {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 9999px;
+    background-color: rgba(28, 28, 28, 0.04);
+}
+
+.pill-status.active {
+    background-color: rgba(34, 197, 94, 0.1);
+    color: #166534;
+}
+
+/* Table Design */
+.table-container {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.data-table th, .data-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.data-table th {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-muted);
+}
+
+.data-table td {
+    font-size: 15px;
+}
+
+.data-table tbody tr {
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.data-table tbody tr:hover {
+    background-color: rgba(28, 28, 28, 0.03);
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 400;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.15s ease;
+}
+
+.btn:active {
+    opacity: 0.8;
+}
+
+.btn-primary {
+    background-color: var(--color-text);
+    color: var(--color-white);
+    box-shadow: var(--shadow-inset);
+}
+
+.btn-ghost {
+    background-color: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--color-border-active);
+}
+
+.btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* VHD & Layouts */
+.vhd-layout, .tftp-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.vhd-list, .backup-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vhd-item, .backup-item {
+    padding: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.vhd-item-name {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.vhd-item-size {
+    color: var(--color-muted);
+    font-size: 12px;
+}
+
+/* Inputs & Form Controls */
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.input-group label {
+    font-size: 13px;
+    color: var(--color-muted);
+}
+
+textarea, select, input {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 14px;
+    width: 100%;
+}
+
+textarea:focus, select:focus, input:focus {
+    outline: none;
+    border-color: var(--color-border-active);
+    box-shadow: var(--shadow-focus);
+}
+
+/* Text Editor Actions */
+.editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+/* Terminal Log View */
+.terminal-log {
+    background-color: #1c1c1c;
+    color: #fcfbf8;
+    font-family: monospace;
+    font-size: 13px;
+    padding: 16px;
+    border-radius: 8px;
+    height: 250px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+/* Context Menu */
+.context-menu {
+    display: none;
+    position: absolute;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-focus);
+    z-index: 1000;
+    padding: 4px 0;
+    min-width: 180px;
+}
+
+.context-item {
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.context-item:hover {
+    background-color: rgba(28, 28, 28, 0.04);
+}
+
+.context-item.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Modals */
+.modal-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(28, 28, 28, 0.4);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: var(--shadow-focus);
+}
+
+.modal h2 {
+    margin-bottom: 12px;
+}
+
+.modal p {
+    color: var(--color-muted);
+    font-size: 15px;
+    margin-bottom: 24px;
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* ==========================================================================
+   DARK THEME VARIABLES & OVERRIDES
+   ========================================================================== */
+body.dark-theme {
+    --color-bg: #1c1c1c;
+    --color-text: #f7f4ed;
+    --color-muted: #a3a39f;
+    --color-border: #2e2e2c;
+    --color-white: #242422;
+    --color-border-active: rgba(247, 244, 237, 0.4);
+    --shadow-focus: rgba(0, 0, 0, 0.4) 0px 4px 12px;
+}
+
+body.dark-theme .nav-item:hover {
+    background-color: rgba(247, 244, 237, 0.04);
+}
+
+body.dark-theme .data-table tbody tr:hover {
+    background-color: rgba(247, 244, 237, 0.03);
+}
+
+body.dark-theme .pill-status {
+    background-color: rgba(247, 244, 237, 0.04);
+}
+
+body.dark-theme .terminal-log {
+    background-color: #242422;
+    color: #f7f4ed;
+}
+
+body.dark-theme input, body.dark-theme select, body.dark-theme textarea {
+    background-color: #242422;
+    color: #f7f4ed;
+}
+
+body.dark-theme .context-menu {
+    background-color: #242422;
+    border-color: #2e2e2c;
+}
+
+body.dark-theme .context-item:hover {
+    background-color: rgba(247, 244, 237, 0.04);
+}

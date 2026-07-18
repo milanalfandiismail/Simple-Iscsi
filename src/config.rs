@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(default)]
 pub struct Config {
     pub server: ServerConfig,
@@ -20,7 +20,7 @@ pub struct Config {
     pub dhcp: Option<DhcpConfig>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct DhcpConfig {
     pub enabled: bool,
     pub start_ip: String,
@@ -32,9 +32,11 @@ pub struct DhcpConfig {
     pub subnet_mask: String,
     pub tftp_dir: String,
     pub pxe_default: Option<String>,
+    #[serde(default)]
+    pub nic_ips: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum AddressConfig {
     Single(String),
@@ -56,7 +58,7 @@ impl Default for AddressConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerConfig {
     pub address: AddressConfig,
     pub port: u16,
@@ -74,7 +76,7 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GamediskTargetConfig {
     pub target_iqn: String,
@@ -90,7 +92,7 @@ impl Default for GamediskTargetConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GamediskConfig {
     pub physical_disk: String,
     pub block_size: u64,
@@ -99,7 +101,7 @@ pub struct GamediskConfig {
     pub product_revision: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct WindowsConfig {
     pub target_iqn_prefix: String,
@@ -113,7 +115,7 @@ pub struct WindowsConfig {
     pub super_client_action: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct WritebackConfig {
     pub writeback_dirs: Vec<String>,
     pub max_cache_per_client_gb: u64,
@@ -183,13 +185,13 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
     Ok(config)
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ClientsConfig {
     #[serde(rename = "client", default)]
     pub clients: Vec<ClientConfig>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ClientConfig {
     pub mac: String,
     pub ip: String,

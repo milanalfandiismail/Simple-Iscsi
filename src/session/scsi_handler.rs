@@ -163,8 +163,8 @@ impl Session {
 
             match res {
                 Ok(buf) => {
-                    self.send_scsi_data_in(itt, &buf, 0x00, req.expected_data_len).await?;
-                    self.stats.bytes_read.fetch_add(buf.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                     self.send_scsi_data_in(itt, &buf, 0x00, req.expected_data_len).await?;
+                     self.stats.record_read(&self.client_ip, buf.len() as u64);
                 }
                 Err(e) => {
                     error!("Gagal membaca disk LUN {} LBA {}: {}", req.lun, itt, e);
@@ -264,7 +264,7 @@ impl Session {
             match res {
                 Ok(_) => {
                     self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-                    self.stats.bytes_written.fetch_add(expected_len as u64, std::sync::atomic::Ordering::Relaxed);
+                    self.stats.record_write(&self.client_ip, expected_len as u64);
                 }
                 Err(e) => {
                     error!("Gagal menulis disk LUN {} LBA {}: {}", pending.lun_id, pending_lba, e);

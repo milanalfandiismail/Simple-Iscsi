@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple iSCSI Server Dashboard</title>
+    <link rel="stylesheet" href="/index.css">
+    <!-- Google Fonts Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="layout">
+        <!-- Sidebar Kiri -->
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="brand-logo">⚡</span>
+                <span class="brand-name">Lovable iSCSI</span>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-tab="dashboard">
+                    <span class="nav-icon">📊</span> Dashboard
+                </a>
+                <a href="#" class="nav-item" data-tab="clients">
+                    <span class="nav-icon">🖥️</span> Klien
+                </a>
+                <a href="#" class="nav-item" data-tab="vhd">
+                    <span class="nav-icon">💾</span> Image Manager
+                </a>
+                <a href="#" class="nav-item" data-tab="disk-mgmt">
+                    <span class="nav-icon">💽</span> Disk Management
+                </a>
+                <a href="#" class="nav-item" data-tab="writeback">
+                    <span class="nav-icon">📦</span> Writeback
+                </a>
+                <a href="#" class="nav-item" data-tab="settings">
+                    <span class="nav-icon">⚙️</span> Pengaturan
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="btn btn-ghost btn-small" id="theme-toggle-btn" style="width: 100%; margin-bottom: 12px; font-size: 13px;">
+                    🌙 Mode Gelap
+                </button>
+                <div class="system-status">
+                    <span class="status-indicator online"></span>
+                    <span class="status-text" id="global-status-text">Server: Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Konten Utama -->
+        <main class="main-content">
+            <!-- TAB: DASHBOARD -->
+            <section id="tab-dashboard" class="tab-panel active">
+                <header class="content-header">
+                    <h1>Dashboard Overview</h1>
+                    <p class="subtitle">Metrik keaktifan server iSCSI, DHCP, dan TFTP secara dinamis.</p>
+                </header>
+
+                <div class="services-row" id="dashboard-services-container">
+                    <div class="service-card">
+                        <div class="service-info">
+                            <h3>iSCSI Target Daemon</h3>
+                            <p id="iscsi-port-info">Port: ...</p>
+                        </div>
+                        <span class="pill-status" id="iscsi-status-pill">🔴 Offline</span>
+                    </div>
+                    <div class="service-card">
+                        <div class="service-info">
+                            <h3>DHCP Server</h3>
+                            <p id="dhcp-port-info">Port: ...</p>
+                        </div>
+                        <span class="pill-status" id="dhcp-status-pill">🔴 Offline</span>
+                    </div>
+                    <div class="service-card">
+                        <div class="service-info">
+                            <h3>TFTP Server</h3>
+                            <p id="tftp-port-info">Port: ...</p>
+                        </div>
+                        <span class="pill-status" id="tftp-status-pill">🔴 Offline</span>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label">Total Active Connections</span>
+                        <span class="stat-value" id="stat-conns">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Total Configured PCs</span>
+                        <span class="stat-value" id="stat-total-pcs">0</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Daftar Penggunaan I/O Klien</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>IP Address</th>
+                                    <th>DNS</th>
+                                    <th>Gateway</th>
+                                    <th>Boot Image</th>
+                                    <th>Next Server</th>
+                                    <th>Read</th>
+                                    <th>Read Speed</th>
+                                    <th>Write</th>
+                                    <th>Write Speed</th>
+                                    <th>Uptime</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-clients-tbody">
+                                <tr>
+                                    <td colspan="11" style="text-align: center; color: var(--color-muted);">Memuat data klien...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: KLIEN -->
+            <section id="tab-clients" class="tab-panel">
+                <header class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1>Klien Manager</h1>
+                        <p class="subtitle">Kelola klien static clients.toml (Klik klien untuk edit/hapus).</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-ghost" style="border-color: #3b82f6; color: #3b82f6;" onclick="autoAllocateNextServerIpsAction()">⚡ Auto-Allocate Next Server IPs</button>
+                        <button class="btn btn-primary" onclick="openClientCrudModal(null)">➕ Tambah Klien Baru</button>
+                    </div>
+                </header>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Hostname</th>
+                                    <th>IP Address</th>
+                                    <th>MAC Address</th>
+                                    <th>DNS</th>
+                                    <th>Gateway</th>
+                                    <th>Boot Image</th>
+                                    <th>Next Server</th>
+                                    <th>Read</th>
+                                    <th>Read Speed</th>
+                                    <th>Write</th>
+                                    <th>Write Speed</th>
+                                    <th>Uptime</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clients-tbody">
+                                <tr>
+                                    <td colspan="11" style="text-align: center; color: var(--color-muted);">Memuat daftar klien...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: IMAGE MANAGER -->
+            <section id="tab-vhd" class="tab-panel">
+                <header class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1>Image Manager</h1>
+                        <p class="subtitle">Konfigurasi boot image VHD yang terdaftar di config.toml.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openVhdCrudModal(null)">➕ Tambah VHD Mapping</button>
+                </header>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Image Key (Alias)</th>
+                                    <th>Full VHD Path</th>
+                                    <th>Snapshot Backups</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vhds-tbody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; color: var(--color-muted);">Memuat konfigurasi VHD...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: DISK MANAGEMENT -->
+            <section id="tab-disk-mgmt" class="tab-panel">
+                <header class="content-header">
+                    <h1>Disk Management</h1>
+                    <p class="subtitle">Klik kiri pada salah satu partisi disk untuk mengalokasikan fungsi booting, writeback, atau gamedisk.</p>
+                </header>
+
+                <div class="disk-list-grid" id="disk-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <!-- Disk cards loaded dynamically here -->
+                </div>
+
+                <div class="card">
+                    <h2>Global Storage Parameters</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                        <div class="input-group">
+                            <label>Max Cache Size Per Client (GB)</label>
+                            <input type="number" id="disk-max-cache-gb" required>
+                        </div>
+                        <div class="input-group">
+                            <label>Max Write Speed throttle (MB/s)</label>
+                            <input type="number" id="disk-max-speed-mbps" required>
+                        </div>
+                    </div>
+                    <div class="editor-actions">
+                        <button type="button" class="btn btn-primary" onclick="saveDiskMgmtGlobals()">Simpan Parameter Global</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: WRITEBACK -->
+            <section id="tab-writeback" class="tab-panel">
+                <header class="content-header">
+                    <h1>Writeback Cache Monitor</h1>
+                    <p class="subtitle">Pantau alokasi space cache klien secara dinamis berdasarkan konfigurasi writeback.</p>
+                </header>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nama File Cache</th>
+                                    <th>Ukuran File</th>
+                                    <th>Path Lengkap</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="writeback-tbody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; color: var(--color-muted);">Memuat file cache writeback...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: SETTINGS -->
+            <section id="tab-settings" class="tab-panel">
+                <header class="content-header">
+                    <h1>Pengaturan Sentral (config.toml)</h1>
+                    <p class="subtitle">Kelola konfigurasi DHCP, TFTP, dan iSCSI Daemon secara instan.</p>
+                </header>
+
+                    <!-- CARD 1: Server & iSCSI Daemon -->
+                    <form class="card" style="margin-bottom: 24px;" onsubmit="saveConfigJson(event)">
+                        <h2 style="margin-top: 0; font-family: 'Outfit', sans-serif;">⚙️ Server & iSCSI Daemon</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div class="input-group">
+                                <label>Listen IP Address</label>
+                                <input type="text" id="set-server-address" placeholder="e.g. 0.0.0.0" required>
+                            </div>
+                            <div class="input-group">
+                                <label>Port</label>
+                                <input type="number" id="set-server-port" placeholder="e.g. 3300" required>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div class="input-group">
+                                <label>Global Read Cache Size (GB)</label>
+                                <input type="number" id="set-server-cache" placeholder="e.g. 2" required>
+                            </div>
+                            <div class="input-group">
+                                <label>iSCSI Target IQN Prefix</label>
+                                <input type="text" id="set-gamedisk-iqn" placeholder="e.g. iqn.2024-01.com.tmdebug:gamedisks" required>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 16px; gap: 12px;">
+                            <button type="button" class="btn btn-ghost" onclick="loadConfigJson()" style="margin: 0;">Batal</button>
+                            <button type="submit" class="btn btn-primary" style="margin: 0;">💾 Simpan Pengaturan Server</button>
+                        </div>
+                    </form>
+
+                    <!-- CARD 2: DHCP Server Configuration -->
+                    <form class="card" style="margin-bottom: 24px;" onsubmit="saveConfigJson(event)">
+                        <h2 style="margin-top: 0; font-family: 'Outfit', sans-serif;">🔌 DHCP Server Configuration</h2>
+                        <div class="input-group" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 16px; margin-bottom: 16px;">
+                            <input type="checkbox" id="set-dhcp-enabled" style="width: auto; margin: 0;">
+                            <label for="set-dhcp-enabled" style="font-weight: 600; margin: 0; cursor: pointer;">Aktifkan DHCP Server</label>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div class="input-group">
+                                <label>DHCP Start IP Pool</label>
+                                <input type="text" id="set-dhcp-start-ip" placeholder="e.g. 192.168.137.100">
+                            </div>
+                            <div class="input-group">
+                                <label>DHCP End IP Pool</label>
+                                <input type="text" id="set-dhcp-end-ip" placeholder="e.g. 192.168.137.200">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div class="input-group">
+                                <label>Subnet Mask</label>
+                                <input type="text" id="set-dhcp-mask" placeholder="e.g. 255.255.255.0">
+                            </div>
+                            <div class="input-group">
+                                <label>Gateway (Router IP)</label>
+                                <input type="text" id="set-dhcp-gateway" placeholder="e.g. 192.168.137.1">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div class="input-group">
+                                <label>DNS Server</label>
+                                <input type="text" id="set-dhcp-dns" placeholder="e.g. 8.8.8.8">
+                            </div>
+                            <div class="input-group">
+                                <label>Next Server (TFTP IP)</label>
+                                <input type="text" id="set-dhcp-next" placeholder="e.g. 192.168.137.1">
+                            </div>
+                        </div>
+                        <div class="input-group" style="margin-top: 16px;">
+                            <label>Load Balancing NIC IPs</label>
+                            <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: stretch;">
+                                <input type="text" id="add-nic-ip-input" placeholder="e.g. 192.168.137.1" style="flex: 1; margin: 0; height: 42px; box-sizing: border-box;">
+                                <button type="button" class="btn btn-primary" onclick="addNicIpAction()" style="white-space: nowrap; font-size: 13px; padding: 0 16px; height: 42px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; margin: 0;">➕ Add IP</button>
+                            </div>
+                            <div id="nic-ips-list-container" style="border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-light); padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+                                <span style="color: var(--color-muted); font-size: 13px; text-align: center;">Belum ada IP ditambahkan.</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 16px; gap: 12px;">
+                            <button type="button" class="btn btn-ghost" onclick="loadConfigJson()" style="margin: 0;">Batal</button>
+                            <button type="submit" class="btn btn-primary" style="margin: 0;">💾 Simpan Pengaturan DHCP</button>
+                        </div>
+                    </form>
+
+                    <!-- CARD 3: TFTP Service & Boot Files -->
+                    <form class="card" style="margin-bottom: 24px;" onsubmit="saveConfigJson(event)">
+                        <h2 style="margin-top: 0; font-family: 'Outfit', sans-serif;">📂 TFTP Service & Boot Files</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div class="input-group">
+                                <label>TFTP Root Directory Path</label>
+                                <input type="text" id="set-tftp-dir" placeholder="e.g. pxe">
+                            </div>
+                            <div class="input-group">
+                                <label>Default PXE Boot Loader (iPXE)</label>
+                                <input type="text" id="set-pxe-default" placeholder="e.g. sb-custom">
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 16px; gap: 12px;">
+                            <button type="button" class="btn btn-ghost" onclick="loadConfigJson()" style="margin: 0;">Batal</button>
+                            <button type="submit" class="btn btn-primary" style="margin: 0;">💾 Simpan Pengaturan TFTP</button>
+                        </div>
+                    </form>
+
+                <!-- TFTP FOLDERS CRUD CARD -->
+                <div class="card" style="margin-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h2 style="margin: 0; font-family: 'Outfit', sans-serif;">📂 TFTP Bootloader Folders Manager</h2>
+                        <button class="btn btn-primary" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
+                    </div>
+                    <p class="subtitle" style="margin-bottom: 16px;">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nama Folder</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tftp-folders-tbody">
+                                <tr>
+                                    <td colspan="2" style="text-align: center; color: var(--color-muted);">Memuat folder TFTP...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL CRUD KLIEN -->
+    <div id="client-crud-modal" class="modal-backdrop">
+        <div class="modal" style="max-width: 600px;">
+            <h2 id="client-modal-title">Form Data Klien</h2>
+            <form id="client-crud-form" onsubmit="saveClientAction(event)">
+                <input type="hidden" id="client-old-mac">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="input-group">
+                        <label>Hostname / PC Name</label>
+                        <input type="text" id="client-hostname" placeholder="e.g. PC-01" required>
+                    </div>
+                    <div class="input-group">
+                        <label>MAC Address</label>
+                        <input type="text" id="client-mac" placeholder="e.g. 00:0C:29:A4:BC:F2" required>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="input-group">
+                        <label>IP Address</label>
+                        <input type="text" id="client-ip" placeholder="e.g. 192.168.137.101" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Gateway (Router IP)</label>
+                        <input type="text" id="client-gateway" placeholder="e.g. 192.168.137.1">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="input-group">
+                        <label>DNS Server</label>
+                        <input type="text" id="client-dns" placeholder="e.g. 8.8.8.8">
+                    </div>
+                    <div class="input-group">
+                        <label>Next Server (Server IP)</label>
+                        <input type="text" id="client-next-server" placeholder="e.g. 192.168.137.1">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="input-group">
+                        <label>PXE Bootloader Folder</label>
+                        <input type="text" id="client-pxe" list="tftp-folders-list" placeholder="e.g. sb-custom">
+                        <datalist id="tftp-folders-list"></datalist>
+                    </div>
+                    <div class="input-group">
+                        <label>Boot Image (Image Manager Key)</label>
+                        <select id="client-image-manager">
+                            <option value="">-- Tanpa Image (Gamedisk Only) --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-buttons" style="margin-top: 24px;">
+                    <button type="button" class="btn btn-ghost" style="border-color: #ef4444; color: #ef4444; margin-right: auto;" id="btn-client-delete" onclick="deleteClientAction()">Hapus Klien</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeClientCrudModal()">Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan Klien</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CRUD VHD MAPPING -->
+    <div id="vhd-crud-modal" class="modal-backdrop">
+        <div class="modal">
+            <h2 id="vhd-modal-title">Form VHD Mapping</h2>
+            <form id="vhd-crud-form" onsubmit="saveVhdAction(event)">
+                <input type="hidden" id="vhd-old-key">
+                <div class="input-group">
+                    <label>Image Key (Alias)</label>
+                    <input type="text" id="vhd-image-key" placeholder="e.g. windows_11" required>
+                </div>
+                <div class="input-group">
+                    <label>File VHD Disk</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="vhd-path" readonly placeholder="Klik 'Pilih File' untuk memilih..." required style="flex: 1;">
+                        <button type="button" class="btn btn-ghost" onclick="selectVhdFileViaExplorer()" style="white-space: nowrap;">📂 Pilih File</button>
+                    </div>
+                </div>
+                <div class="modal-buttons" style="margin-top: 24px;">
+                    <button type="button" class="btn btn-ghost" style="border-color: #ef4444; color: #ef4444; margin-right: auto;" id="btn-vhd-delete" onclick="deleteVhdAction()">Hapus Mapping</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeVhdCrudModal()">Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan Mapping</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Context Menu Klien (Klik Kanan) -->
+    <div id="clients-context-menu" class="context-menu">
+        <div class="context-item" id="ctx-enable-super" onclick="ctxEnableSuperClient()">⚡ Aktifkan Super Client</div>
+        <div class="context-item disabled" id="ctx-disable-super" onclick="ctxDisableSuperClientPrompt()">❌ Nonaktifkan Super Client</div>
+    </div>
+
+    <!-- Dialog Konfirmasi Lovable (Commit / Discard) -->
+    <div id="confirm-modal" class="modal-backdrop">
+        <div class="modal">
+            <h2>Konfirmasi Super Client</h2>
+            <p>PC Super Client telah terputus (Offline). Tentukan tindakan untuk modifikasi disk yang dibuat:</p>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="modalAction('commit')">Simpan Perubahan (Commit)</button>
+                <button class="btn btn-ghost" style="border-color: #ef4444; color: #ef4444;" onclick="modalAction('discard')">Buang Perubahan (Discard)</button>
+                <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SNAPSHOT MANAGER -->
+    <div id="vhd-snapshots-modal" class="modal-backdrop">
+        <div class="modal" style="max-width: 600px;">
+            <h2>📸 Snapshot Backups for <span id="snapshot-modal-title-key">Image</span></h2>
+            <p class="subtitle" style="margin-bottom: 16px;">Daftar snapshot otomatis yang dibuat sebelum proses commit super client. Anda dapat merestore salah satu snapshot di bawah ini.</p>
+            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Snapshot Index</th>
+                            <th>Path Berkas</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vhd-snapshots-tbody">
+                        <tr>
+                            <td colspan="3" style="text-align: center; color: var(--color-muted);">Tidak ada snapshot untuk image ini.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-buttons" style="margin-top: 16px; justify-content: flex-end;">
+                <button type="button" class="btn btn-ghost" onclick="closeVhdSnapshotsModal()">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIG DISK SETTINGS -->
+    <div id="disk-config-modal" class="modal-backdrop">
+        <div class="modal" style="max-width: 450px;">
+            <h2 id="disk-config-title">Konfigurasi Disk</h2>
+            <p class="subtitle" id="disk-config-subtitle">Atur fungsi alokasi untuk drive ini.</p>
+            <form id="disk-config-form" onsubmit="applyDiskConfigAction(event)">
+                <input type="hidden" id="disk-config-letter">
+                
+                <div style="display: flex; flex-direction: column; gap: 16px; margin: 24px 0;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--color-text);">
+                        <input type="checkbox" id="disk-cfg-vhd" style="width: auto;"> 💾 Windows VHD Boot Directory (DRIVE:\vhd)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--color-text);">
+                        <input type="checkbox" id="disk-cfg-wb" style="width: auto;"> 📦 Writeback Cache Storage (DRIVE:\writeback)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--color-text);">
+                        <input type="checkbox" id="disk-cfg-gd" style="width: auto;"> 🎮 Gamedisk iSCSI Target
+                    </label>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-ghost" onclick="closeDiskConfigModal()">Batal</button>
+                    <button type="submit" class="btn btn-primary">Terapkan Alokasi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/index.js"></script>
+</body>
+</html>

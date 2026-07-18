@@ -16,6 +16,7 @@ mod vhd_merge;
 mod netboot;
 mod stats;
 mod config_manager;
+mod server_api;
 
 use backend::Backend;
 use std::fs;
@@ -144,11 +145,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Inisialisasi file watcher via config_manager
     config_manager::start_config_watcher(shared_config.clone(), config_path.clone(), clients_path.clone());
 
+    // Inisialisasi Server Stats
+    let stats = stats::ServerStats::new();
+    stats::ServerStats::start_periodic_logging(stats.clone());
+
+    // Inisialisasi API Server (Tauri Frontend Connector)
+    {
+        let config_api = shared_config.clone();
+        let stats_api = stats.clone();
+        tokio::spawn(async move {
+            crate::server_api::start_api_server(config_api, stats_api).await;
+        });
+    }
+
     // Inisialisasi Netboot
     {
         let clients_config = shared_config.clone();
+        let stats_netboot = stats.clone();
         tokio::spawn(async move {
-            crate::netboot::start_netboot(clients_config).await;
+            crate::netboot::start_netboot(clients_config, stats_netboot).await;
         });
     }
 
@@ -171,9 +186,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("Berhasil memuat Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
             }
             Err(e) => {
-                error!("Fatal: Gagal menginisialisasi storage backend gamedisk ({}): {}", gd_cfg.physical_disk, e);
-                error!("Pastikan path physical_disk ada dan dapat diakses (Hak Administrator diperlukan untuk raw drive).");
-                std::process::exit(1);
+                error!("Gagal menginisialisasi storage backend gamedisk ({}): {}", gd_cfg.physical_disk, e);
+                error!("Silakan perbaiki konfigurasi gamedisk di halaman Disk Management.");
             }
         }
     }
@@ -182,15 +196,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for dir in &config.writeback.writeback_dirs {
         if let Err(e) = fs::create_dir_all(dir) {
             error!("Gagal membuat direktori writeback {:?}: {}", dir, e);
-            std::process::exit(1);
+            error!("Silakan perbaiki path direktori ini di halaman Pengaturan.");
+        } else {
+            info!("Writeback dir siap di: {}", dir);
         }
-        info!("Writeback dir siap di: {}", dir);
     }
 
-    // Mulai server TCP iSCSI
-    let stats = stats::ServerStats::new();
-    stats::ServerStats::start_periodic_logging(stats.clone());
-    
     if let Err(e) = server::start_server(
         shared_config.clone(),
         Arc::new(gamedisk_backends),
