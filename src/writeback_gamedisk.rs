@@ -352,7 +352,8 @@ impl ClientCache {
 
 
     pub fn flush(&self) -> io::Result<()> {
-        self.file_write.sync_all()?;
+        // Ignored to avoid choking disk I/O with synchronous flushes.
+        // Server OS will handle flushing data asynchronously.
         Ok(())
     }
 
