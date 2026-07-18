@@ -74,6 +74,12 @@ impl ServerStats {
                     let duration = start_time.elapsed();
                     *stats.last_session_duration.lock() = Some(duration);
                 }
+                
+                // Reset stats when the client goes fully offline
+                stats.bytes_read.store(0, Ordering::Relaxed);
+                stats.bytes_written.store(0, Ordering::Relaxed);
+                stats.last_bytes_read.store(0, Ordering::Relaxed);
+                stats.last_bytes_written.store(0, Ordering::Relaxed);
             }
         }
     }

@@ -47,7 +47,12 @@ pub fn clear_super_client_config(config_path: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn start_config_watcher(shared_config: SharedConfig, config_path: String, clients_path: String) {
+pub fn start_config_watcher(
+    shared_config: SharedConfig, 
+    gamedisk_backends: Arc<std::sync::RwLock<std::collections::HashMap<u8, Arc<crate::backend::Backend>>>>,
+    config_path: String, 
+    clients_path: String
+) {
     use std::time::SystemTime;
     use tracing::{info, error};
     
@@ -77,6 +82,47 @@ pub fn start_config_watcher(shared_config: SharedConfig, config_path: String, cl
 
                 match crate::config::load_config(&config_path) {
                     Ok(new_config) => {
+                        let old_config = shared_config.read();
+                        let mut backends_map = gamedisk_backends.write().unwrap();
+                        let mut new_map = std::collections::HashMap::new();
+
+                        for (i, gd_cfg) in new_config.gamedisk.iter().enumerate() {
+                            let lun_id = i as u8;
+                            let mut reused = false;
+                            
+                            // Cek apakah konfigurasi disk ini persis sama dengan yang lama
+                            for (old_i, old_gd_cfg) in old_config.gamedisk.iter().enumerate() {
+                                if old_i as u8 == lun_id && old_gd_cfg.physical_disk == gd_cfg.physical_disk {
+                                    if let Some(b) = backends_map.get(&lun_id) {
+                                        new_map.insert(lun_id, Arc::clone(b));
+                                        reused = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            if !reused {
+                                info!("Memuat ulang / menambahkan Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
+                                match crate::backend::Backend::new_raw(
+                                    &gd_cfg.physical_disk,
+                                    gd_cfg.block_size,
+                                    &gd_cfg.vendor_id,
+                                    &gd_cfg.product_id,
+                                    &gd_cfg.product_revision,
+                                    new_config.server.read_cache_gb,
+                                ) {
+                                    Ok(b) => {
+                                        new_map.insert(lun_id, Arc::new(b));
+                                        info!("Berhasil memuat Gamedisk LUN {}", lun_id);
+                                    }
+                                    Err(e) => {
+                                        error!("Gagal menginisialisasi storage gamedisk ({}): {}", gd_cfg.physical_disk, e);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        *backends_map = new_map;
                         shared_config.update(new_config);
                         info!("✅ Konfigurasi berhasil di-reload!");
                         last_config_mtime = current_config_mtime;
