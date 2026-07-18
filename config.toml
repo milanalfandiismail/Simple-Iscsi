@@ -1,7 +1,7 @@
 [server]
 address = "10.10.10.253"
 port = 3260
-read_cache_gb = 2
+read_cache_gb = 0
 
 [gamedisk_target]
 target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"

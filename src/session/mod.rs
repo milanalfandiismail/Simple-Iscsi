@@ -233,7 +233,7 @@ impl Session {
                         &dirs,
                         &self.client_ip,
                         &cache_name,
-                        Arc::clone(backend),
+                        backend.block_size(),
                         self.config.read().writeback.max_cache_per_client_gb,
                         false, // is_super is always false for cache
                         self.config.read().writeback.max_write_speed_mbps,
