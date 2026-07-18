@@ -19,6 +19,7 @@ sanhook --drive 0x81 iscsi:${168}::::iqn.2024-01.com.tmdebug:gamedisks || echo G
 echo
 echo    Booting Windows from iSCSI to 0x80...
 sanboot iscsi:${168}::::${169}
+shell
 echo
 echo    Boot failed, entering shell...
 shell

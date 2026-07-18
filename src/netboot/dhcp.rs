@@ -15,6 +15,7 @@ use crate::netboot::dhcp_packet::*;
 
 pub struct DhcpServer {
     config: SharedConfig,
+    stats: Arc<crate::stats::ServerStats>,
     socket: Arc<UdpSocket>,
     sender: Arc<UdpSocket>,
     leases: Mutex<HashMap<[u8; 6], Ipv4Addr>>,
@@ -33,25 +34,39 @@ fn parse_mac(mac: &str) -> Option<[u8; 6]> {
 }
 
 impl DhcpServer {
-    pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
+    pub async fn new(config: SharedConfig, stats: Arc<crate::stats::ServerStats>) -> std::io::Result<Arc<Self>> {
         let current_config = config.read();
         let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT);
         let socket = UdpSocket::bind(addr).await?;
         socket.set_broadcast(true)?;
+        let socket_arc = Arc::new(socket);
 
         // Create a dedicated sender socket bound to the server IP:67
         // Uses SO_REUSEADDR so two sockets can share port 67
         // UEFI PXE firmware requires replies from source port 67
         let server_addr = Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
-            .unwrap_or(Ipv4Addr::new(192, 168, 56, 1));
+            .unwrap_or(Ipv4Addr::UNSPECIFIED);
 
-        let sock2 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-        sock2.set_reuse_address(true)?;
-        sock2.set_broadcast(true)?;
-        let sender_addr: std::net::SocketAddr = SocketAddrV4::new(server_addr, DHCP_SERVER_PORT).into();
-        sock2.bind(&sender_addr.into())?;
-        let sender = UdpSocket::from_std(sock2.into())?;
-        info!("Sender DHCP socket bind ke {}:{}", server_addr, DHCP_SERVER_PORT);
+        let sender = if server_addr.is_unspecified() {
+            info!("DHCP Server: Server address is unspecified (0.0.0.0). Reusing receiver socket for sender.");
+            socket_arc.clone()
+        } else {
+            let sock2 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+            sock2.set_reuse_address(true)?;
+            sock2.set_broadcast(true)?;
+            let sender_addr: std::net::SocketAddr = SocketAddrV4::new(server_addr, DHCP_SERVER_PORT).into();
+            match sock2.bind(&sender_addr.into()) {
+                Ok(_) => {
+                    let s = UdpSocket::from_std(sock2.into())?;
+                    info!("Sender DHCP socket bound to {}:{}", server_addr, DHCP_SERVER_PORT);
+                    Arc::new(s)
+                }
+                Err(e) => {
+                    warn!("Failed to bind dedicated DHCP sender socket to {}:{}: {}. Falling back to receiver socket.", server_addr, DHCP_SERVER_PORT, e);
+                    socket_arc.clone()
+                }
+            }
+        };
 
         // Parse IPs
         let start_ip = Ipv4Addr::from_str(&current_config.dhcp.as_ref().unwrap().start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
@@ -68,8 +83,9 @@ impl DhcpServer {
 
         let server = Arc::new(DhcpServer {
             config,
-            socket: Arc::new(socket),
-            sender: Arc::new(sender),
+            stats,
+            socket: socket_arc,
+            sender,
             leases: Mutex::new(HashMap::new()),
             next_ip: Mutex::new(start_ip_u32),
             clients: Mutex::new(clients_map),
@@ -125,6 +141,11 @@ impl DhcpServer {
         *next += 1;
         
         leases.insert(*mac, ip);
+
+        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        self.stats.dhcp_leases.insert(mac_str, ip.to_string());
+
         ip
     }
 
@@ -313,7 +334,14 @@ impl DhcpServer {
         resp.options.insert(60, b"PXEClient".to_vec());
 
         // Option 54: Server Identifier — IP DHCP server
-        let dhcp_server_ip = Ipv4Addr::from_str(&self.config.read().server.address.as_vec().first().cloned().unwrap_or_default()).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let dhcp_server_ip = {
+            let ip = Ipv4Addr::from_str(&self.config.read().server.address.as_vec().first().cloned().unwrap_or_default()).unwrap_or(Ipv4Addr::UNSPECIFIED);
+            if ip.is_unspecified() {
+                server_ip
+            } else {
+                ip
+            }
+        };
         resp.options.insert(54, dhcp_server_ip.octets().to_vec());
 
         // Option 43: Vendor-Specific — PXE Discovery Control (sub-opt 6 = 8: PXE boot server)

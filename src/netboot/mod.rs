@@ -4,12 +4,13 @@ pub mod tftp;
 
 use tokio::task;
 use tracing::{info, error};
+use std::sync::Arc;
 
 use crate::config_manager::SharedConfig;
 use dhcp::DhcpServer;
 use tftp::TftpServer;
 
-pub async fn start_netboot(config: SharedConfig) {
+pub async fn start_netboot(config: SharedConfig, stats: Arc<crate::stats::ServerStats>) {
     let current_config = config.read();
     let dhcp_cfg = match &current_config.dhcp {
         Some(d) => d,
@@ -26,7 +27,7 @@ pub async fn start_netboot(config: SharedConfig) {
 
     info!("Inisialisasi modul Netboot...");
 
-    match DhcpServer::new(config.clone()).await {
+    match DhcpServer::new(config.clone(), stats).await {
         Ok(dhcp_server) => {
             task::spawn(async move {
                 dhcp_server.run().await;
