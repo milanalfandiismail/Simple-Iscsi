@@ -14,20 +14,6 @@ vendor_id = "RUSTISCS"
 product_id = "GameDisk-0"
 product_revision = "1.00"
 
-[[gamedisk]]
-physical_disk = '\\.\PhysicalDrive2'
-block_size = 512
-vendor_id = "RUSTISCS"
-product_id = "GameDisk-2"
-product_revision = "1.00"
-
-[[gamedisk]]
-physical_disk = '\\.\PhysicalDrive3'
-block_size = 512
-vendor_id = "RUSTISCS"
-product_id = "GameDisk-3"
-product_revision = "1.00"
-
 [windows]
 target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
 vhd_dir = ""
@@ -42,7 +28,7 @@ super_client_action = ""
 [writeback]
 writeback_dirs = ['C:\writeback']
 max_cache_per_client_gb = 10
-max_write_speed_mbps = 20
+max_write_speed_mbps = 0
 
 [image_manager]
 w11 = 'E:\W11-23H2-5335.vhd'

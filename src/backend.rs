@@ -446,9 +446,7 @@ impl Backend {
             let read_end = end_byte.min(chunk_end_byte);
             let bytes_to_copy = (read_end - read_start) as usize;
 
-            let chunk_data = if let Some(data) = cache.get(chunk_id) {
-                data
-            } else {
+            let chunk_data = match cache.cache.try_get_with(chunk_id, || {
                 let mut chunk_buf = vec![0u8; chunk_size_bytes as usize];
                 let chunk_lba = chunk_start_byte / bs;
                 let chunk_blocks = if chunk_lba + blocks_per_chunk > total_blocks {
@@ -459,10 +457,10 @@ impl Backend {
 
                 let inner = self.inner.read();
                 inner.backend.read_exact_at(chunk_lba, bs, &mut chunk_buf[.. (chunk_blocks as u64 * bs) as usize])?;
-
-                let data = Arc::new(chunk_buf);
-                cache.insert(chunk_id, Arc::clone(&data));
-                data
+                Ok::<Arc<Vec<u8>>, std::io::Error>(Arc::new(chunk_buf))
+            }) {
+                Ok(data) => data,
+                Err(e) => return Err(std::io::Error::new(e.kind(), e.to_string())),
             };
 
             let offset_in_chunk = (read_start - chunk_start_byte) as usize;
