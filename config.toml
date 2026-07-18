@@ -1,5 +1,5 @@
 [server]
-address = "10.10.10.253"
+address = "192.168.137.1"
 port = 3260
 read_cache_gb = 0
 
@@ -31,16 +31,16 @@ max_cache_per_client_gb = 10
 max_write_speed_mbps = 1000
 
 [image_manager]
-w11 = 'E:\W11-23H2-5335.vhd'
 w11manta222 = 'E:\Windows 24H2\Windows_24H2_Modern.vhd'
+w11 = 'E:\W11-23H2-5335.vhd'
 
 [dhcp]
 enabled = true
-start_ip = "10.10.10.100"
-end_ip = "10.10.10.200"
-router = "10.10.10.1"
+start_ip = "192.168.137.100"
+end_ip = "192.168.137.200"
+router = "192.168.137.1"
 dns = "8.8.8.8"
-next_server = "10.10.10.253"
+next_server = "192.168.137.1"
 subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"

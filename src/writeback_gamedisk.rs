@@ -115,12 +115,26 @@ impl ClientCache {
         let file_write = write_options.open(&file_path)?;
         let file_write_arc = Arc::new(file_write);
 
+        // Periodically sync file writes to disk in the background (every 3 seconds)
+        let file_write_weak = Arc::downgrade(&file_write_arc);
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if let Some(file) = file_write_weak.upgrade() {
+                    let _ = file.sync_all();
+                } else {
+                    break;
+                }
+            }
+        });
+
         let mut read_options = OpenOptions::new();
         read_options.read(true);
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
             read_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            read_options.custom_flags(0x20000000); // FILE_FLAG_NO_BUFFERING
         }
         let file_read = read_options.open(&file_path)?;
 
