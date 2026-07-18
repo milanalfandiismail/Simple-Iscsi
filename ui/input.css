@@ -15,42 +15,4 @@
 @import "./style.css";
 
 /* Responsive Overrides */
-@media (max-width: 768px) {
-  .layout {
-    flex-direction: column;
-  }
-  .sidebar {
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--color-border);
-    padding: 12px;
-  }
-  .brand {
-    margin-bottom: 12px;
-  }
-  .nav-menu {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    gap: 12px;
-  }
-  .nav-item {
-    padding: 8px 12px;
-    white-space: nowrap;
-  }
-  .sidebar-footer {
-    display: none;
-  }
-  .main-content {
-    padding: 16px;
-  }
-  .services-row {
-    flex-direction: column;
-  }
-  .stats-grid {
-    flex-direction: column;
-  }
-  .table-container {
-    overflow-x: auto;
-  }
-}
+

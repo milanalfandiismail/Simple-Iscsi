@@ -12,9 +12,9 @@
 </head>
 <body>
 
-    <div class="layout">
+    <div class="layout flex-col md:flex-row">
         <!-- Sidebar Kiri -->
-        <aside class="sidebar">
+        <aside class="sidebar fixed inset-y-0 left-0 z-50 w-[260px] transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-background border-r border-border-light h-full">
             <div class="brand">
                 <span class="brand-logo">⚡</span>
                 <span class="brand-name">Lovable iSCSI</span>
@@ -52,8 +52,22 @@
             </div>
         </aside>
 
+        <!-- Mobile Header (Visible only on small screens) -->
+        <header class="mobile-header md:hidden flex items-center justify-between p-4 bg-background border-b border-border-light">
+            <div class="brand" style="margin-bottom: 0; padding: 0;">
+                <span class="brand-logo">⚡</span>
+                <span class="brand-name" style="font-size: 18px;">Lovable iSCSI</span>
+            </div>
+            <button id="mobile-menu-btn" class="p-2 text-primary focus:outline-none">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+        </header>
+
+        <!-- Overlay Sidebar Mobile -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden transition-opacity"></div>
+
         <!-- Konten Utama -->
-        <main class="main-content">
+        <main class="main-content flex-1">
             <!-- TAB: DASHBOARD -->
             <section id="tab-dashboard" class="tab-panel active">
                 <header class="content-header">
@@ -61,7 +75,7 @@
                     <p class="subtitle">Metrik keaktifan server iSCSI, DHCP, dan TFTP secara dinamis.</p>
                 </header>
 
-                <div class="services-row" id="dashboard-services-container">
+                <div class="services-row flex-col md:flex-row" id="dashboard-services-container">
                     <div class="service-card">
                         <div class="service-info">
                             <h3>iSCSI Target Daemon</h3>
@@ -85,7 +99,7 @@
                     </div>
                 </div>
 
-                <div class="stats-grid">
+                <div class="stats-grid flex-col md:flex-row">
                     <div class="stat-card">
                         <span class="stat-label">Total Active Connections</span>
                         <span class="stat-value" id="stat-conns">0</span>
@@ -98,7 +112,7 @@
 
                 <div class="card">
                     <h2>Daftar Penggunaan I/O Klien</h2>
-                    <div class="table-container">
+                    <div class="table-container overflow-x-auto">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -139,7 +153,7 @@
                 </header>
 
                 <div class="card">
-                    <div class="table-container">
+                    <div class="table-container overflow-x-auto">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -179,7 +193,7 @@
                 </header>
 
                 <div class="card">
-                    <div class="table-container">
+                    <div class="table-container overflow-x-auto">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -236,7 +250,7 @@
                 </header>
 
                 <div class="card">
-                    <div class="table-container">
+                    <div class="table-container overflow-x-auto">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -371,7 +385,7 @@
                         <button class="btn btn-primary" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
                     </div>
                     <p class="subtitle" style="margin-bottom: 16px;">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
-                    <div class="table-container">
+                    <div class="table-container overflow-x-auto">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -499,7 +513,7 @@
         <div class="modal" style="max-width: 600px;">
             <h2>📸 Snapshot Backups for <span id="snapshot-modal-title-key">Image</span></h2>
             <p class="subtitle" style="margin-bottom: 16px;">Daftar snapshot otomatis yang dibuat sebelum proses commit super client. Anda dapat merestore salah satu snapshot di bawah ini.</p>
-            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+            <div class="table-container overflow-x-auto" style="max-height: 250px; overflow-y: auto;">
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -552,4 +566,6 @@
     <script src="/index.js"></script>
 </body>
 </html>
+
+
 
