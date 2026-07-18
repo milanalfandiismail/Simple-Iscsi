@@ -537,13 +537,37 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
         }
 
         ("POST", "/api/system/select_vhd") => {
-            let selected_path = tokio::task::spawn_blocking(|| {
-                rfd::FileDialog::new()
-                    .add_filter("VHD Disk Image", &["vhd"])
-                    .pick_file()
-            }).await.unwrap_or(None);
+            // Using PowerShell to open a TopMost native file dialog
+            // since rfd doesn't support TopMost natively without a window handle.
+            let ps_script = r#"
+Add-Type -AssemblyName System.Windows.Forms
+$form = New-Object System.Windows.Forms.Form
+$form.TopMost = $true
+$form.ShowInTaskbar = $false
+$form.WindowState = 'Minimized'
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Filter = "VHD Disk Image|*.vhd;*.vhdx"
+$dialog.Title = "Pilih File VHD"
+$result = $dialog.ShowDialog($form)
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    Write-Output $dialog.FileName
+}
+            "#;
 
-            let path_str = selected_path.map(|p| p.to_string_lossy().to_string());
+            let output = std::process::Command::new("powershell")
+                .arg("-NoProfile")
+                .arg("-Command")
+                .arg(ps_script)
+                .output();
+
+            let mut path_str: Option<String> = None;
+            if let Ok(out) = output {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !stdout.is_empty() {
+                    path_str = Some(stdout);
+                }
+            }
+
             build_response(200, "OK", "application/json", &json!({ "path": path_str }).to_string())
         }
 
@@ -838,24 +862,26 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
             }
         }
 
-        ("GET", "/") | ("GET", "/index.html") => {
-            match fs::read_to_string("ui/index.html") {
-                Ok(content) => build_response(200, "OK", "text/html", &content),
-                Err(_) => build_response(404, "Not Found", "text/plain", "ui/index.html not found"),
-            }
-        }
+        ("GET", path) if !path.starts_with("/api/") => {
+            let file_path = if path == "/" || path == "/index.html" {
+                "ui/index.html".to_string()
+            } else {
+                format!("ui{}", path)
+            };
 
-        ("GET", "/tailwind.css") => {
-            match fs::read_to_string("ui/tailwind.css") {
-                Ok(content) => build_response(200, "OK", "text/css", &content),
-                Err(_) => build_response(404, "Not Found", "text/plain", "ui/tailwind.css not found"),
-            }
-        }
+            let content_type = if file_path.ends_with(".css") {
+                "text/css"
+            } else if file_path.ends_with(".js") {
+                "application/javascript"
+            } else if file_path.ends_with(".svg") {
+                "image/svg+xml"
+            } else {
+                "text/html"
+            };
 
-        ("GET", "/index.js") => {
-            match fs::read_to_string("ui/index.js") {
-                Ok(content) => build_response(200, "OK", "application/javascript", &content),
-                Err(_) => build_response(404, "Not Found", "text/plain", "ui/index.js not found"),
+            match fs::read_to_string(&file_path) {
+                Ok(content) => build_response(200, "OK", content_type, &content),
+                Err(_) => build_response(404, "Not Found", "text/plain", "File not found"),
             }
         }
 
@@ -871,8 +897,7 @@ fn build_response(status_code: u16, status_text: &str, content_type: &str, body:
          Access-Control-Allow-Origin: *\r\n\
          Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
          Access-Control-Allow-Headers: Content-Type\r\n\
-         Connection: close\r\n\r\n\
-         {}",
+         Connection: close\r\n\r\n{}",
         status_code, status_text, content_type, body.len(), body
     )
 }
