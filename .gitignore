@@ -28,3 +28,7 @@
 .skills/
 skills/
 iscsi-server-planning.md
+
+# Frontend
+node_modules/
+package-lock.json
