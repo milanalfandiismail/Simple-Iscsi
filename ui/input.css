@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #f7f4ed;
-  --color-primary: #1c1c1c;
-  --color-muted: #5f5f5d;
-  --color-surface: #fcfbf8;
-  --color-border-light: #eceae4;
+  --color-background: var(--color-bg);
+  --color-primary: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-surface: var(--color-white);
+  --color-border-light: var(--color-border);
   --font-sans: "Camera Plain Variable", ui-sans-serif, system-ui, sans-serif;
   --shadow-button-inset: rgba(0,0,0,0) 0px 0px 0px 0px, rgba(0,0,0,0) 0px 0px 0px 0px, rgba(255,255,255,0.2) 0px 0.5px 0px 0px inset, rgba(0,0,0,0.2) 0px 0px 0px 0.5px inset, rgba(0,0,0,0.05) 0px 1px 2px 0px;
   --shadow-button-focus: rgba(0,0,0,0.1) 0px 4px 12px;
