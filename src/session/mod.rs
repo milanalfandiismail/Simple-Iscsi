@@ -33,7 +33,7 @@ pub struct Session {
     peer_addr: std::net::SocketAddr,
     local_addr: std::net::SocketAddr,
     client_ip: String,
-    gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
+    gamedisk_backends: Arc<std::sync::RwLock<HashMap<u8, Arc<Backend>>>>,
     backends: HashMap<u8, Arc<Backend>>,
     config: crate::config_manager::SharedConfig,
     client_caches: HashMap<u8, Arc<ClientCache>>,
@@ -59,7 +59,7 @@ impl Session {
     pub fn new(
         stream: TcpStream,
         client_ip: IpAddr,
-        gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
+        gamedisk_backends: Arc<std::sync::RwLock<HashMap<u8, Arc<Backend>>>>,
         config: crate::config_manager::SharedConfig,
         stats: Arc<ServerStats>,
     ) -> Self {
@@ -182,7 +182,8 @@ impl Session {
         } else if self.target_iqn == self.config.read().gamedisk_target.target_iqn {
             target_name = "gamedisk".to_string();
             // Gamedisk target -> muat semua LUN gamedisk
-            for (lun_id, backend) in self.gamedisk_backends.iter() {
+            let gamedisks = self.gamedisk_backends.read().unwrap();
+            for (lun_id, backend) in gamedisks.iter() {
                 self.backends.insert(*lun_id, Arc::clone(backend));
             }
         } else if self.config.read().windows.as_ref().map_or(false, |win| self.target_iqn.starts_with(&win.target_iqn_prefix)) {

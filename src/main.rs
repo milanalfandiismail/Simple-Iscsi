@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Memuat {} konfigurasi klien DHCP.", clients.len());
 
     // Inisialisasi file watcher via config_manager
-    config_manager::start_config_watcher(shared_config.clone(), config_path.clone(), clients_path.clone());
+    // We will initialize it after the gamedisk_backends are created, to pass the reference.
 
     // Inisialisasi Server Stats
     let stats = stats::ServerStats::new();
@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Inisialisasi Gamedisk backends
-    let mut gamedisk_backends: HashMap<u8, Arc<Backend>> = HashMap::new();
+    let mut gamedisk_backends_map: HashMap<u8, Arc<Backend>> = HashMap::new();
     for (i, gd_cfg) in config.gamedisk.iter().enumerate() {
         let lun_id = i as u8;
         info!("Membuka storage backend raw: {}", gd_cfg.physical_disk);
@@ -183,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.server.read_cache_gb,
         ) {
             Ok(b) => {
-                gamedisk_backends.insert(lun_id, Arc::new(b));
+                gamedisk_backends_map.insert(lun_id, Arc::new(b));
                 info!("Berhasil memuat Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
             }
             Err(e) => {
@@ -192,6 +192,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+    let gamedisk_backends = Arc::new(std::sync::RwLock::new(gamedisk_backends_map));
+
+    // Inisialisasi file watcher via config_manager dengan gamedisk_backends
+    config_manager::start_config_watcher(
+        shared_config.clone(),
+        Arc::clone(&gamedisk_backends),
+        config_path.clone(),
+        clients_path.clone()
+    );
 
     // Buat direktori writeback/cache
     for dir in &config.writeback.writeback_dirs {
@@ -205,7 +214,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Err(e) = server::start_server(
         shared_config.clone(),
-        Arc::new(gamedisk_backends),
+        gamedisk_backends,
         stats,
     )
     .await

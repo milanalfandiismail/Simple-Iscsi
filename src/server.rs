@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 pub async fn start_server(
     config: SharedConfig,
-    gamedisk_backends: Arc<HashMap<u8, Arc<Backend>>>,
+    gamedisk_backends: Arc<std::sync::RwLock<HashMap<u8, Arc<Backend>>>>,
     stats: Arc<ServerStats>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let current_config = config.read();

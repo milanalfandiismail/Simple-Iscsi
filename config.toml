@@ -14,6 +14,13 @@ vendor_id = "RUSTISCS"
 product_id = "GameDisk-0"
 product_revision = "1.00"
 
+[[gamedisk]]
+physical_disk = '\\.\PhysicalDrive2'
+block_size = 512
+vendor_id = "RUSTISCS"
+product_id = "GameDisk-2"
+product_revision = "1.00"
+
 [windows]
 target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
 vhd_dir = ""
