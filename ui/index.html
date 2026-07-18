@@ -14,7 +14,7 @@
 
     <div class="layout flex-col md:flex-row">
         <!-- Sidebar Kiri -->
-        <aside class="sidebar fixed inset-y-0 left-0 z-50 w-[260px] transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-background border-r border-border-light h-full">
+        <aside class="sidebar fixed inset-y-0 left-0 z-50 w-[260px] transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-[var(--color-bg)] border-r border-[var(--color-border)] h-full">
             <div class="brand">
                 <span class="brand-logo">⚡</span>
                 <span class="brand-name">Lovable iSCSI</span>
@@ -53,12 +53,12 @@
         </aside>
 
         <!-- Mobile Header (Visible only on small screens) -->
-        <header class="mobile-header md:hidden flex items-center justify-between p-4 bg-background border-b border-border-light">
+        <header class="mobile-header md:hidden flex items-center justify-between p-4 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
             <div class="brand" style="margin-bottom: 0; padding: 0;">
                 <span class="brand-logo">⚡</span>
                 <span class="brand-name" style="font-size: 18px;">Lovable iSCSI</span>
             </div>
-            <button id="mobile-menu-btn" class="p-2 text-primary focus:outline-none">
+            <button id="mobile-menu-btn" class="p-2 text-[var(--color-text)] focus:outline-none">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
         </header>
@@ -566,6 +566,9 @@
     <script src="/index.js"></script>
 </body>
 </html>
+
+
+
 
 
 
