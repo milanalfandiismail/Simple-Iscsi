@@ -1157,3 +1157,38 @@ async function autoAllocateNextServerIpsAction() {
     await saveClientsJson();
     alert(`Sukses membagi rata ${clientsObj.client.length} klien ke ${nics.length} adapter IP server!`);
 }
+
+// Mobile Sidebar Toggle Logic
+document.addEventListener('DOMContentLoaded', () => {
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+    if (mobileMenuBtn && sidebar && sidebarOverlay) {
+        function toggleSidebar() {
+            const isOpen = sidebar.classList.contains('translate-x-0');
+            if (isOpen) {
+                sidebar.classList.remove('translate-x-0');
+                sidebar.classList.add('-translate-x-full');
+                sidebarOverlay.classList.add('hidden');
+            } else {
+                sidebar.classList.remove('-translate-x-full');
+                sidebar.classList.add('translate-x-0');
+                sidebarOverlay.classList.remove('hidden');
+            }
+        }
+
+        mobileMenuBtn.addEventListener('click', toggleSidebar);
+        sidebarOverlay.addEventListener('click', toggleSidebar);
+
+        // Close sidebar when a nav item is clicked on mobile
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                if (window.innerWidth <= 768 && sidebar.classList.contains('translate-x-0')) {
+                    toggleSidebar();
+                }
+            });
+        });
+    }
+});
