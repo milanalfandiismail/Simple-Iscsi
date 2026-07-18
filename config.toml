@@ -32,6 +32,7 @@ max_write_speed_mbps = 20
 
 [image_manager]
 w11 = 'E:\W11-23H2-5335.vhd'
+13113 = 'E:\Windows 24H2\Windows_24H2_Modern.vhdx'
 w11manta = 'E:\Windows 24H2\Windows_24H2_Modern.vhd'
 
 [dhcp]
@@ -44,4 +45,4 @@ next_server = "192.168.137.1"
 subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"
-nic_ips = ["10.10.10.10", "192.168.137.1"]
+nic_ips = ["192.168.137.1"]

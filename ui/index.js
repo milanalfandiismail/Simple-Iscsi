@@ -229,7 +229,13 @@ function updateServiceCard(name, service) {
 function renderDashboardClientsTable() {
     const tbody = document.getElementById('dashboard-clients-tbody');
     if (!clientsObj.client || clientsObj.client.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--color-muted);">Tidak ada klien terdaftar di clients.toml.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="p-8">
+            <div class="flex flex-col items-center justify-center text-center gap-3">
+                <div class="text-4xl">🔌</div>
+                <h3 class="font-medium text-lg">Belum Ada Klien Aktif</h3>
+                <p class="text-[var(--color-muted)] text-sm max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
+            </div>
+        </td></tr>`;
         return;
     }
 
@@ -276,7 +282,13 @@ function renderDashboardClientsTable() {
 function renderClientsManagerTable() {
     const tbody = document.getElementById('clients-tbody');
     if (!clientsObj.client || clientsObj.client.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="13" style="text-align: center; color: var(--color-muted);">Tidak ada klien terdaftar. Silakan tambah baru.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" class="p-8">
+            <div class="flex flex-col items-center justify-center text-center gap-3">
+                <div class="text-4xl">💻</div>
+                <h3 class="font-medium text-lg">Daftar Klien Kosong</h3>
+                <p class="text-[var(--color-muted)] text-sm max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
+            </div>
+        </td></tr>`;
         return;
     }
 
@@ -455,7 +467,13 @@ async function saveClientsJson() {
 function renderVhdTable() {
     const tbody = document.getElementById('vhds-tbody');
     if (!configObj || !configObj.image_manager || Object.keys(configObj.image_manager).length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--color-muted);">Tidak ada boot image VHD terdaftar di config.toml.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="p-8">
+            <div class="flex flex-col items-center justify-center text-center gap-3">
+                <div class="text-4xl">💿</div>
+                <h3 class="font-medium text-lg">Belum Ada VHD</h3>
+                <p class="text-[var(--color-muted)] text-sm max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
+            </div>
+        </td></tr>`;
         return;
     }
 
@@ -525,7 +543,7 @@ async function saveVhdAction(e) {
     if (!fullPath) return;
 
     if (/\s/.test(newKey)) {
-        alert("Nama Alias (Image Key) tidak boleh mengandung spasi karena sensitif terhadap format iSCSI IQN!");
+        showToast('Nama Alias (Image Key) tidak boleh mengandung spasi karena sensitif terhadap format iSCSI IQN!', 'error');
         return;
     }
 
@@ -571,7 +589,13 @@ async function loadWritebackFiles() {
     const data = await apiGet('/api/writeback/files');
     const tbody = document.getElementById('writeback-tbody');
     if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-muted);">Tidak ada file writeback aktif.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="4" class="p-8">
+            <div class="flex flex-col items-center justify-center text-center gap-3">
+                <div class="text-4xl">✨</div>
+                <h3 class="font-medium text-lg">Writeback Bersih</h3>
+                <p class="text-[var(--color-muted)] text-sm max-w-sm">Belum ada file cache writeback aktif. Cache akan terbuat otomatis saat klien menyala.</p>
+            </div>
+        </td></tr>`;
         return;
     }
 
@@ -863,7 +887,7 @@ async function saveConfigJsonFull() {
     const success = await apiPost('/api/config/json', configObj);
     if (success) {
         await loadConfigJson();
-        alert('Pengaturan sukses disimpan!');
+        showToast('Pengaturan sukses disimpan!', 'success');
     }
 }
 
@@ -875,7 +899,12 @@ async function showVhdSnapshots(key) {
     document.getElementById('snapshot-modal-title-key').textContent = key;
 
     const tbody = document.getElementById('vhd-snapshots-tbody');
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--color-muted);">Memuat snapshots...</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="3" class="p-6">
+        <div class="animate-pulse flex flex-col gap-3">
+            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-3/4"></div>
+            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-1/2"></div>
+        </div>
+    </td></tr>`;
 
     const data = await apiGet(`/api/vhd/backups?image_key=${key}`);
     if (data && Array.isArray(data) && data.length > 0) {
@@ -916,7 +945,7 @@ async function restoreSnapshotAction(imageKey, index) {
         closeVhdSnapshotsModal();
         renderVhdTable();
     } else {
-        alert('Gagal merestore snapshot.');
+        showToast('Gagal merestore snapshot.', 'error');
     }
 }
 
@@ -1065,9 +1094,9 @@ async function createNewTftpFolderPrompt() {
     const success = await apiPost('/api/system/tftp_folders/create', { name: name.trim() });
     if (success) {
         await loadTftpFolders();
-        alert('Folder boot loader berhasil dibuat!');
+        showToast('Folder boot loader berhasil dibuat!', 'success');
     } else {
-        alert('Gagal membuat folder boot loader.');
+        showToast('Gagal membuat folder boot loader.', 'error');
     }
 }
 
@@ -1077,9 +1106,9 @@ async function deleteTftpFolderAction(name) {
     const success = await apiPost('/api/system/tftp_folders/delete', { name });
     if (success) {
         await loadTftpFolders();
-        alert('Folder boot loader berhasil dihapus!');
+        showToast('Folder boot loader berhasil dihapus!', 'success');
     } else {
-        alert('Gagal menghapus folder boot loader.');
+        showToast('Gagal menghapus folder boot loader.', 'error');
     }
 }
 
@@ -1114,12 +1143,12 @@ function addNicIpAction() {
     
     const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
     if (!ipRegex.test(ip)) {
-        alert('Format alamat IP tidak valid!');
+        showToast('Format alamat IP tidak valid!', 'error');
         return;
     }
 
     if (serverNicIps.includes(ip)) {
-        alert('Alamat IP ini sudah terdaftar!');
+        showToast('Alamat IP ini sudah terdaftar!', 'error');
         return;
     }
 
@@ -1137,12 +1166,12 @@ async function autoAllocateNextServerIpsAction() {
     const nics = (configObj && configObj.dhcp && configObj.dhcp.nic_ips) || [];
 
     if (nics.length === 0) {
-        alert("Gagal melakukan alokasi otomatis: Silakan isi daftar IP adapter jaringan (Load Balancing NIC IPs) di halaman Pengaturan terlebih dahulu!");
+        showToast('Gagal melakukan alokasi otomatis: Silakan isi daftar IP adapter jaringan (Load Balancing NIC IPs) di halaman Pengaturan terlebih dahulu!', 'error');
         return;
     }
 
     if (!clientsObj || !Array.isArray(clientsObj.client) || clientsObj.client.length === 0) {
-        alert("Tidak ada klien terdaftar untuk dialokasikan.");
+        showToast('Tidak ada klien terdaftar untuk dialokasikan.', 'error');
         return;
     }
 
@@ -1192,3 +1221,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Toast Notification System
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'px-4 py-3 rounded shadow-lg transition-all duration-300 transform translate-x-full opacity-0 flex items-center gap-2 max-w-sm pointer-events-auto';
+    
+    // Lovable-style colors based on type
+    if (type === 'success') toast.style.cssText = 'background: #22c55e; color: white;';
+    else if (type === 'error') toast.style.cssText = 'background: #ef4444; color: white;';
+    else if (type === 'warning') toast.style.cssText = 'background: #f59e0b; color: white;';
+    else toast.style.cssText = 'background: var(--color-text); color: var(--color-bg);';
+
+    let icon = 'ℹ️';
+    if (type === 'success') icon = '✅';
+    if (type === 'error') icon = '❌';
+    if (type === 'warning') icon = '⚠️';
+
+    toast.innerHTML = `<span>${icon}</span><span class="text-sm font-medium">${message}</span>`;
+    container.appendChild(toast);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        toast.classList.remove('translate-x-full', 'opacity-0');
+    });
+
+    // Auto dismiss
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-x-full');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
