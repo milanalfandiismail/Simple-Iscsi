@@ -1228,7 +1228,7 @@ function showToast(message, type = 'info') {
     if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = 'px-4 py-3 rounded shadow-lg transition-all duration-300 transform translate-x-full opacity-0 flex items-center gap-2 max-w-sm pointer-events-auto';
+    toast.className = 'toast-msg';
     
     // Lovable-style colors based on type
     if (type === 'success') toast.style.cssText = 'background: #22c55e; color: white;';
@@ -1241,18 +1241,20 @@ function showToast(message, type = 'info') {
     if (type === 'error') icon = '❌';
     if (type === 'warning') icon = '⚠️';
 
-    toast.innerHTML = `<span>${icon}</span><span class="text-sm font-medium">${message}</span>`;
+    toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-content">${message}</span>`;
     container.appendChild(toast);
 
     // Animate in
     requestAnimationFrame(() => {
-        toast.classList.remove('translate-x-full', 'opacity-0');
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
     });
 
     // Auto dismiss
     setTimeout(() => {
-        toast.classList.add('opacity-0', 'translate-x-full');
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400); // match transition duration
+    }, 4500); // give it a bit more time to read full info
 }
 

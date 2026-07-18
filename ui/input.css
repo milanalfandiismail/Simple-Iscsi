@@ -1,6 +1,6 @@
 @import "tailwindcss";
-@source "./index.html";
-@source "./index.js";
+@source "../ui/**/*.html";
+@source "../ui/**/*.js";
 
 @theme {
   --color-background: var(--color-bg);
