@@ -17,6 +17,7 @@ mod netboot;
 mod stats;
 mod config_manager;
 mod server_api;
+mod api;
 
 use backend::Backend;
 use std::fs;
