@@ -15,9 +15,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initial data loading sequence
     await loadInitialData();
 
-    // Start stats polling loop every 2 seconds
-    pollStats();
-    setInterval(pollStats, 2000);
+    // Start SSE stream for real-time stats
+    initStatsStream();
 });
 
 function initTheme() {
@@ -121,8 +120,32 @@ async function apiPostJson(endpoint, body) {
 }
 
 // Polling and Statistics
-async function pollStats() {
-    const data = await apiGet('/api/stats');
+function initStatsStream() {
+    const evtSource = new EventSource('/api/stats/stream');
+    
+    evtSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            handleStatsData(data);
+        } catch (e) {
+            console.error("Error parsing SSE data:", e);
+        }
+    };
+    
+    evtSource.onerror = (err) => {
+        console.error("EventSource failed:", err);
+    };
+}
+
+function setTextIfChanged(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+}
+
+function setHtmlIfChanged(el, html) {
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+}
+
+function handleStatsData(data) {
     if (!data) return;
 
     stats = data;
@@ -148,64 +171,66 @@ async function pollStats() {
     // 3. Update existing table cells in DOM instead of rebuilding them (stops flickering/flashing)
     if (clientsObj && clientsObj.client) {
         const now = Date.now();
-        clientsObj.client.forEach(c => {
-            const statsInfo = activeSessionsMap.get(c.ip) || {
-                active: false,
-                bytes_read: 0,
-                bytes_written: 0,
-                uptime_secs: 0
-            };
-
-            let speedInfo = clientSpeedHistory.get(c.ip);
-            if (!speedInfo) {
-                speedInfo = {
-                    lastTime: now,
-                    lastRead: statsInfo.bytes_read,
-                    lastWrite: statsInfo.bytes_written,
-                    readSpeed: 0,
-                    writeSpeed: 0
+        requestAnimationFrame(() => {
+            clientsObj.client.forEach(c => {
+                const statsInfo = activeSessionsMap.get(c.ip) || {
+                    active: false,
+                    bytes_read: 0,
+                    bytes_written: 0,
+                    uptime_secs: 0
                 };
-                clientSpeedHistory.set(c.ip, speedInfo);
-            } else {
-                const elapsedSecs = (now - speedInfo.lastTime) / 1000.0;
-                if (elapsedSecs >= 0.5) {
-                    const deltaRead = statsInfo.bytes_read - speedInfo.lastRead;
-                    const deltaWrite = statsInfo.bytes_written - speedInfo.lastWrite;
 
-                    speedInfo.readSpeed = deltaRead > 0 ? (deltaRead / elapsedSecs) : 0;
-                    speedInfo.writeSpeed = deltaWrite > 0 ? (deltaWrite / elapsedSecs) : 0;
+                let speedInfo = clientSpeedHistory.get(c.ip);
+                if (!speedInfo) {
+                    speedInfo = {
+                        lastTime: now,
+                        lastRead: statsInfo.bytes_read,
+                        lastWrite: statsInfo.bytes_written,
+                        readSpeed: 0,
+                        writeSpeed: 0
+                    };
+                    clientSpeedHistory.set(c.ip, speedInfo);
+                } else {
+                    const elapsedSecs = (now - speedInfo.lastTime) / 1000.0;
+                    if (elapsedSecs >= 0.5) {
+                        const deltaRead = statsInfo.bytes_read - speedInfo.lastRead;
+                        const deltaWrite = statsInfo.bytes_written - speedInfo.lastWrite;
 
-                    speedInfo.lastTime = now;
-                    speedInfo.lastRead = statsInfo.bytes_read;
-                    speedInfo.lastWrite = statsInfo.bytes_written;
+                        speedInfo.readSpeed = deltaRead > 0 ? (deltaRead / elapsedSecs) : 0;
+                        speedInfo.writeSpeed = deltaWrite > 0 ? (deltaWrite / elapsedSecs) : 0;
+
+                        speedInfo.lastTime = now;
+                        speedInfo.lastRead = statsInfo.bytes_read;
+                        speedInfo.lastWrite = statsInfo.bytes_written;
+                    }
                 }
-            }
 
-            const statusText = statsInfo.active
-                ? `<span style="color: #22c55e;">🟢 Online</span>`
-                : `<span style="color: #ef4444;">🔴 Offline</span>`;
+                const statusText = statsInfo.active
+                    ? `<span style="color: #22c55e;">🟢 Online</span>`
+                    : `<span style="color: #ef4444;">🔴 Offline</span>`;
 
-            // Update Dashboard Table Row
-            const dbRow = document.querySelector(`#dashboard-clients-tbody tr[data-ip="${c.ip}"]`);
-            if (dbRow) {
-                dbRow.cells[0].innerHTML = statusText;
-                dbRow.cells[6].textContent = formatBytes(statsInfo.bytes_read);
-                dbRow.cells[7].textContent = formatSpeed(speedInfo.readSpeed);
-                dbRow.cells[8].textContent = formatBytes(statsInfo.bytes_written);
-                dbRow.cells[9].textContent = formatSpeed(speedInfo.writeSpeed);
-                dbRow.cells[10].textContent = statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline';
-            }
+                // Update Dashboard Table Row
+                const dbRow = document.querySelector(`#dashboard-clients-tbody tr[data-ip="${c.ip}"]`);
+                if (dbRow) {
+                    setHtmlIfChanged(dbRow.cells[0], statusText);
+                    setTextIfChanged(dbRow.cells[6], formatBytes(statsInfo.bytes_read));
+                    setTextIfChanged(dbRow.cells[7], formatSpeed(speedInfo.readSpeed));
+                    setTextIfChanged(dbRow.cells[8], formatBytes(statsInfo.bytes_written));
+                    setTextIfChanged(dbRow.cells[9], formatSpeed(speedInfo.writeSpeed));
+                    setTextIfChanged(dbRow.cells[10], statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline');
+                }
 
-            // Update Clients Manager Table Row
-            const cmRow = document.querySelector(`#clients-tbody tr[data-ip="${c.ip}"]`);
-            if (cmRow) {
-                cmRow.cells[0].innerHTML = statusText;
-                cmRow.cells[8].textContent = formatBytes(statsInfo.bytes_read);
-                cmRow.cells[9].textContent = formatSpeed(speedInfo.readSpeed);
-                cmRow.cells[10].textContent = formatBytes(statsInfo.bytes_written);
-                cmRow.cells[11].textContent = formatSpeed(speedInfo.writeSpeed);
-                cmRow.cells[12].textContent = statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline';
-            }
+                // Update Clients Manager Table Row
+                const cmRow = document.querySelector(`#clients-tbody tr[data-ip="${c.ip}"]`);
+                if (cmRow) {
+                    setHtmlIfChanged(cmRow.cells[0], statusText);
+                    setTextIfChanged(cmRow.cells[8], formatBytes(statsInfo.bytes_read));
+                    setTextIfChanged(cmRow.cells[9], formatSpeed(speedInfo.readSpeed));
+                    setTextIfChanged(cmRow.cells[10], formatBytes(statsInfo.bytes_written));
+                    setTextIfChanged(cmRow.cells[11], formatSpeed(speedInfo.writeSpeed));
+                    setTextIfChanged(cmRow.cells[12], statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline');
+                }
+            });
         });
     }
 }
@@ -1007,7 +1032,7 @@ async function ctxEnableSuperClient() {
     });
     if (res) {
         showToast('Super client diaktifkan.', 'success');
-        pollStats();
+        // It will automatically update via SSE stream
     }
 }
 

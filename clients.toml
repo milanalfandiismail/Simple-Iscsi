@@ -6,7 +6,7 @@ gateway = "192.168.137.1"
 dns = "8.8.8.8"
 pxe = "sb-custom"
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "C0:3F:D5:B7:A2:8B"
@@ -19,7 +19,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "F4:B5:20:55:CB:F9"
@@ -32,7 +32,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "F4:B5:20:70:1A:FA"
@@ -45,7 +45,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "F4:B5:20:72:FD:96"
@@ -58,7 +58,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "F4:B5:20:72:A7:54"
@@ -71,7 +71,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "00:0C:29:89:02:81"
@@ -84,7 +84,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "F4:B5:20:71:23:E9"
@@ -97,7 +97,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "F4:B5:20:70:1A:3C"
@@ -110,7 +110,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "EB:A3:B4:6E:90:AC"
@@ -123,7 +123,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "38:3D:8D:C8:4C:D9"
@@ -136,7 +136,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "00:0C:29:A4:BC:F2"
@@ -149,7 +149,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "7A:2A:0D:E3:02:82"
@@ -162,7 +162,7 @@ bootfile_uefi = ""
 bootfile_legacy = ""
 bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = "w11manta"
+image_manager = "w11manta222"
 
 [[client]]
 mac = "21:85:68:1A:77:B2"
@@ -197,11 +197,7 @@ hostname = "PC-16"
 gateway = "192.168.137.1"
 dns = "8.8.8.8"
 pxe = "sb-custom"
-bootfile_uefi = ""
-bootfile_legacy = ""
-bootfile_ipxe = ""
 next_server = "192.168.137.1"
-image_manager = ""
 
 [[client]]
 mac = "13:C7:D4:BB:D2:70"

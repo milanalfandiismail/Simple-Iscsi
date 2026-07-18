@@ -31,8 +31,7 @@ max_cache_per_client_gb = 10
 max_write_speed_mbps = 20
 
 [image_manager]
-w11manta = 'E:\Windows 24H2\Windows_24H2_Modern.vhd'
-w11 = 'E:\W11-23H2-5335.vhd'
+w11manta222 = 'E:\Windows 24H2\Windows_24H2_Modern.vhd'
 
 [dhcp]
 enabled = true
