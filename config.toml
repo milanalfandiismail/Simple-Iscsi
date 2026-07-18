@@ -28,7 +28,7 @@ super_client_action = ""
 [writeback]
 writeback_dirs = ['C:\writeback']
 max_cache_per_client_gb = 10
-max_write_speed_mbps = 0
+max_write_speed_mbps = 1000
 
 [image_manager]
 w11 = 'E:\W11-23H2-5335.vhd'

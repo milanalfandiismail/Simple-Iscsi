@@ -167,3 +167,16 @@
   next_server     = "10.10.10.253"
   image_manager   = ""
 
+[[client]]
+  hostname        = "PC-14"
+  mac             = "5D:CB:58:AD:8A:D5"
+  ip              = "10.10.10.113"
+  gateway         = "10.10.10.1"
+  dns             = "8.8.8.8"
+  pxe             = "sb-custom"
+  bootfile_uefi   = ""
+  bootfile_legacy = ""
+  bootfile_ipxe   = ""
+  next_server     = "10.10.10.253"
+  image_manager   = ""
+
