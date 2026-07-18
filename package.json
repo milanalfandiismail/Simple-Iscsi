@@ -1,0 +1,25 @@
+{
+  "name": "simple-iscsi",
+  "version": "1.0.0",
+  "description": "iSCSI target server in Rust untuk diskless game client. Support read cache writeback + read-ahead 256KB.",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "node_modules\\.bin\\tailwindcss -i ./ui/input.css -o ./ui/tailwind.css --minify",
+    "watch:css": "node_modules\\.bin\\tailwindcss -i ./ui/input.css -o ./ui/tailwind.css --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/milanalfandiismail/Simple-Iscsi.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/milanalfandiismail/Simple-Iscsi/issues"
+  },
+  "homepage": "https://github.com/milanalfandiismail/Simple-Iscsi#readme",
+  "devDependencies": {
+    "tailwindcss": "^4.3.3"
+  }
+}
