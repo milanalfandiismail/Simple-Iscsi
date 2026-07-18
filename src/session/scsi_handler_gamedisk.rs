@@ -61,18 +61,13 @@ impl Session {
         }
 
         let cache_opt = self.client_caches.get(&lun_id).cloned();
-        let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
 
-        self.throttle_write(write_buf_clone.len()).await;
-
-        let res = tokio::task::spawn_blocking(move || {
-            if let Some(cache) = cache_opt {
-                cache.write_stream(lba, 0, &write_buf_clone)
-            } else {
-                Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Cache not found for LUN"))
-            }
-        }).await.unwrap();
+        let res = if let Some(cache) = cache_opt {
+            cache.write_stream(lba, 0, &write_buf)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Cache not found for LUN"))
+        };
 
         match res {
             Ok(_) => {

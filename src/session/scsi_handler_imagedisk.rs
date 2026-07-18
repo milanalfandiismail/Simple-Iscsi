@@ -1,7 +1,7 @@
 use crate::pdu::Pdu;
 use crate::scsi_imagedisk;
 use crate::session::Session;
-use tracing::{error, info};
+use tracing::{error, trace};
 
 impl Session {
     /// Execute imagedisk SCSI command dispatch (intercepts Windows-specific commands)
@@ -45,7 +45,7 @@ impl Session {
 
         if bytes_received < expected_len {
             let remaining = (expected_len - bytes_received) as u32;
-            info!("WRITE (imagedisk) LUN {} LBA {} ({} blocks): R2T offset={} desired={}",
+            trace!("WRITE (imagedisk) LUN {} LBA {} ({} blocks): R2T offset={} desired={}",
                 lun_id, lba, num_blocks, bytes_received, remaining);
             
             self.pending_writes.insert(req.initiator_task_tag, crate::session::PendingWrite {
@@ -60,20 +60,14 @@ impl Session {
             return Ok(());
         }
 
-        let backend_clone = backend.clone();
         let cache_opt = self.client_caches.get(&lun_id).cloned();
-        let write_buf_clone = write_buf;
         let itt = req.initiator_task_tag;
 
-        self.throttle_write(expected_len).await;
-
-        let res = tokio::task::spawn_blocking(move || {
-            if let Some(cache) = cache_opt {
-                cache.write_stream(lba, 0, &write_buf_clone)
-            } else {
-                backend_clone.write_blocks(lba, num_blocks, &write_buf_clone)
-            }
-        }).await.unwrap();
+        let res = if let Some(cache) = cache_opt {
+            cache.write_stream(lba, 0, &write_buf)
+        } else {
+            backend.write_blocks(lba, num_blocks, &write_buf)
+        };
 
         match res {
             Ok(_) => {

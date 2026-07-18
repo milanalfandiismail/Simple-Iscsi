@@ -244,22 +244,16 @@ impl Session {
 
         if is_complete {
             let pending = self.pending_writes.remove(&itt).unwrap();
-            let backend_clone = self.backends.get(&pending.lun_id).unwrap().clone();
             let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
-            let pending_buffer = pending.buffer;
             let pending_lba = pending.lba;
-            let pending_num_blocks = pending.num_blocks;
             let expected_len = pending.expected_len;
 
-            self.throttle_write(pending_buffer.len()).await;
-
-            let res = tokio::task::spawn_blocking(move || {
-                if let Some(cache) = cache_opt {
-                    cache.write_stream(pending_lba, 0, &pending_buffer)
-                } else {
-                    backend_clone.write_blocks(pending_lba, pending_num_blocks, &pending_buffer)
-                }
-            }).await.unwrap();
+            let res = if let Some(cache) = cache_opt {
+                cache.write_stream(pending_lba, 0, &pending.buffer)
+            } else {
+                let backend_clone = self.backends.get(&pending.lun_id).unwrap().clone();
+                backend_clone.write_blocks(pending_lba, pending.num_blocks, &pending.buffer)
+            };
 
             match res {
                 Ok(_) => {
