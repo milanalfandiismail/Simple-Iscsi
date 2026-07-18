@@ -432,6 +432,7 @@ async function saveClientAction(e) {
     }
 
     await saveClientsJson();
+    showToast(oldMac ? 'Data klien berhasil diperbarui.' : 'Klien baru berhasil ditambahkan.', 'success');
     closeClientCrudModal();
 }
 
@@ -442,6 +443,7 @@ async function deleteClientAction() {
     if (confirm('Apakah Anda yakin ingin menghapus data klien ini?')) {
         clientsObj.client = clientsObj.client.filter(c => c.mac !== oldMac);
         await saveClientsJson();
+        showToast('Data klien berhasil dihapus.', 'success');
         closeClientCrudModal();
     }
 }
@@ -570,6 +572,7 @@ async function saveVhdAction(e) {
     if (clientsChanged) {
         await saveClientsJson();
     }
+    showToast('Mapping VHD berhasil disimpan.', 'success');
     closeVhdCrudModal();
 }
 
@@ -580,6 +583,7 @@ async function deleteVhdAction() {
     if (confirm(`Apakah Anda yakin ingin menghapus mapping VHD '${oldKey}'?`)) {
         delete configObj.image_manager[oldKey];
         await saveConfigJsonFull();
+        showToast('Mapping VHD berhasil dihapus.', 'success');
         closeVhdCrudModal();
     }
 }
@@ -619,7 +623,10 @@ async function clearWritebackCache(path) {
     
     const res = await apiPost('/api/writeback/clear', { file_path: path });
     if (res) {
+        showToast('Cache berhasil dihapus.', 'success');
         loadWritebackFiles();
+    } else {
+        showToast('Gagal menghapus cache.', 'error');
     }
 }
 
@@ -941,7 +948,7 @@ async function restoreSnapshotAction(imageKey, index) {
     });
 
     if (res) {
-        alert(`Sukses merestore VHD '${imageKey}' ke Snapshot #${index}!`);
+        showToast(`Sukses merestore VHD '${imageKey}' ke Snapshot #${index}!`, 'success');
         closeVhdSnapshotsModal();
         renderVhdTable();
     } else {
@@ -999,6 +1006,7 @@ async function ctxEnableSuperClient() {
         action: 'commit'
     });
     if (res) {
+        showToast('Super client diaktifkan.', 'success');
         pollStats();
     }
 }
@@ -1017,7 +1025,10 @@ async function modalAction(action) {
     if (!selectedClientForCtx) return;
     
     const endpoint = action === 'commit' ? '/api/superclient/commit' : '/api/superclient/discard';
-    await apiPost(endpoint, { hostname: selectedClientForCtx.ip });
+    const res = await apiPost(endpoint, { hostname: selectedClientForCtx.ip });
+    if (res) {
+        showToast('Tindakan super client berhasil diproses.', 'success');
+    }
 }
 
 // Formatter Helpers
@@ -1184,7 +1195,7 @@ async function autoAllocateNextServerIpsAction() {
     });
 
     await saveClientsJson();
-    alert(`Sukses membagi rata ${clientsObj.client.length} klien ke ${nics.length} adapter IP server!`);
+    showToast(`Sukses membagi rata ${clientsObj.client.length} klien ke ${nics.length} adapter IP server!`, 'success');
 }
 
 // Mobile Sidebar Toggle Logic
