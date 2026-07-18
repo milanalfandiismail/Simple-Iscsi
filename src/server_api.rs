@@ -845,10 +845,10 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
             }
         }
 
-        ("GET", "/index.css") => {
-            match fs::read_to_string("ui/index.css") {
+        ("GET", "/tailwind.css") => {
+            match fs::read_to_string("ui/tailwind.css") {
                 Ok(content) => build_response(200, "OK", "text/css", &content),
-                Err(_) => build_response(404, "Not Found", "text/plain", "ui/index.css not found"),
+                Err(_) => build_response(404, "Not Found", "text/plain", "ui/tailwind.css not found"),
             }
         }
 
