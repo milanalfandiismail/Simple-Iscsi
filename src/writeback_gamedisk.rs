@@ -105,19 +105,24 @@ impl ClientCache {
             }
         }
 
-        let mut write_options = OpenOptions::new();
-        write_options.write(true).create(true).read(true);
+        let mut file_options = OpenOptions::new();
+        file_options.write(true).create(true).read(true);
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            write_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            file_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
         }
-        let file_write = write_options.open(&file_path)?;
-        let file_write_arc = Arc::new(file_write);
+        let file_handle = file_options.open(&file_path)?;
+
+        let max_size_bytes = max_cache_gb * 1024 * 1024 * 1024;
+        if file_handle.metadata()?.len() < max_size_bytes {
+            let _ = file_handle.set_len(max_size_bytes);
+        }
+        let file_handle_arc = Arc::new(file_handle);
 
         // Periodically sync file writes to disk in the background (disabled to prevent FlushFileBuffers locks)
         /*
-        let file_write_weak = Arc::downgrade(&file_write_arc);
+        let file_write_weak = Arc::downgrade(&file_handle_arc);
         std::thread::spawn(move || {
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
@@ -130,20 +135,11 @@ impl ClientCache {
         });
         */
 
-        let mut read_options = OpenOptions::new();
-        read_options.read(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            read_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
-        }
-        let file_read = read_options.open(&file_path)?;
-
         Ok(Self {
             file_path,
             map_path,
-            file_read: Arc::new(file_read),
-            file_write: file_write_arc,
+            file_read: file_handle_arc.clone(),
+            file_write: file_handle_arc,
             block_map,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
