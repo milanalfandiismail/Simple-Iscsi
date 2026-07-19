@@ -1,7 +1,7 @@
 use crate::pdu::Pdu;
 use crate::scsi_imagedisk;
 use crate::session::Session;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 
 impl Session {
     /// Execute imagedisk SCSI command dispatch (intercepts Windows-specific commands)
@@ -31,8 +31,11 @@ impl Session {
         num_blocks: u32,
     ) -> Result<(), std::io::Error> {
         let backend = self.backends.get(&lun_id).cloned().unwrap();
-        let _block_size = backend.block_size();
+        let block_size = backend.block_size();
         let expected_len = req.expected_data_len as usize;
+        let calculated_len = (num_blocks as usize) * (block_size as usize);
+        info!("SCSI_WRITE (imagedisk) ITT {}: expected_data_len={}, calculated_len={}, num_blocks={}, immediate_len={}",
+              req.initiator_task_tag, expected_len, calculated_len, num_blocks, req.data.len());
 
         let mut write_buf: Vec<u8> = Vec::with_capacity(expected_len);
         let mut bytes_received = 0;
