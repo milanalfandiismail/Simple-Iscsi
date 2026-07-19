@@ -15,8 +15,8 @@ const CACHE_VERSION: u32 = 3; // bump to auto-invalidate stale 4KB cluster maps
 pub struct ClientCache {
     file_path: PathBuf,
     map_path: PathBuf,
-    file_read: Option<Arc<std::fs::File>>,
-    file_write: Option<Arc<std::fs::File>>,
+    file_read: Arc<std::fs::File>,
+    file_write: Arc<std::fs::File>,
     block_map: DashMap<u64, u64>, // LBA -> offset in cache.bin
     next_write_offset: AtomicU64,
     block_size: u64,
@@ -133,8 +133,8 @@ impl ClientCache {
         Ok(Self {
             file_path,
             map_path,
-            file_read: Some(file_handle_arc.clone()),
-            file_write: Some(file_handle_arc),
+            file_read: file_handle_arc.clone(),
+            file_write: file_handle_arc,
             block_map,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
@@ -191,7 +191,7 @@ impl ClientCache {
                 }
                 let byte_start = start_idx * block_size;
                 let byte_end = i * block_size;
-                file_read_exact_at(self.file_read.as_ref().unwrap(), base_off, &mut buf[byte_start..byte_end])?;
+                file_read_exact_at(&self.file_read, base_off, &mut buf[byte_start..byte_end])?;
             } else {
                 // Blok yang tidak ada di cache (baca dari base VHD)
                 let start_idx = i;
@@ -282,7 +282,7 @@ impl ClientCache {
                 self.block_map.insert(lba, off);
             }
 
-            file_write_all_at(self.file_write.as_ref().unwrap(), base_offset, data)?;
+            file_write_all_at(&self.file_write, base_offset, data)?;
             return Ok(());
         }
 
@@ -322,7 +322,7 @@ impl ClientCache {
             let byte_start = span_start * block_size;
             let byte_end = span_end * block_size;
 
-            file_write_all_at(self.file_write.as_ref().unwrap(), base_off, &data[byte_start..byte_end])?;
+            file_write_all_at(&self.file_write, base_off, &data[byte_start..byte_end])?;
             span_start = span_end;
         }
 
@@ -374,35 +374,39 @@ impl ClientCache {
 
 
     pub fn flush(&self) -> io::Result<()> {
-        // Ignored to avoid choking disk I/O with synchronous flushes.
-        // Server OS will handle flushing data asynchronously.
         Ok(())
     }
 
+    pub fn cleanup_and_drop(self) {
+        let is_super = self.is_super;
+        let file_path = self.file_path.clone();
+        let map_path = self.map_path.clone();
+        
+        // Drop the struct to trigger its Drop implementation (which flushes data) 
+        // AND releases the OS file lock before we attempt to delete it!
+        drop(self);
+        
+        if is_super {
+            info!("Sesi Super Client ditutup, cache dipertahankan di disk.");
+            return;
+        }
+        
+        if file_path.exists() {
+            info!("Menghapus file cache {:?}", file_path);
+            if let Err(e) = std::fs::remove_file(&file_path) {
+                warn!("Gagal menghapus file cache {:?}: {}", file_path, e);
+            } else {
+                info!("File cache {:?} berhasil dihapus.", file_path);
+            }
+        }
+        if map_path.exists() {
+            let _ = std::fs::remove_file(&map_path);
+        }
+    }
 }
 
 impl Drop for ClientCache {
     fn drop(&mut self) {
         self.save_map();
-        
-        self.file_read.take();
-        self.file_write.take();
-        
-        if self.is_super {
-            info!("Sesi Super Client ditutup, cache dipertahankan di disk.");
-            return;
-        }
-
-        if self.file_path.exists() {
-            tracing::info!("Menghapus file cache {:?}", self.file_path);
-            if let Err(e) = std::fs::remove_file(&self.file_path) {
-                tracing::warn!("Gagal menghapus file cache {:?}: {}", self.file_path, e);
-            } else {
-                tracing::info!("File cache {:?} berhasil dihapus.", self.file_path);
-            }
-        }
-        if self.map_path.exists() {
-            let _ = std::fs::remove_file(&self.map_path);
-        }
     }
 }

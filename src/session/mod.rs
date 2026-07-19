@@ -276,8 +276,15 @@ impl Session {
             );
         }
 
-        info!("Sesi berakhir (logout/disconnect) — membersihkan gamedisk cache.");
-        self.client_caches.clear();
+        // Sesi selesai (karena LOGOUT atau TCP disconnect) -> hapus writeback gamedisk
+        for (lun_id, cache_arc) in self.client_caches.drain() {
+            info!("Sesi berakhir (logout/disconnect) — menghapus gamedisk cache LUN {}", lun_id);
+            if let Ok(cache) = Arc::try_unwrap(cache_arc) {
+                cache.cleanup_and_drop();
+            } else {
+                warn!("Tidak dapat cleanup LUN {} karena cache masih direferensikan oleh thread lain", lun_id);
+            }
+        }
 
         info!("Koneksi dengan client {} selesai.", peer_addr);
         Ok(())
