@@ -39,8 +39,8 @@ pub async fn start_server(
             }
         };
 
-        let _ = socket.set_recv_buffer_size(4 * 1024 * 1024);
-        let _ = socket.set_send_buffer_size(4 * 1024 * 1024);
+        let _ = socket.set_recv_buffer_size(256 * 1024);
+        let _ = socket.set_send_buffer_size(256 * 1024);
         let _ = socket.set_reuse_address(true);
 
         if let Err(e) = socket.bind(&bind_addr.into()) {
