@@ -31,8 +31,8 @@ impl Session {
         num_blocks: u32,
     ) -> Result<(), std::io::Error> {
         let backend = self.backends.get(&lun_id).cloned().unwrap();
-        let block_size = backend.block_size();
-        let expected_len = (num_blocks as usize) * (block_size as usize);
+        let _block_size = backend.block_size();
+        let expected_len = req.expected_data_len as usize;
 
         let mut write_buf: Vec<u8> = Vec::with_capacity(expected_len);
         let mut bytes_received = 0;
