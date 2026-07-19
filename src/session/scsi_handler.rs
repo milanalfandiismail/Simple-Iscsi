@@ -1,60 +1,43 @@
 use crate::pdu::{self, Pdu, OP_NOP_IN, OP_LOGOUT_RESP, OP_TEXT_RESP, OP_TMF_RESP};
-use crate::session::Session;
+use crate::session::{SessionContext, WriterMessage};
 use tracing::{error, info, warn, trace};
 
-impl Session {
-    pub(super) async fn handle_nop_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+impl SessionContext {
+    pub(super) async fn handle_nop_out(&self, req: Pdu) -> Result<(), std::io::Error> {
         let mut resp = Pdu::default();
         resp.opcode = OP_NOP_IN;
         resp.flags = 0x80;
         resp.initiator_task_tag = req.initiator_task_tag;
-        resp.cmd_sn = self.stat_sn;
-        self.stat_sn = self.stat_sn.wrapping_add(1);
-        resp.exp_stat_sn = self.exp_cmd_sn;
-        resp.max_cmd_sn = self.max_cmd_sn;
 
-        let packet = pdu::builder::build_pdu(&resp);
-        self.send_packet(packet).await
+        let _ = self.tx.send(WriterMessage::Pdu(resp)).await;
+        Ok(())
     }
 
-    pub(super) async fn handle_tmf_req(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_tmf_req(&self, req: Pdu) -> Result<(), std::io::Error> {
         info!("Menerima TMF Request. ITT: {}, Function: 0x{:02X}", req.initiator_task_tag, req.flags & 0x7F);
 
         let mut resp = Pdu::default();
         resp.opcode = OP_TMF_RESP;
         resp.flags = 0x80; // F (Final)
         resp.initiator_task_tag = req.initiator_task_tag;
-        
-        // StatSN dialokasikan dan diincrement untuk target-response
-        resp.cmd_sn = self.stat_sn;
-        self.stat_sn = self.stat_sn.wrapping_add(1);
-        
-        resp.exp_stat_sn = self.exp_cmd_sn;
-        resp.max_cmd_sn = self.max_cmd_sn;
+        resp.opcode_specific[0] = 0x00; // Function Complete
 
-        // Byte 2: Response. 0x00 = Function Complete
-        resp.opcode_specific[0] = 0x00;
-
-        let packet = pdu::builder::build_pdu(&resp);
-        self.send_packet(packet).await
+        let _ = self.tx.send(WriterMessage::Pdu(resp)).await;
+        Ok(())
     }
 
-    pub(super) async fn handle_logout(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_logout(&self, req: Pdu) -> Result<(), std::io::Error> {
         info!("Client logout request diterima.");
         let mut resp = Pdu::default();
         resp.opcode = OP_LOGOUT_RESP;
         resp.flags = 0x80;
         resp.initiator_task_tag = req.initiator_task_tag;
-        resp.cmd_sn = self.stat_sn;
-        self.stat_sn = self.stat_sn.wrapping_add(1);
-        resp.exp_stat_sn = self.exp_cmd_sn;
-        resp.max_cmd_sn = self.max_cmd_sn;
 
-        let packet = pdu::builder::build_pdu(&resp);
-        self.send_packet(packet).await
+        let _ = self.tx.send(WriterMessage::Pdu(resp)).await;
+        Ok(())
     }
 
-    pub(super) async fn handle_text_req(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_text_req(&self, req: Pdu) -> Result<(), std::io::Error> {
         let params = pdu::parser::parse_text_parameters(&req.data);
         info!("Menerima Text Request parameters: {:?}", params);
 
@@ -80,17 +63,13 @@ impl Session {
         resp.opcode = OP_TEXT_RESP;
         resp.flags = 0x80;
         resp.initiator_task_tag = req.initiator_task_tag;
-        resp.cmd_sn = self.stat_sn;
-        self.stat_sn = self.stat_sn.wrapping_add(1);
-        resp.exp_stat_sn = self.exp_cmd_sn;
-        resp.max_cmd_sn = self.max_cmd_sn;
         resp.data = pdu::builder::build_text_parameters(&resp_params);
 
-        let packet = pdu::builder::build_pdu(&resp);
-        self.send_packet(packet).await
+        let _ = self.tx.send(WriterMessage::Pdu(resp)).await;
+        Ok(())
     }
 
-    pub(super) async fn handle_scsi_cmd(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_scsi_cmd(&self, req: Pdu) -> Result<(), std::io::Error> {
         let cdb = req.custom_bhs;
         let opcode = cdb[0];
         let lun_id = ((req.lun >> 48) & 0xFF) as u8;
@@ -226,52 +205,68 @@ impl Session {
         Ok(())
     }
 
-    pub(super) async fn handle_data_out(&mut self, req: Pdu) -> Result<(), std::io::Error> {
+    pub(super) async fn handle_data_out(&self, req: Pdu) -> Result<(), std::io::Error> {
         let itt = req.initiator_task_tag;
         
         let mut is_complete = false;
-        
-        if let Some(pending) = self.pending_writes.get_mut(&itt) {
-            pending.buffer.extend_from_slice(&req.data);
-            
-            if pending.buffer.len() >= pending.expected_len {
-                is_complete = true;
+        let mut pending_lba = 0;
+        let mut expected_len = 0;
+        let mut num_blocks = 0;
+        let mut lun_id = 0;
+        let mut buffer_clone = Vec::new();
+
+        {
+            let mut pending_guard = self.pending_writes.lock();
+            if let Some(pending) = pending_guard.get_mut(&itt) {
+                pending.buffer.extend_from_slice(&req.data);
+                
+                if pending.buffer.len() >= pending.expected_len {
+                    is_complete = true;
+                }
+            } else {
+                warn!("Menerima Data-Out untuk task tag {} yang tidak ada di pending_writes. data_len={}, data_segment_len={}", 
+                      itt, req.data.len(), req.data_segment_len);
+                return Ok(());
             }
-        } else {
-            warn!("Menerima Data-Out untuk task tag {} yang tidak ada di pending_writes. data_len={}, data_segment_len={}", 
-                  itt, req.data.len(), req.data_segment_len);
-            return Ok(());
+
+            if is_complete {
+                if let Some(pending) = pending_guard.remove(&itt) {
+                    pending_lba = pending.lba;
+                    expected_len = pending.expected_len;
+                    num_blocks = pending.num_blocks;
+                    lun_id = pending.lun_id;
+                    buffer_clone = pending.buffer;
+                }
+            }
         }
 
         if is_complete {
-            let pending = self.pending_writes.remove(&itt).unwrap();
-            let pending_lba = pending.lba;
-            let expected_len = pending.expected_len;
-
             trace!("DATA_OUT Complete for ITT {}: buffer_len={}, expected_len={}, data_segment_len={}", 
-                  itt, pending.buffer.len(), expected_len, req.data_segment_len);
+                  itt, buffer_clone.len(), expected_len, req.data_segment_len);
 
-            // Fire-and-forget: respond to client IMMEDIATELY, write to disk in background.
-            // Client never waits for disk I/O — same approach as CCBoot.
-            self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-            self.stats.record_write(&self.client_ip, expected_len as u64);
+            let cache_opt = self.client_caches.get(&lun_id).cloned();
+            let backend = self.backends.get(&lun_id).cloned().unwrap();
 
-            let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
-            let backend = self.backends.get(&pending.lun_id).cloned().unwrap();
-            let buffer_clone = pending.buffer;
-            let num_blocks = pending.num_blocks;
-            tokio::spawn(async move {
-                tokio::task::spawn_blocking(move || {
-                    if let Some(cache) = cache_opt {
-                        let _ = cache.write_stream(pending_lba, 0, &buffer_clone);
-                    } else {
-                        let _ = backend.write_blocks(pending_lba, num_blocks, &buffer_clone);
-                    }
-                });
-            });
+            let res = tokio::task::spawn_blocking(move || {
+                if let Some(cache) = cache_opt {
+                    cache.write_stream(pending_lba, 0, &buffer_clone)
+                } else {
+                    backend.write_blocks(pending_lba, num_blocks, &buffer_clone)
+                }
+            }).await? ;
+
+            match res {
+                Ok(_) => {
+                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                    self.stats.record_write(&self.client_ip, expected_len as u64);
+                }
+                Err(e) => {
+                    error!("Gagal menulis data (Data-Out) ke disk LUN {} LBA {}: {}", lun_id, pending_lba, e);
+                    self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
+                }
+            }
         }
         
         Ok(())
     }
 }
-

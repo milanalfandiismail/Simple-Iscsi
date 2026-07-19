@@ -167,14 +167,13 @@ impl Backend {
 
         info!("Storage raw dibuka. Ukuran: {} byte", total_size);
 
-        // Re-open with FILE_FLAG_OVERLAPPED for concurrent lock-free reads
+        // Re-open without FILE_FLAG_OVERLAPPED to support synchronous seek_read/seek_write
         let mut ov_options = std::fs::OpenOptions::new();
         ov_options.read(true);
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
             ov_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
-            ov_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
         }
         let ov_file = ov_options.open(path)?;
 
@@ -220,14 +219,13 @@ impl Backend {
         let mut vhd = VhdBackend::open(file)?;
         let total_size = vhd.current_size;
 
-        // Re-open VHD file with FILE_FLAG_OVERLAPPED
+        // Re-open VHD file without FILE_FLAG_OVERLAPPED to support synchronous seek_read
         let mut ov_options = std::fs::OpenOptions::new();
         ov_options.read(true);
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
             ov_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
-            ov_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
         }
         let ov_file = ov_options.open(path)?;
         vhd.file = ov_file;
@@ -270,14 +268,13 @@ impl Backend {
         let mut child = VhdBackend::open(child_file)?;
         let total_size = child.current_size;
 
-        // Re-open child VHD with FILE_FLAG_OVERLAPPED
+        // Re-open child VHD without FILE_FLAG_OVERLAPPED to support synchronous seek_read/seek_write
         let mut ov_child_options = std::fs::OpenOptions::new();
         ov_child_options.read(true).write(true);
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
             ov_child_options.share_mode(1 | 2 | 4); // READ|WRITE|DELETE
-            ov_child_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
         }
         let ov_child_file = ov_child_options.open(child_path)?;
         child.file = ov_child_file;
@@ -312,14 +309,13 @@ impl Backend {
                 let mut parent_vhd = VhdBackend::open(parent_file)?;
                 let path_str = opened_path.unwrap();
 
-                // Re-open parent VHD with FILE_FLAG_OVERLAPPED
+                // Re-open parent VHD without FILE_FLAG_OVERLAPPED to support synchronous seek_read
                 let mut ov_parent_options = std::fs::OpenOptions::new();
                 ov_parent_options.read(true);
                 #[cfg(windows)]
                 {
                     use std::os::windows::fs::OpenOptionsExt;
                     ov_parent_options.share_mode(1 | 2);
-                    ov_parent_options.custom_flags(0x40000000); // FILE_FLAG_OVERLAPPED
                 }
                 let ov_parent_file = ov_parent_options.open(&path_str)?;
                 parent_vhd.file = ov_parent_file;
