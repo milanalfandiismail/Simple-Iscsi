@@ -115,7 +115,8 @@ impl ClientCache {
         let file_write = write_options.open(&file_path)?;
         let file_write_arc = Arc::new(file_write);
 
-        // Periodically sync file writes to disk in the background (every 3 seconds)
+        // Periodically sync file writes to disk in the background (disabled to prevent FlushFileBuffers locks)
+        /*
         let file_write_weak = Arc::downgrade(&file_write_arc);
         std::thread::spawn(move || {
             loop {
@@ -127,6 +128,7 @@ impl ClientCache {
                 }
             }
         });
+        */
 
         let mut read_options = OpenOptions::new();
         read_options.read(true);
