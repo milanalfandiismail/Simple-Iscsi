@@ -245,7 +245,6 @@ impl Session {
 
         if is_complete {
             let pending = self.pending_writes.remove(&itt).unwrap();
-            let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
             let pending_lba = pending.lba;
             let expected_len = pending.expected_len;
 
@@ -257,16 +256,12 @@ impl Session {
             self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
             self.stats.record_write(&self.client_ip, expected_len as u64);
 
-            if let Some(cache) = cache_opt {
-                tokio::task::spawn_blocking(move || {
-                    let _ = cache.write_stream(pending_lba, 0, &pending.buffer);
-                });
-            } else {
-                let backend_clone = self.backends.get(&pending.lun_id).unwrap().clone();
-                tokio::task::spawn_blocking(move || {
-                    let _ = backend_clone.write_blocks(pending_lba, pending.num_blocks, &pending.buffer);
-                });
-            }
+            self.write_tx.send(crate::session::WriteJob {
+                lun_id: pending.lun_id,
+                lba: pending_lba,
+                num_blocks: pending.num_blocks,
+                buffer: pending.buffer,
+            }).ok();
         }
         
         Ok(())
