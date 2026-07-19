@@ -379,36 +379,27 @@ impl ClientCache {
         Ok(())
     }
 
-    pub fn cleanup_and_drop(self) {
-        let is_super = self.is_super;
-        let file_path = self.file_path.clone();
-        let map_path = self.map_path.clone();
-        
-        // Drop the struct to trigger its Drop implementation (which flushes data) 
-        // AND releases the OS file lock before we attempt to delete it!
-        drop(self);
-        
-        if is_super {
-            info!("Sesi Super Client ditutup, cache dipertahankan di disk.");
-            return; // Jangan hapus cache jika super client
-        }
-        
-        if file_path.exists() {
-            info!("Menghapus file cache {:?}", file_path);
-            if let Err(e) = fs::remove_file(&file_path) {
-                warn!("Gagal menghapus file cache {:?}: {}", file_path, e);
-            } else {
-                info!("File cache {:?} berhasil dihapus.", file_path);
-            }
-        }
-        if map_path.exists() {
-            let _ = fs::remove_file(&map_path);
-        }
-    }
 }
 
 impl Drop for ClientCache {
     fn drop(&mut self) {
         self.save_map();
+        
+        if self.is_super {
+            info!("Sesi Super Client ditutup, cache dipertahankan di disk.");
+            return;
+        }
+
+        if self.file_path.exists() {
+            tracing::info!("Menghapus file cache {:?}", self.file_path);
+            if let Err(e) = std::fs::remove_file(&self.file_path) {
+                tracing::warn!("Gagal menghapus file cache {:?}: {}", self.file_path, e);
+            } else {
+                tracing::info!("File cache {:?} berhasil dihapus.", self.file_path);
+            }
+        }
+        if self.map_path.exists() {
+            let _ = std::fs::remove_file(&self.map_path);
+        }
     }
 }

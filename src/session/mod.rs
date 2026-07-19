@@ -57,8 +57,6 @@ pub struct Session {
     max_cmd_sn: u32,
     max_recv_data_segment_len: usize,
     pub pending_writes: HashMap<u32, PendingWrite>,
-    pub write_tx: tokio::sync::mpsc::UnboundedSender<WriteJob>,
-    write_rx: Option<tokio::sync::mpsc::UnboundedReceiver<WriteJob>>,
     throttle_window_start: std::sync::atomic::AtomicU64,
     throttle_bytes_this_window: std::sync::atomic::AtomicU64,
     chosen_writeback_dir: String,
@@ -142,8 +140,6 @@ impl Session {
             String::new()
         };
 
-        let (write_tx, write_rx) = tokio::sync::mpsc::unbounded_channel::<WriteJob>();
-
         Session {
             stream,
             peer_addr,
@@ -165,8 +161,6 @@ impl Session {
             max_cmd_sn: 256,
             max_recv_data_segment_len: 262144, // 256KB
             pending_writes: HashMap::new(),
-            write_tx,
-            write_rx: Some(write_rx),
             throttle_window_start: std::sync::atomic::AtomicU64::new(0),
             throttle_bytes_this_window: std::sync::atomic::AtomicU64::new(0),
             chosen_writeback_dir: chosen_dir,
@@ -261,24 +255,7 @@ impl Session {
             }
         }
 
-        let mut write_rx = self.write_rx.take().unwrap();
-        let client_caches = self.client_caches.clone();
-        let backends = self.backends.clone();
-        
-        tokio::spawn(async move {
-            while let Some(job) = write_rx.recv().await {
-                let cache_opt = client_caches.get(&job.lun_id).cloned();
-                if let Some(backend) = backends.get(&job.lun_id).cloned() {
-                    tokio::task::spawn_blocking(move || {
-                        if let Some(cache) = cache_opt {
-                            let _ = cache.write_stream(job.lba, 0, &job.buffer);
-                        } else {
-                            let _ = backend.write_blocks(job.lba, job.num_blocks, &job.buffer);
-                        }
-                    }).await.ok();
-                }
-            }
-        });
+
 
         // 3. FFP Message Loop
         let mut logged_out = false;
@@ -342,15 +319,8 @@ impl Session {
             );
         }
 
-        // Sesi selesai (karena LOGOUT atau TCP disconnect) -> hapus writeback gamedisk
-        for (lun_id, cache_arc) in self.client_caches.drain() {
-            info!("Sesi berakhir (logout/disconnect) — menghapus gamedisk cache LUN {}", lun_id);
-            if let Ok(cache) = Arc::try_unwrap(cache_arc) {
-                cache.cleanup_and_drop();
-            } else {
-                warn!("Tidak dapat cleanup LUN {} karena cache masih direferensikan oleh thread lain", lun_id);
-            }
-        }
+        info!("Sesi berakhir (logout/disconnect) — membersihkan gamedisk cache.");
+        self.client_caches.clear();
 
         info!("Koneksi dengan client {} selesai.", peer_addr);
         Ok(())

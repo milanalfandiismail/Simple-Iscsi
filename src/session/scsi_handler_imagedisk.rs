@@ -69,12 +69,17 @@ impl Session {
         self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
         self.stats.record_write(&self.client_ip, expected_len as u64);
 
-        self.write_tx.send(crate::session::WriteJob {
-            lun_id,
-            lba,
-            num_blocks,
-            buffer: write_buf,
-        }).ok();
+        let cache_opt = self.client_caches.get(&lun_id).cloned();
+        let backend = self.backends.get(&lun_id).cloned().unwrap();
+        tokio::spawn(async move {
+            tokio::task::spawn_blocking(move || {
+                if let Some(cache) = cache_opt {
+                    let _ = cache.write_stream(lba, 0, &write_buf);
+                } else {
+                    let _ = backend.write_blocks(lba, num_blocks, &write_buf);
+                }
+            });
+        });
 
         Ok(())
     }
