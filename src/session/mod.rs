@@ -28,6 +28,13 @@ pub struct PendingWrite {
     pub buffer: Vec<u8>,
 }
 
+pub struct WriteJob {
+    pub lun_id: u8,
+    pub lba: u64,
+    pub num_blocks: u32,
+    pub buffer: Vec<u8>,
+}
+
 pub struct Session {
     stream: TcpStream,
     peer_addr: std::net::SocketAddr,
@@ -50,6 +57,8 @@ pub struct Session {
     max_cmd_sn: u32,
     max_recv_data_segment_len: usize,
     pub pending_writes: HashMap<u32, PendingWrite>,
+    pub write_tx: tokio::sync::mpsc::UnboundedSender<WriteJob>,
+    write_rx: Option<tokio::sync::mpsc::UnboundedReceiver<WriteJob>>,
     throttle_window_start: std::sync::atomic::AtomicU64,
     throttle_bytes_this_window: std::sync::atomic::AtomicU64,
     chosen_writeback_dir: String,
@@ -65,9 +74,52 @@ impl Session {
     ) -> Self {
         // Konfigurasi TCP: disable Nagle
         let _ = stream.set_nodelay(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawSocket;
 
-        // Set SO_SNDBUF = 512KB via raw socket (stdlib set_send_buffer_size requires
-        // into_std which consumes the stream — raw FFI avoids the ownership dance)
+            type SOCKET = u64;
+            #[allow(non_camel_case_types)]
+            type c_int = i32;
+            #[allow(non_camel_case_types)]
+            type c_char = i8;
+
+            extern "system" {
+                fn setsockopt(
+                    s: SOCKET,
+                    level: c_int,
+                    optname: c_int,
+                    optval: *const c_char,
+                    optlen: c_int,
+                ) -> c_int;
+            }
+
+            let sock = stream.as_raw_socket();
+            let sndbuf: c_int = 4 * 1024 * 1024; // 4MB
+            let rcvbuf: c_int = 4 * 1024 * 1024; // 4MB
+            const SOL_SOCKET: c_int = 0xffff;
+            const SO_SNDBUF: c_int = 0x1001;
+            const SO_RCVBUF: c_int = 0x1002;
+
+            unsafe {
+                setsockopt(
+                    sock as SOCKET,
+                    SOL_SOCKET,
+                    SO_SNDBUF,
+                    &sndbuf as *const c_int as *const c_char,
+                    std::mem::size_of::<c_int>() as c_int,
+                );
+                setsockopt(
+                    sock as SOCKET,
+                    SOL_SOCKET,
+                    SO_RCVBUF,
+                    &rcvbuf as *const c_int as *const c_char,
+                    std::mem::size_of::<c_int>() as c_int,
+                );
+            }
+        }
+
+
 
 
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
@@ -90,6 +142,8 @@ impl Session {
             String::new()
         };
 
+        let (write_tx, write_rx) = tokio::sync::mpsc::unbounded_channel::<WriteJob>();
+
         Session {
             stream,
             peer_addr,
@@ -111,6 +165,8 @@ impl Session {
             max_cmd_sn: 256,
             max_recv_data_segment_len: 262144, // 256KB
             pending_writes: HashMap::new(),
+            write_tx,
+            write_rx: Some(write_rx),
             throttle_window_start: std::sync::atomic::AtomicU64::new(0),
             throttle_bytes_this_window: std::sync::atomic::AtomicU64::new(0),
             chosen_writeback_dir: chosen_dir,
@@ -204,6 +260,25 @@ impl Session {
                 info!("Super Client ImageDisk session — write langsung ke differencing VHD, tanpa cache");
             }
         }
+
+        let mut write_rx = self.write_rx.take().unwrap();
+        let client_caches = self.client_caches.clone();
+        let backends = self.backends.clone();
+        
+        tokio::spawn(async move {
+            while let Some(job) = write_rx.recv().await {
+                let cache_opt = client_caches.get(&job.lun_id).cloned();
+                if let Some(backend) = backends.get(&job.lun_id).cloned() {
+                    tokio::task::spawn_blocking(move || {
+                        if let Some(cache) = cache_opt {
+                            let _ = cache.write_stream(job.lba, 0, &job.buffer);
+                        } else {
+                            let _ = backend.write_blocks(job.lba, job.num_blocks, &job.buffer);
+                        }
+                    }).await.ok();
+                }
+            }
+        });
 
         // 3. FFP Message Loop
         let mut logged_out = false;

@@ -63,18 +63,18 @@ impl Session {
             return Ok(());
         }
 
-        let cache_opt = self.client_caches.get(&lun_id).cloned();
         let itt = req.initiator_task_tag;
 
-        // Fire-and-forget: respond immediately, write to disk in background
+        // Fire-and-forget: respond immediately, write to disk via sequential write queue
         self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
         self.stats.record_write(&self.client_ip, expected_len as u64);
 
-        if let Some(cache) = cache_opt {
-            tokio::task::spawn_blocking(move || {
-                let _ = cache.write_stream(lba, 0, &write_buf);
-            });
-        }
+        self.write_tx.send(crate::session::WriteJob {
+            lun_id,
+            lba,
+            num_blocks,
+            buffer: write_buf,
+        }).ok();
 
         Ok(())
     }
