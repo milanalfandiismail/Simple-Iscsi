@@ -248,22 +248,20 @@ impl Session {
             let pending_lba = pending.lba;
             let expected_len = pending.expected_len;
 
-            let res = if let Some(cache) = cache_opt {
-                cache.write_stream(pending_lba, 0, &pending.buffer)
+            // Fire-and-forget: respond to client IMMEDIATELY, write to disk in background.
+            // Client never waits for disk I/O — same approach as CCBoot.
+            self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+            self.stats.record_write(&self.client_ip, expected_len as u64);
+
+            if let Some(cache) = cache_opt {
+                tokio::task::spawn_blocking(move || {
+                    let _ = cache.write_stream(pending_lba, 0, &pending.buffer);
+                });
             } else {
                 let backend_clone = self.backends.get(&pending.lun_id).unwrap().clone();
-                backend_clone.write_blocks(pending_lba, pending.num_blocks, &pending.buffer)
-            };
-
-            match res {
-                Ok(_) => {
-                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-                    self.stats.record_write(&self.client_ip, expected_len as u64);
-                }
-                Err(e) => {
-                    error!("Gagal menulis disk LUN {} LBA {}: {}", pending.lun_id, pending_lba, e);
-                    self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
-                }
+                tokio::task::spawn_blocking(move || {
+                    let _ = backend_clone.write_blocks(pending_lba, pending.num_blocks, &pending.buffer);
+                });
             }
         }
         
