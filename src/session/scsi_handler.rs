@@ -238,7 +238,8 @@ impl Session {
                 is_complete = true;
             }
         } else {
-            warn!("Menerima Data-Out untuk task tag {} yang tidak ada di pending_writes", itt);
+            warn!("Menerima Data-Out untuk task tag {} yang tidak ada di pending_writes. data_len={}, data_segment_len={}", 
+                  itt, req.data.len(), req.data_segment_len);
             return Ok(());
         }
 
@@ -247,6 +248,9 @@ impl Session {
             let cache_opt = self.client_caches.get(&pending.lun_id).cloned();
             let pending_lba = pending.lba;
             let expected_len = pending.expected_len;
+
+            info!("DATA_OUT Complete for ITT {}: buffer_len={}, expected_len={}, data_segment_len={}", 
+                  itt, pending.buffer.len(), expected_len, req.data_segment_len);
 
             // Fire-and-forget: respond to client IMMEDIATELY, write to disk in background.
             // Client never waits for disk I/O — same approach as CCBoot.
