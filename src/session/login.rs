@@ -32,7 +32,7 @@ impl Session {
             }
             if let Some(val) = params.get("MaxRecvDataSegmentLength") {
                 if let Ok(len) = val.parse::<usize>() {
-                    self.max_recv_data_segment_len = len.min(16 * 1024 * 1024);
+                    self.max_recv_data_segment_len = len.min(262144);
                 }
             }
 
@@ -80,7 +80,7 @@ impl Session {
                 resp_params.push(("DataSequenceInOrder".to_string(), val.clone()));
             }
             if params.contains_key("MaxRecvDataSegmentLength") {
-                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "16777216".to_string())); // 1MB
+                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "262144".to_string()));
             }
             if let Some(val) = params.get("FirstBurstLength") {
                 resp_params.push(("FirstBurstLength".to_string(), val.clone()));

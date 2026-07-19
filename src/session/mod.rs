@@ -149,7 +149,7 @@ impl Session {
             stat_sn: 1,
             exp_cmd_sn: 0,
             max_cmd_sn: 256,
-            max_recv_data_segment_len: 16777216, // 16MB
+            max_recv_data_segment_len: 262144, // 256KB
             pending_writes: HashMap::new(),
             throttle_window_start: std::sync::atomic::AtomicU64::new(0),
             throttle_bytes_this_window: std::sync::atomic::AtomicU64::new(0),
