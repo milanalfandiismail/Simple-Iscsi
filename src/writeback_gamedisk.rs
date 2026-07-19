@@ -6,6 +6,7 @@ use crate::backend::Backend;
 use crate::fs_utils::{file_read_exact_at, file_write_all_at};
 
 use dashmap::DashMap;
+use moka::sync::Cache;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,7 @@ pub struct ClientCache {
     file_read: Arc<std::fs::File>,
     file_write: Arc<std::fs::File>,
     block_map: DashMap<u64, u64>, // LBA -> offset in cache.bin
+    ram_cache: Cache<u64, Arc<Vec<u8>>>, // RAM cache for hot writeback blocks: LBA -> block data
     next_write_offset: AtomicU64,
     block_size: u64,
     max_cache_size: u64,
@@ -139,12 +141,18 @@ impl ClientCache {
         }
         let file_read = read_options.open(&file_path)?;
 
+        let ram_cache = Cache::builder()
+            .max_capacity(((512 * 1024 * 1024) / block_size).max(1))
+            .time_to_idle(std::time::Duration::from_secs(300))
+            .build();
+
         Ok(Self {
             file_path,
             map_path,
             file_read: Arc::new(file_read),
             file_write: file_write_arc,
             block_map,
+            ram_cache,
             next_write_offset: AtomicU64::new(next_write_offset),
             block_size,
             max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
@@ -178,14 +186,23 @@ impl ClientCache {
         let mut i = 0;
         while i < n {
             let lba = first_lba + i as u64;
-            if let Some(offset_ref) = self.block_map.get(&lba) {
-                // Blok yang ada di cache (contigous)
+            if let Some(block_data) = self.ram_cache.get(&lba) {
+                // Hit in RAM writeback cache! Copy directly from RAM
+                let byte_start = i * block_size;
+                let byte_end = (i + 1) * block_size;
+                buf[byte_start..byte_end].copy_from_slice(&block_data);
+                i += 1;
+            } else if let Some(offset_ref) = self.block_map.get(&lba) {
+                // Block exists in disk .bin (but not in RAM cache yet)
                 let start_idx = i;
                 let mut current_off = *offset_ref;
                 let base_off = current_off;
                 i += 1;
                 while i < n {
                     let next_lba = first_lba + i as u64;
+                    if self.ram_cache.contains_key(&next_lba) {
+                        break;
+                    }
                     if let Some(next_off_ref) = self.block_map.get(&next_lba) {
                         let next_off = *next_off_ref;
                         if next_off == current_off + self.block_size {
@@ -201,13 +218,22 @@ impl ClientCache {
                 let byte_start = start_idx * block_size;
                 let byte_end = i * block_size;
                 file_read_exact_at(&self.file_read, base_off, &mut buf[byte_start..byte_end])?;
+                
+                // Populate RAM cache for these read blocks
+                for idx in start_idx..i {
+                    let block_lba = first_lba + idx as u64;
+                    let b_start = idx * block_size;
+                    let b_end = (idx + 1) * block_size;
+                    let block_buf = buf[b_start..b_end].to_vec();
+                    self.ram_cache.insert(block_lba, Arc::new(block_buf));
+                }
             } else {
-                // Blok yang tidak ada di cache (baca dari base VHD)
+                // Block not in writeback cache (read from base VHD)
                 let start_idx = i;
                 i += 1;
                 while i < n {
                     let next_lba = first_lba + i as u64;
-                    if self.block_map.contains_key(&next_lba) {
+                    if self.ram_cache.contains_key(&next_lba) || self.block_map.contains_key(&next_lba) {
                         break;
                     }
                     i += 1;
@@ -258,6 +284,15 @@ impl ClientCache {
 
         if data.len() % block_size != 0 || data.is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data harus block-aligned"));
+        }
+
+        // Insert into RAM cache
+        for i in 0..num_blocks {
+            let lba = start_lba + i as u64;
+            let byte_start = i * block_size;
+            let byte_end = (i + 1) * block_size;
+            let block_buf = data[byte_start..byte_end].to_vec();
+            self.ram_cache.insert(lba, Arc::new(block_buf));
         }
 
         // 1. Kumpulkan status cached/offset untuk mengurangi lookup DashMap
