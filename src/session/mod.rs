@@ -93,8 +93,8 @@ impl Session {
             }
 
             let sock = stream.as_raw_socket();
-            let sndbuf: c_int = 4 * 1024 * 1024; // 4MB
-            let rcvbuf: c_int = 4 * 1024 * 1024; // 4MB
+            let sndbuf: c_int = 16 * 1024 * 1024; // 16MB
+            let rcvbuf: c_int = 16 * 1024 * 1024; // 16MB
             const SOL_SOCKET: c_int = 0xffff;
             const SO_SNDBUF: c_int = 0x1001;
             const SO_RCVBUF: c_int = 0x1002;
