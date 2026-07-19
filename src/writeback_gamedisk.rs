@@ -251,16 +251,11 @@ impl ClientCache {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data harus block-aligned"));
         }
 
-        // 1. Kumpulkan status cached/offset untuk mengurangi lookup DashMap
-        let mut block_offsets = Vec::with_capacity(num_blocks);
+        // Count new blocks for capacity check
         let mut new_blocks_count = 0;
-        
         for i in 0..num_blocks {
             let lba = start_lba + i as u64;
-            if let Some(entry) = self.block_map.get(&lba) {
-                block_offsets.push(Some(*entry));
-            } else {
-                block_offsets.push(None);
+            if !self.block_map.contains_key(&lba) {
                 new_blocks_count += 1;
             }
         }
@@ -270,61 +265,19 @@ impl ClientCache {
             self.ensure_capacity(total_needed)?;
         }
 
-        // Fast-Path: All blocks are new (very common for initial game or OS writes)
-        if new_blocks_count == num_blocks {
-            let total_new_len = (num_blocks as u64) * self.block_size;
-            let base_offset = self.next_write_offset.fetch_add(total_new_len, Ordering::SeqCst);
-            self.total_bytes_written.fetch_add(total_new_len, Ordering::SeqCst);
+        // ALWAYS APPEND: Write the entire buffer sequentially at the end of the bin file!
+        let total_write_len = data.len() as u64;
+        let base_offset = self.next_write_offset.fetch_add(total_write_len, Ordering::SeqCst);
+        self.total_bytes_written.fetch_add((new_blocks_count as u64) * self.block_size, Ordering::SeqCst);
 
-            for i in 0..num_blocks {
-                let lba = start_lba + i as u64;
-                let off = base_offset + (i as u64) * self.block_size;
-                self.block_map.insert(lba, off);
-            }
-
-            file_write_all_at(&self.file_write, base_offset, data)?;
-            return Ok(());
-        }
-
-        // Alokasikan base offset untuk blok-blok baru secara berurutan agar sequential di disk
-        let mut new_block_allocated = 0;
-        let mut base_new_offset = 0;
-        let mut offsets = Vec::with_capacity(num_blocks);
-
+        // Update the block map to point to the new offsets in the appended data
         for i in 0..num_blocks {
             let lba = start_lba + i as u64;
-            let offset = if let Some(off) = block_offsets[i] {
-                off
-            } else {
-                if new_block_allocated == 0 {
-                    let total_new_len = (new_blocks_count as u64) * self.block_size;
-                    base_new_offset = self.next_write_offset.fetch_add(total_new_len, Ordering::SeqCst);
-                    self.total_bytes_written.fetch_add(total_new_len, Ordering::SeqCst);
-                }
-                let off = base_new_offset + (new_block_allocated as u64) * self.block_size;
-                new_block_allocated += 1;
-                
-                self.block_map.insert(lba, off);
-                off
-            };
-            offsets.push(offset);
+            let off = base_offset + (i as u64) * self.block_size;
+            self.block_map.insert(lba, off);
         }
 
-        // 2. Tulis data ke .bin dalam bentuk span kontigu
-        let mut span_start = 0;
-        while span_start < num_blocks {
-            let base_off = offsets[span_start];
-            let mut span_end = span_start + 1;
-            while span_end < num_blocks && offsets[span_end] == base_off + ((span_end - span_start) as u64) * self.block_size {
-                span_end += 1;
-            }
-
-            let byte_start = span_start * block_size;
-            let byte_end = span_end * block_size;
-
-            file_write_all_at(&self.file_write, base_off, &data[byte_start..byte_end])?;
-            span_start = span_end;
-        }
+        file_write_all_at(&self.file_write, base_offset, data)?;
 
         Ok(())
     }

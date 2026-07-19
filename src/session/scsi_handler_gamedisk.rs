@@ -1,12 +1,12 @@
 use crate::pdu::Pdu;
 use crate::scsi_gamedisk;
-use crate::session::Session;
+use crate::session::SessionContext;
 use tracing::trace;
 
-impl Session {
+impl SessionContext {
     /// Execute gamedisk SCSI command dispatch (non-READ, non-WRITE)
     pub(super) async fn handle_gamedisk_scsi_cmd(
-        &mut self,
+        &self,
         req: &Pdu,
         cdb: &[u8],
         _opcode: u8,
@@ -21,10 +21,8 @@ impl Session {
         self.send_scsi_result(req, result).await
     }
 
-
-
     pub(super) async fn handle_gamedisk_write(
-        &mut self,
+        &self,
         req: &Pdu,
         lun_id: u8,
         lba: u64,
@@ -51,36 +49,43 @@ impl Session {
             trace!("WRITE (gamedisk) LUN {} LBA {} ({} blocks): R2T offset={} desired={}",
                 lun_id, lba, num_blocks, bytes_received, remaining);
             
-            self.pending_writes.insert(req.initiator_task_tag, crate::session::PendingWrite {
-                lun_id,
-                lba,
-                num_blocks,
-                expected_len,
-                buffer: write_buf,
-            });
+            {
+                let mut pending_guard = self.pending_writes.lock();
+                pending_guard.insert(req.initiator_task_tag, crate::session::PendingWrite {
+                    lun_id,
+                    lba,
+                    num_blocks,
+                    expected_len,
+                    buffer: write_buf,
+                });
+            }
             
             self.send_r2t(req.initiator_task_tag, req.lun, bytes_received as u32, remaining).await?;
             return Ok(());
         }
 
         let itt = req.initiator_task_tag;
-
-        // Fire-and-forget: respond immediately, write to disk via sequential write queue
-        self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-        self.stats.record_write(&self.client_ip, expected_len as u64);
-
         let cache_opt = self.client_caches.get(&lun_id).cloned();
         let backend = self.backends.get(&lun_id).cloned().unwrap();
-        tokio::spawn(async move {
-            tokio::task::spawn_blocking(move || {
-                if let Some(cache) = cache_opt {
-                    let _ = cache.write_stream(lba, 0, &write_buf);
-                } else {
-                    let _ = backend.write_blocks(lba, num_blocks, &write_buf);
-                }
-            });
-        });
 
+        let res = tokio::task::spawn_blocking(move || {
+            if let Some(cache) = cache_opt {
+                cache.write_stream(lba, 0, &write_buf)
+            } else {
+                backend.write_blocks(lba, num_blocks, &write_buf)
+            }
+        }).await?;
+
+        match res {
+            Ok(_) => {
+                self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+                self.stats.record_write(&self.client_ip, expected_len as u64);
+            }
+            Err(e) => {
+                tracing::error!("Gagal menulis data ke disk LUN {} LBA {}: {}", lun_id, lba, e);
+                self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
+            }
+        }
         Ok(())
     }
 }

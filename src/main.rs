@@ -26,10 +26,40 @@ use tracing::{info, error};
 use std::collections::HashMap;
 use config_manager::SharedConfig;
 
+struct LogWriter {
+    file: std::sync::Arc<std::sync::Mutex<std::fs::File>>,
+}
+
+impl std::io::Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = std::io::stdout().write_all(buf);
+        if let Ok(mut file) = self.file.lock() {
+            let _ = file.write_all(buf);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let _ = std::io::stdout().flush();
+        if let Ok(mut file) = self.file.lock() {
+            let _ = file.flush();
+        }
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("server.log")
+        .expect("Gagal membuat/membuka file log server.log");
+    let file_writer = std::sync::Arc::new(std::sync::Mutex::new(log_file));
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+        .with_writer(move || LogWriter { file: file_writer.clone() })
         .init();
 
     info!("Memulai Rust iSCSI Server...");

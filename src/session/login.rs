@@ -53,19 +53,30 @@ impl Session {
             
             // Negosiasikan opsi iSCSI standard jika di-request oleh client
             if let Some(val) = params.get("ImmediateData") {
-                resp_params.push(("ImmediateData".to_string(), val.clone()));
+                // ImmediateData: AND (server supports Yes, so we agree if client is Yes, else No)
+                let resp_val = if val == "Yes" { "Yes" } else { "No" };
+                resp_params.push(("ImmediateData".to_string(), resp_val.to_string()));
             }
-            if params.contains_key("InitialR2T") {
-                resp_params.push(("InitialR2T".to_string(), "Yes".to_string()));
+            if let Some(val) = params.get("InitialR2T") {
+                // InitialR2T: OR (server prefers No, but if client demands Yes, we must return Yes)
+                let resp_val = if val == "Yes" { "Yes" } else { "No" };
+                resp_params.push(("InitialR2T".to_string(), resp_val.to_string()));
             }
-            if params.contains_key("MaxOutstandingR2T") {
-                resp_params.push(("MaxOutstandingR2T".to_string(), "1".to_string()));
+            if let Some(val) = params.get("MaxOutstandingR2T") {
+                // MaxOutstandingR2T: MIN (client, server).
+                let client_val = val.parse::<u32>().unwrap_or(1);
+                let resp_val = client_val.min(16).max(1);
+                resp_params.push(("MaxOutstandingR2T".to_string(), resp_val.to_string()));
             }
-            if params.contains_key("MaxConnections") {
-                resp_params.push(("MaxConnections".to_string(), "1".to_string()));
+            if let Some(val) = params.get("MaxConnections") {
+                let client_val = val.parse::<u32>().unwrap_or(1);
+                let resp_val = client_val.min(1);
+                resp_params.push(("MaxConnections".to_string(), resp_val.to_string()));
             }
-            if params.contains_key("ErrorRecoveryLevel") {
-                resp_params.push(("ErrorRecoveryLevel".to_string(), "0".to_string()));
+            if let Some(val) = params.get("ErrorRecoveryLevel") {
+                let client_val = val.parse::<u32>().unwrap_or(0);
+                let resp_val = client_val.min(0);
+                resp_params.push(("ErrorRecoveryLevel".to_string(), resp_val.to_string()));
             }
             if let Some(val) = params.get("DefaultTime2Wait") {
                 resp_params.push(("DefaultTime2Wait".to_string(), val.clone()));
@@ -79,14 +90,27 @@ impl Session {
             if let Some(val) = params.get("DataSequenceInOrder") {
                 resp_params.push(("DataSequenceInOrder".to_string(), val.clone()));
             }
-            if params.contains_key("MaxRecvDataSegmentLength") {
+            if let Some(val) = params.get("MaxRecvDataSegmentLength") {
+                // MaxRecvDataSegmentLength: declarative. We store client's MaxRecvDataSegmentLength
+                // as the limit for sending data to client.
+                let client_max = val.parse::<usize>().unwrap_or(8192);
+                self.max_recv_data_segment_len = client_max;
+                
+                // We respond with our own receive limit (what server can receive from client).
+                // 262144 (256 KB) is optimal and safe.
                 resp_params.push(("MaxRecvDataSegmentLength".to_string(), "262144".to_string()));
             }
             if let Some(val) = params.get("FirstBurstLength") {
-                resp_params.push(("FirstBurstLength".to_string(), val.clone()));
+                // FirstBurstLength: MIN (client, server).
+                let client_val = val.parse::<u32>().unwrap_or(65536);
+                let resp_val = client_val.min(2097152);
+                resp_params.push(("FirstBurstLength".to_string(), resp_val.to_string()));
             }
             if let Some(val) = params.get("MaxBurstLength") {
-                resp_params.push(("MaxBurstLength".to_string(), val.clone()));
+                // MaxBurstLength: MIN (client, server).
+                let client_val = val.parse::<u32>().unwrap_or(262144);
+                let resp_val = client_val.min(2097152);
+                resp_params.push(("MaxBurstLength".to_string(), resp_val.to_string()));
             }
 
             let mut resp = Pdu::default();

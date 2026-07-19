@@ -3,22 +3,25 @@ use crate::writeback_gamedisk::ClientCache;
 use crate::writeback_imagedisk;
 use crate::stats::ServerStats;
 use crate::pdu::{
-    self, OP_SCSI_CMD, OP_TMF_REQ,
+    self, Pdu, OP_SCSI_CMD, OP_TMF_REQ,
     OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, OP_DATA_OUT,
 };
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use parking_lot::Mutex;
 
 use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::mpsc;
+use tracing::{info, warn, error};
+
 pub mod scsi_handler;
 pub mod scsi_handler_gamedisk;
 pub mod scsi_handler_imagedisk;
 pub mod pdu_io;
 pub mod login;
-use tracing::{info, warn, error};
-
-
 
 pub struct PendingWrite {
     pub lun_id: u8,
@@ -33,6 +36,96 @@ pub struct WriteJob {
     pub lba: u64,
     pub num_blocks: u32,
     pub buffer: Vec<u8>,
+}
+
+// Messages sent from worker tasks to the dedicated Writer Task
+pub enum WriterMessage {
+    Pdu(Pdu),
+    DataIn {
+        itt: u32,
+        data: Vec<u8>,
+        status: u8,
+        expected_len: u32,
+    },
+    R2T {
+        itt: u32,
+        lun: u64,
+        buffer_offset: u32,
+        desired_len: u32,
+    },
+    ScsiResponse {
+        itt: u32,
+        status: u8,
+        exp_data_sn: u32,
+        expected_len: u32,
+        actual_len: u32,
+    },
+    CheckCondition {
+        itt: u32,
+        key: u8,
+        asc: u8,
+        ascq: u8,
+    },
+}
+
+pub struct SessionContext {
+    pub client_ip: String,
+    pub peer_addr: std::net::SocketAddr,
+    pub local_addr: std::net::SocketAddr,
+    pub backends: HashMap<u8, Arc<Backend>>,
+    pub client_caches: HashMap<u8, Arc<ClientCache>>,
+    pub is_imagedisk: bool,
+    pub is_super: bool,
+    pub is_discovery: bool,
+    pub max_recv_data_segment_len: usize,
+    pub pending_writes: Mutex<HashMap<u32, PendingWrite>>,
+    pub exp_cmd_sn: AtomicU32,
+    pub max_cmd_sn: AtomicU32,
+    pub stats: Arc<ServerStats>,
+    pub config: crate::config_manager::SharedConfig,
+    pub throttle_window_start: AtomicU64,
+    pub throttle_bytes_this_window: AtomicU64,
+    pub tx: mpsc::Sender<WriterMessage>,
+}
+
+impl Drop for SessionContext {
+    fn drop(&mut self) {
+        self.stats.active_sessions.fetch_sub(1, Ordering::Relaxed);
+        self.stats.record_session_end(&self.client_ip);
+    }
+}
+
+impl SessionContext {
+    pub async fn throttle_write(&self, bytes_to_write: usize) {
+        let max_speed_mbps = self.config.read().writeback.max_write_speed_mbps;
+        if max_speed_mbps == 0 {
+            return;
+        }
+
+        let max_write_bytes_per_sec = max_speed_mbps * 1024 * 1024;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        let window_start = self.throttle_window_start.load(Ordering::Relaxed);
+        let elapsed = now_ms.saturating_sub(window_start);
+
+        if elapsed >= 100 {
+            self.throttle_window_start.store(now_ms, Ordering::Relaxed);
+            self.throttle_bytes_this_window.store(0, Ordering::Relaxed);
+        }
+
+        let max_per_window = max_write_bytes_per_sec / 10;
+        let written = self.throttle_bytes_this_window.fetch_add(bytes_to_write as u64, Ordering::Relaxed);
+
+        if written + bytes_to_write as u64 > max_per_window {
+            let sleep_ms = 100u64.saturating_sub(elapsed);
+            if sleep_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+            }
+        }
+    }
 }
 
 pub struct Session {
@@ -57,8 +150,8 @@ pub struct Session {
     max_cmd_sn: u32,
     max_recv_data_segment_len: usize,
     pub pending_writes: HashMap<u32, PendingWrite>,
-    throttle_window_start: std::sync::atomic::AtomicU64,
-    throttle_bytes_this_window: std::sync::atomic::AtomicU64,
+    throttle_window_start: AtomicU64,
+    throttle_bytes_this_window: AtomicU64,
     chosen_writeback_dir: String,
 }
 
@@ -72,10 +165,6 @@ impl Session {
     ) -> Self {
         // Konfigurasi TCP: disable Nagle
         let _ = stream.set_nodelay(true);
-
-
-
-
 
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
         let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
@@ -106,7 +195,7 @@ impl Session {
             backends: HashMap::new(),
             config,
             client_caches: HashMap::new(),
-            is_imagedisk: false,  // will be set in run() after login IQN check
+            is_imagedisk: false,
             child_vhd_path: None,
             is_super: false,
             stats,
@@ -118,17 +207,10 @@ impl Session {
             max_cmd_sn: 256,
             max_recv_data_segment_len: 262144, // 256KB
             pending_writes: HashMap::new(),
-            throttle_window_start: std::sync::atomic::AtomicU64::new(0),
-            throttle_bytes_this_window: std::sync::atomic::AtomicU64::new(0),
+            throttle_window_start: AtomicU64::new(0),
+            throttle_bytes_this_window: AtomicU64::new(0),
             chosen_writeback_dir: chosen_dir,
         }
-    }
-}
-
-impl Drop for Session {
-    fn drop(&mut self) {
-        self.stats.active_sessions.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-        self.stats.record_session_end(&self.client_ip);
     }
 }
 
@@ -148,7 +230,6 @@ impl Session {
             info!("Sesi adalah Discovery Session. Melewati inisialisasi backend.");
         } else if self.target_iqn == self.config.read().gamedisk_target.target_iqn {
             target_name = "gamedisk".to_string();
-            // Gamedisk target -> muat semua LUN gamedisk
             let gamedisks = self.gamedisk_backends.read().unwrap();
             for (lun_id, backend) in gamedisks.iter() {
                 self.backends.insert(*lun_id, Arc::clone(backend));
@@ -160,7 +241,6 @@ impl Session {
             let suffix = &self.target_iqn[win.target_iqn_prefix.len()..];
             target_name = suffix.to_string();
 
-            // Gunakan writeback_imagedisk — kalo super client, serve super VHD langsung
             self.is_super = self.client_ip == win.super_client_ip;
             match writeback_imagedisk::init_child_vhd(
                 &config_guard,
@@ -170,7 +250,7 @@ impl Session {
             ) {
                 Ok(result) => {
                     self.backends.insert(0, result.backend);
-                    self.child_vhd_path = result.child_path; // None untuk super VHD, Some untuk child
+                    self.child_vhd_path = result.child_path;
                 }
                 Err(e) => {
                     error!("Gagal init VHD: {}", e);
@@ -179,12 +259,11 @@ impl Session {
             }
         } else {
             error!("Target IQN tidak valid atau tidak dikenali: {}", self.target_iqn);
-            return Ok(()); // Putuskan koneksi
+            return Ok(());
         }
 
         // 2. Inisialisasi Cache
         if !self.is_discovery {
-            // Buat cache untuk gamedisk, dan untuk imagedisk (normal client saja)
             let is_imagedisk_normal = self.is_imagedisk && !self.is_super;
             if !self.is_imagedisk || is_imagedisk_normal {
                 for (lun_id, backend) in self.backends.iter() {
@@ -202,7 +281,7 @@ impl Session {
                         &cache_name,
                         backend.block_size(),
                         self.config.read().writeback.max_cache_per_client_gb,
-                        false, // is_super is always false for cache
+                        false,
                         self.config.read().writeback.max_write_speed_mbps,
                     )?;
                     self.client_caches.insert(*lun_id, Arc::new(cache));
@@ -212,14 +291,71 @@ impl Session {
             }
         }
 
+        // Destructure self to allow moving out non-copy fields cleanly
+        let Session {
+            stream,
+            peer_addr,
+            local_addr,
+            client_ip,
+            backends,
+            client_caches,
+            is_imagedisk,
+            is_super,
+            max_recv_data_segment_len,
+            pending_writes,
+            exp_cmd_sn,
+            max_cmd_sn,
+            stats,
+            config,
+            throttle_window_start,
+            throttle_bytes_this_window,
+            is_discovery,
+            stat_sn,
+            child_vhd_path,
+            ..
+        } = self;
 
+        // 3. Split TCP Stream dan Setup Channel
+        let (mut read_half, mut write_half) = stream.into_split();
+        let (tx, mut rx) = mpsc::channel::<WriterMessage>(1024);
 
-        // 3. FFP Message Loop
-        let mut logged_out = false;
-        
+        let context = Arc::new(SessionContext {
+            client_ip,
+            peer_addr,
+            local_addr,
+            backends,
+            client_caches: client_caches.clone(),
+            is_imagedisk,
+            is_super,
+            is_discovery,
+            max_recv_data_segment_len,
+            pending_writes: Mutex::new(pending_writes),
+            exp_cmd_sn: AtomicU32::new(exp_cmd_sn),
+            max_cmd_sn: AtomicU32::new(max_cmd_sn),
+            stats: Arc::clone(&stats),
+            config,
+            throttle_window_start,
+            throttle_bytes_this_window,
+            tx,
+        });
+
+        // 4. Spawn Writer Task
+        let context_writer = Arc::clone(&context);
+        let writer_handle = tokio::spawn(async move {
+            let mut local_stat_sn = stat_sn;
+            while let Some(msg) = rx.recv().await {
+                if let Err(e) = pdu_io::write_message(&mut write_half, &context_writer, msg, &mut local_stat_sn).await {
+                    info!("Writer task exited: {}", e);
+                    break;
+                }
+            }
+        });
+
+        // 5. Run Reader Loop (FFP Message Loop)
+        let context_reader = Arc::clone(&context);
         let loop_result: Result<(), std::io::Error> = async {
             loop {
-                let req = match pdu::parser::read_pdu(&mut self.stream).await {
+                let req = match pdu::parser::read_pdu(&mut read_half).await {
                     Ok(p) => p,
                     Err(e) => {
                         info!("TCP connection closed or errored: {}", e);
@@ -229,31 +365,64 @@ impl Session {
 
                 let is_immediate = req.is_immediate;
                 if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
-                    self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-                    self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+                    let next_exp = req.cmd_sn.wrapping_add(1);
+                    context_reader.exp_cmd_sn.store(next_exp, Ordering::Relaxed);
+                    context_reader.max_cmd_sn.store(next_exp.wrapping_add(32), Ordering::Relaxed);
                 }
 
                 match req.opcode {
                     OP_NOP_OUT => {
-                        self.handle_nop_out(req).await?;
+                        let ctx = Arc::clone(&context_reader);
+                        tokio::spawn(async move {
+                            if let Err(e) = ctx.handle_nop_out(req).await {
+                                error!("Gagal memproses NOP-Out: {}", e);
+                            }
+                        });
                     }
                     OP_LOGOUT_REQ => {
-                        // ignore error if client closes socket early after sending LOGOUT
-                        let _ = self.handle_logout(req).await;
-                        logged_out = true;
-                        break; // Selesai
+                        let _ = context_reader.handle_logout(req).await;
+                        break;
                     }
                     OP_TEXT_REQ => {
-                        self.handle_text_req(req).await?;
+                        let ctx = Arc::clone(&context_reader);
+                        tokio::spawn(async move {
+                            if let Err(e) = ctx.handle_text_req(req).await {
+                                error!("Gagal memproses Text-Req: {}", e);
+                            }
+                        });
                     }
                     OP_TMF_REQ => {
-                        self.handle_tmf_req(req).await?;
+                        let ctx = Arc::clone(&context_reader);
+                        tokio::spawn(async move {
+                            if let Err(e) = ctx.handle_tmf_req(req).await {
+                                error!("Gagal memproses TMF-Req: {}", e);
+                            }
+                        });
                     }
                     OP_SCSI_CMD => {
-                        self.handle_scsi_cmd(req).await?;
+                        let scsi_opcode = req.custom_bhs[0];
+                        let is_write = scsi_opcode == 0x2A || scsi_opcode == 0x8A;
+                        
+                        if is_write {
+                            // Jalankan secara synchronous untuk WRITE agar terhindar dari race condition dengan OP_DATA_OUT
+                            if let Err(e) = context_reader.handle_scsi_cmd(req).await {
+                                error!("Gagal memproses SCSI-Cmd WRITE secara synchronous: {}", e);
+                            }
+                        } else {
+                            // READ dan command lain tetap asynchronous untuk performa pipelining
+                            let ctx = Arc::clone(&context_reader);
+                            tokio::spawn(async move {
+                                if let Err(e) = ctx.handle_scsi_cmd(req).await {
+                                    error!("Gagal memproses SCSI-Cmd: {}", e);
+                                }
+                            });
+                        }
                     }
                     OP_DATA_OUT => {
-                        self.handle_data_out(req).await?;
+                        // Jalankan secara synchronous agar data yang masuk berurutan masuk ke buffer yang tepat
+                        if let Err(e) = context_reader.handle_data_out(req).await {
+                            error!("Gagal memproses Data-Out secara synchronous: {}", e);
+                        }
                     }
                     _ => {
                         warn!("Menerima opcode PDU tidak didukung di FFP: 0x{:02X}", req.opcode);
@@ -263,22 +432,31 @@ impl Session {
             Ok(())
         }.await;
 
+        drop(context_reader); // Lepaskan referensi reader agar SessionContext bisa di-drop dan cache unwrap berhasil
+
         if let Err(e) = loop_result {
             info!("Session error atau terputus: {}", e);
         }
 
-        // Cleanup VHD via writeback_imagedisk — super VHD persistent, child VHD dihapus
-        if self.is_imagedisk {
+        // Wait for writer task to finish processing any pending packets
+        let client_ip_cleanup = context.client_ip.clone();
+        let config_cleanup = context.config.clone();
+        drop(context); // Drop the last sender in this thread to notify the receiver
+        let _ = writer_handle.await;
+
+        // Cleanup VHD via writeback_imagedisk
+        if is_imagedisk {
             writeback_imagedisk::cleanup_child_vhd(
-                self.child_vhd_path.as_deref(),
-                &self.client_ip,
-                &self.config.read(),
+                child_vhd_path.as_deref(),
+                &client_ip_cleanup,
+                &config_cleanup.read(),
             );
         }
 
-        // Sesi selesai (karena LOGOUT atau TCP disconnect) -> hapus writeback gamedisk
-        for (lun_id, cache_arc) in self.client_caches.drain() {
-            info!("Sesi berakhir (logout/disconnect) — menghapus gamedisk cache LUN {}", lun_id);
+        // Cleanup writeback gamedisk caches
+        let mut caches_to_clean = client_caches;
+        for (lun_id, cache_arc) in caches_to_clean.drain() {
+            info!("Sesi berakhir — menghapus gamedisk cache LUN {}", lun_id);
             if let Ok(cache) = Arc::try_unwrap(cache_arc) {
                 cache.cleanup_and_drop();
             } else {
@@ -288,36 +466,5 @@ impl Session {
 
         info!("Koneksi dengan client {} selesai.", peer_addr);
         Ok(())
-    }
-
-    pub async fn throttle_write(&self, bytes_to_write: usize) {
-        let max_speed_mbps = self.config.read().writeback.max_write_speed_mbps;
-        if max_speed_mbps == 0 {
-            return;
-        }
-
-        let max_write_bytes_per_sec = max_speed_mbps * 1024 * 1024;
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        let window_start = self.throttle_window_start.load(std::sync::atomic::Ordering::Relaxed);
-        let elapsed = now_ms.saturating_sub(window_start);
-
-        if elapsed >= 100 {
-            self.throttle_window_start.store(now_ms, std::sync::atomic::Ordering::Relaxed);
-            self.throttle_bytes_this_window.store(0, std::sync::atomic::Ordering::Relaxed);
-        }
-
-        let max_per_window = max_write_bytes_per_sec / 10;
-        let written = self.throttle_bytes_this_window.fetch_add(bytes_to_write as u64, std::sync::atomic::Ordering::Relaxed);
-
-        if written + bytes_to_write as u64 > max_per_window {
-            let sleep_ms = 100u64.saturating_sub(elapsed);
-            if sleep_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
-            }
-        }
     }
 }
