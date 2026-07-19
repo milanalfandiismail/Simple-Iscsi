@@ -63,21 +63,14 @@ impl Session {
         let cache_opt = self.client_caches.get(&lun_id).cloned();
         let itt = req.initiator_task_tag;
 
-        let res = if let Some(cache) = cache_opt {
-            cache.write_stream(lba, 0, &write_buf)
-        } else {
-            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Cache not found for LUN"))
-        };
+        // Fire-and-forget: respond immediately, write to disk in background
+        self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
+        self.stats.record_write(&self.client_ip, expected_len as u64);
 
-        match res {
-            Ok(_) => {
-                self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-                self.stats.record_write(&self.client_ip, expected_len as u64);
-            }
-            Err(e) => {
-                error!("Gagal menulis disk LUN {} LBA {}: {}", lun_id, lba, e);
-                self.send_scsi_response(itt, 0x02, 0x03, 0x0C, 0x00).await?;
-            }
+        if let Some(cache) = cache_opt {
+            tokio::task::spawn_blocking(move || {
+                let _ = cache.write_stream(lba, 0, &write_buf);
+            });
         }
 
         Ok(())

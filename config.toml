@@ -16,7 +16,7 @@ product_revision = "1.00"
 
 [windows]
 target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
-vhd_dir = ""
+vhd_dir = 'C:\vhd'
 block_size = 512
 vendor_id = "RUSTISCS"
 product_id = "WindowsBoot"
@@ -36,12 +36,12 @@ w11 = 'E:\W11-23H2-5335.vhd'
 
 [dhcp]
 enabled = true
-start_ip = "10.10.10.100"
-end_ip = "10.10.10.200"
+start_ip = "10.10.10.240"
+end_ip = "10.10.10.10.252"
 router = "10.10.10.1"
 dns = "8.8.8.8"
 next_server = "10.10.10.253"
 subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"
-nic_ips = ["10.10.10.253"]
+nic_ips = ["192.168.137.1", "10.10.10.253"]
