@@ -340,12 +340,16 @@ impl Session {
         });
 
         // 4. Spawn Writer Task
-        let context_writer = Arc::clone(&context);
+        let context_writer = Arc::downgrade(&context);
         let writer_handle = tokio::spawn(async move {
             let mut local_stat_sn = stat_sn;
             while let Some(msg) = rx.recv().await {
-                if let Err(e) = pdu_io::write_message(&mut write_half, &context_writer, msg, &mut local_stat_sn).await {
-                    info!("Writer task exited: {}", e);
+                if let Some(ctx) = context_writer.upgrade() {
+                    if let Err(e) = pdu_io::write_message(&mut write_half, &ctx, msg, &mut local_stat_sn).await {
+                        info!("Writer task exited: {}", e);
+                        break;
+                    }
+                } else {
                     break;
                 }
             }
