@@ -62,7 +62,7 @@ impl Session {
                 resp_params.push(("MaxOutstandingR2T".to_string(), "1".to_string()));
             }
             if params.contains_key("MaxConnections") {
-                resp_params.push(("MaxConnections".to_string(), "4".to_string()));
+                resp_params.push(("MaxConnections".to_string(), "1".to_string()));
             }
             if params.contains_key("ErrorRecoveryLevel") {
                 resp_params.push(("ErrorRecoveryLevel".to_string(), "0".to_string()));
