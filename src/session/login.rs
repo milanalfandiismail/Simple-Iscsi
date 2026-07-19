@@ -56,7 +56,7 @@ impl Session {
                 resp_params.push(("ImmediateData".to_string(), val.clone()));
             }
             if params.contains_key("InitialR2T") {
-                resp_params.push(("InitialR2T".to_string(), "No".to_string()));
+                resp_params.push(("InitialR2T".to_string(), "Yes".to_string()));
             }
             if params.contains_key("MaxOutstandingR2T") {
                 resp_params.push(("MaxOutstandingR2T".to_string(), "1".to_string()));
