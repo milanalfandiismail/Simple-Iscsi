@@ -1,5 +1,5 @@
 [server]
-address = "192.168.137.1"
+address = "10.10.10.253"
 port = 3260
 read_cache_gb = 0
 
@@ -36,11 +36,11 @@ w11 = 'E:\W11-23H2-5335.vhd'
 
 [dhcp]
 enabled = true
-start_ip = "192.168.137.100"
-end_ip = "192.168.137.200"
-router = "192.168.137.1"
+start_ip = "10.10.10.200"
+end_ip = "10.10.10.200"
+router = "10.10.10.1"
 dns = "8.8.8.8"
-next_server = "192.168.137.1"
+next_server = "10.10.10.253"
 subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"

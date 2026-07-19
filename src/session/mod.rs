@@ -68,47 +68,7 @@ impl Session {
 
         // Set SO_SNDBUF = 512KB via raw socket (stdlib set_send_buffer_size requires
         // into_std which consumes the stream — raw FFI avoids the ownership dance)
-        #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawSocket;
 
-            type SOCKET = u64;
-            #[allow(non_camel_case_types)]
-            type c_int = i32;
-
-            const SOL_SOCKET: c_int = 0xFFFF;   // SOL_SOCKET on Windows
-            const SO_SNDBUF: c_int = 0x1001;    // SO_SNDBUF on Windows
-            const SO_RCVBUF: c_int = 0x1002;    // SO_RCVBUF on Windows
-
-            extern "system" {
-                fn setsockopt(
-                    s: SOCKET,
-                    level: c_int,
-                    optname: c_int,
-                    optval: *const std::ffi::c_void,
-                    optlen: c_int,
-                ) -> c_int;
-            }
-
-            let socket = stream.as_raw_socket() as SOCKET;
-            let val: u32 = 1024 * 1024; // 1MB buffer for gigabit speeds
-            unsafe {
-                setsockopt(
-                    socket,
-                    SOL_SOCKET,
-                    SO_SNDBUF,
-                    &val as *const u32 as *const std::ffi::c_void,
-                    std::mem::size_of::<u32>() as c_int,
-                );
-                setsockopt(
-                    socket,
-                    SOL_SOCKET,
-                    SO_RCVBUF,
-                    &val as *const u32 as *const std::ffi::c_void,
-                    std::mem::size_of::<u32>() as c_int,
-                );
-            }
-        }
 
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
         let local_addr = stream.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
