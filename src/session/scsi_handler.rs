@@ -249,7 +249,7 @@ impl Session {
             let pending_lba = pending.lba;
             let expected_len = pending.expected_len;
 
-            info!("DATA_OUT Complete for ITT {}: buffer_len={}, expected_len={}, data_segment_len={}", 
+            trace!("DATA_OUT Complete for ITT {}: buffer_len={}, expected_len={}, data_segment_len={}", 
                   itt, pending.buffer.len(), expected_len, req.data_segment_len);
 
             // Fire-and-forget: respond to client IMMEDIATELY, write to disk in background.
