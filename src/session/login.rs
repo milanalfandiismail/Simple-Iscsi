@@ -55,11 +55,11 @@ impl Session {
             if let Some(val) = params.get("ImmediateData") {
                 resp_params.push(("ImmediateData".to_string(), val.clone()));
             }
-            if let Some(val) = params.get("InitialR2T") {
-                resp_params.push(("InitialR2T".to_string(), val.clone()));
+            if params.contains_key("InitialR2T") {
+                resp_params.push(("InitialR2T".to_string(), "Yes".to_string()));
             }
-            if let Some(val) = params.get("MaxOutstandingR2T") {
-                resp_params.push(("MaxOutstandingR2T".to_string(), val.clone()));
+            if params.contains_key("MaxOutstandingR2T") {
+                resp_params.push(("MaxOutstandingR2T".to_string(), "1".to_string()));
             }
             if params.contains_key("MaxConnections") {
                 resp_params.push(("MaxConnections".to_string(), "1".to_string()));
