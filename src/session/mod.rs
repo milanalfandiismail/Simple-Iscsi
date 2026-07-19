@@ -72,50 +72,7 @@ impl Session {
     ) -> Self {
         // Konfigurasi TCP: disable Nagle
         let _ = stream.set_nodelay(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawSocket;
 
-            type SOCKET = u64;
-            #[allow(non_camel_case_types)]
-            type c_int = i32;
-            #[allow(non_camel_case_types)]
-            type c_char = i8;
-
-            extern "system" {
-                fn setsockopt(
-                    s: SOCKET,
-                    level: c_int,
-                    optname: c_int,
-                    optval: *const c_char,
-                    optlen: c_int,
-                ) -> c_int;
-            }
-
-            let sock = stream.as_raw_socket();
-            let sndbuf: c_int = 16 * 1024 * 1024; // 16MB
-            let rcvbuf: c_int = 16 * 1024 * 1024; // 16MB
-            const SOL_SOCKET: c_int = 0xffff;
-            const SO_SNDBUF: c_int = 0x1001;
-            const SO_RCVBUF: c_int = 0x1002;
-
-            unsafe {
-                setsockopt(
-                    sock as SOCKET,
-                    SOL_SOCKET,
-                    SO_SNDBUF,
-                    &sndbuf as *const c_int as *const c_char,
-                    std::mem::size_of::<c_int>() as c_int,
-                );
-                setsockopt(
-                    sock as SOCKET,
-                    SOL_SOCKET,
-                    SO_RCVBUF,
-                    &rcvbuf as *const c_int as *const c_char,
-                    std::mem::size_of::<c_int>() as c_int,
-                );
-            }
-        }
 
 
 

@@ -87,6 +87,20 @@ pub async fn start_server(
                     error!("Gagal mengaktifkan TCP_NODELAY untuk {}: {}", peer, e);
                 }
 
+                #[cfg(windows)]
+                {
+                    use std::os::windows::io::{AsRawSocket, FromRawSocket};
+                    let raw_socket = stream.as_raw_socket();
+                    unsafe {
+                        let socket = socket2::Socket::from_raw_socket(raw_socket);
+                        let keepalive = socket2::TcpKeepalive::new()
+                            .with_time(std::time::Duration::from_secs(30))
+                            .with_interval(std::time::Duration::from_secs(5));
+                        let _ = socket.set_tcp_keepalive(&keepalive);
+                        std::mem::forget(socket);
+                    }
+                }
+
                 let session_gamedisk = Arc::clone(&gamedisk_backends_clone);
                 let session_config = config_clone.clone();
                 let session_stats = Arc::clone(&stats_clone);
