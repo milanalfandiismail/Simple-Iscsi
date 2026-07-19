@@ -113,11 +113,6 @@ impl ClientCache {
             file_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
         }
         let file_handle = file_options.open(&file_path)?;
-
-        let max_size_bytes = max_cache_gb * 1024 * 1024 * 1024;
-        if file_handle.metadata()?.len() < max_size_bytes {
-            let _ = file_handle.set_len(max_size_bytes);
-        }
         let file_handle_arc = Arc::new(file_handle);
 
         // Periodically sync file writes to disk in the background (disabled to prevent FlushFileBuffers locks)
