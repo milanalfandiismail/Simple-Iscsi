@@ -19,11 +19,50 @@ pub async fn start_server(
     let mut handles = Vec::new();
 
     for addr in addrs {
-        let bind_addr = format!("{}:{}", addr, port);
-        let listener = match TcpListener::bind(&bind_addr).await {
+        let bind_addr: std::net::SocketAddr = match format!("{}:{}", addr, port).parse() {
+            Ok(sa) => sa,
+            Err(e) => {
+                error!("Format alamat bind tidak valid: {}", e);
+                return Err(Box::new(e));
+            }
+        };
+
+        let socket = match socket2::Socket::new(
+            if bind_addr.is_ipv4() { socket2::Domain::IPV4 } else { socket2::Domain::IPV6 },
+            socket2::Type::STREAM,
+            Some(socket2::Protocol::TCP),
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Gagal membuat socket: {}", e);
+                return Err(Box::new(e));
+            }
+        };
+
+        let _ = socket.set_recv_buffer_size(4 * 1024 * 1024);
+        let _ = socket.set_send_buffer_size(4 * 1024 * 1024);
+        let _ = socket.set_reuse_address(true);
+
+        if let Err(e) = socket.bind(&bind_addr.into()) {
+            error!("Gagal bind ke {}: {}", bind_addr, e);
+            return Err(Box::new(e));
+        }
+
+        if let Err(e) = socket.listen(1024) {
+            error!("Gagal listen pada socket: {}", e);
+            return Err(Box::new(e));
+        }
+
+        let std_listener: std::net::TcpListener = socket.into();
+        if let Err(e) = std_listener.set_nonblocking(true) {
+            error!("Gagal menyetel non-blocking listener: {}", e);
+            return Err(Box::new(e));
+        }
+
+        let listener = match TcpListener::from_std(std_listener) {
             Ok(l) => l,
             Err(e) => {
-                error!("Gagal bind ke {}: {}", bind_addr, e);
+                error!("Gagal konversi ke tokio TcpListener: {}", e);
                 return Err(Box::new(e));
             }
         };
