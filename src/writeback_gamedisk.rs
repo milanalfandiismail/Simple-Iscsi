@@ -277,6 +277,22 @@ impl ClientCache {
             self.ensure_capacity(total_needed)?;
         }
 
+        // Fast-Path: All blocks are new (very common for initial game or OS writes)
+        if new_blocks_count == num_blocks {
+            let total_new_len = (num_blocks as u64) * self.block_size;
+            let base_offset = self.next_write_offset.fetch_add(total_new_len, Ordering::SeqCst);
+            self.total_bytes_written.fetch_add(total_new_len, Ordering::SeqCst);
+
+            for i in 0..num_blocks {
+                let lba = start_lba + i as u64;
+                let off = base_offset + (i as u64) * self.block_size;
+                self.block_map.insert(lba, off);
+            }
+
+            file_write_all_at(&self.file_write, base_offset, data)?;
+            return Ok(());
+        }
+
         // Alokasikan base offset untuk blok-blok baru secara berurutan agar sequential di disk
         let mut new_block_allocated = 0;
         let mut base_new_offset = 0;

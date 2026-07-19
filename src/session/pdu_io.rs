@@ -15,7 +15,6 @@ fn pack_iov(slices: &[std::io::IoSlice<'_>]) -> Vec<u8> {
 impl Session {
     pub(super) async fn send_packet(&mut self, packet: Vec<u8>) -> Result<(), std::io::Error> {
         self.stream.write_all(&packet).await?;
-        self.stream.flush().await?;
         Ok(())
     }
 
