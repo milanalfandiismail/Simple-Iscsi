@@ -567,39 +567,86 @@ typedef struct _IBFT_NIC {
 #pragma pack(pop)
 
 // Membaca dan mem-parse tabel iBFT dari ACPI Firmware
+#define MAKE_FOURCC(a, b, c, d) \
+    (((unsigned long)(unsigned char)(a)) | \
+    (((unsigned long)(unsigned char)(b)) << 8) | \
+    (((unsigned long)(unsigned char)(c)) << 16) | \
+    (((unsigned long)(unsigned char)(d)) << 24))
+
+void LogWriteHex(unsigned long val) {
+    char hexBuf[16];
+    const char hexChars[] = "0123456789ABCDEF";
+    hexBuf[0] = '0';
+    hexBuf[1] = 'x';
+    for (int i = 7; i >= 0; i--) {
+        hexBuf[2 + (7 - i)] = hexChars[(val >> (i * 4)) & 0xF];
+    }
+    hexBuf[10] = '\0';
+    LogWriteA(hexBuf);
+}
+
+// Membaca dan mem-parse tabel iBFT dari ACPI Firmware
 bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, wchar_t* outGw, wchar_t* outDns1, wchar_t* outDns2) {
     LogWriteA("[+] Querying ACPI iBFT Firmware Table via NtQuerySystemInformation...\r\n");
 
     static unsigned char queryBuffer[4096];
-    memset(queryBuffer, 0, sizeof(queryBuffer));
     PSYSTEM_FIRMWARE_TABLE_INFORMATION pFirmware = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)queryBuffer;
-    pFirmware->ProviderSignature = 0x41435049; // 'ACPI'
-    pFirmware->Action = 0;
-    pFirmware->TableID = 0x54464269;           // 'iBFT' (little-endian for 'i','B','F','T')
-    pFirmware->TableBufferLength = sizeof(queryBuffer) - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
 
-    unsigned long returnLength = 0;
-    NTSTATUS status = NtQuerySystemInformation(SystemFirmwareTableInformation, pFirmware, sizeof(queryBuffer), &returnLength);
+    unsigned long providers[] = {
+        MAKE_FOURCC('A', 'C', 'P', 'I'),
+        0x41435049,
+        MAKE_FOURCC('F', 'I', 'R', 'M')
+    };
 
-    // Coba dengan uppercase 'IBFT' jika 'iBFT' gagal
-    if (!NT_SUCCESS(status)) {
-        pFirmware->TableID = 0x54464249; // 'IBFT'
-        status = NtQuerySystemInformation(SystemFirmwareTableInformation, pFirmware, sizeof(queryBuffer), &returnLength);
+    unsigned long tableIds[] = {
+        MAKE_FOURCC('i', 'B', 'F', 'T'),
+        MAKE_FOURCC('I', 'B', 'F', 'T'),
+        0x54464269,
+        0x54464249
+    };
+
+    bool querySuccess = false;
+
+    for (int pr = 0; pr < 3 && !querySuccess; pr++) {
+        for (int tb = 0; tb < 4 && !querySuccess; tb++) {
+            for (unsigned long act = 0; act <= 1 && !querySuccess; act++) {
+                memset(queryBuffer, 0, sizeof(queryBuffer));
+                pFirmware->ProviderSignature = providers[pr];
+                pFirmware->Action = act;
+                pFirmware->TableID = tableIds[tb];
+                pFirmware->TableBufferLength = sizeof(queryBuffer) - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+                unsigned long returnLength = 0;
+                NTSTATUS status = NtQuerySystemInformation(SystemFirmwareTableInformation, pFirmware, sizeof(queryBuffer), &returnLength);
+
+                if (NT_SUCCESS(status) && pFirmware->TableBufferLength >= 48) {
+                    querySuccess = true;
+                    LogWriteA("[+] NtQuerySystemInformation SUCCESS! Provider=");
+                    LogWriteHex(providers[pr]);
+                    LogWriteA(" TableID=");
+                    LogWriteHex(tableIds[tb]);
+                    LogWriteA(" Action=");
+                    LogWriteHex(act);
+                    LogWriteA(" Len=");
+                    LogWriteHex(pFirmware->TableBufferLength);
+                    LogWriteA("\r\n");
+                }
+            }
+        }
     }
 
-    if (!NT_SUCCESS(status) || pFirmware->TableBufferLength < sizeof(IBFT_CONTROL) + 48) {
-        LogWriteA("[-] NtQuerySystemInformation did not return iBFT. Trying Registry ACPI Table Dump...\r\n");
+    if (!querySuccess) {
+        LogWriteA("[-] NtQuerySystemInformation did not return iBFT. Scanning Registry ACPI Tree...\r\n");
 
-        // Fallback: Baca dari Registry HKLM\HARDWARE\ACPI\iBFT\...\00000000
-        const wchar_t* acpiPaths[] = {
-            L"\\Registry\\Machine\\HARDWARE\\ACPI\\iBFT",
-            L"\\Registry\\Machine\\HARDWARE\\ACPI\\IBFT"
+        const wchar_t* acpiRoots[] = {
+            L"\\Registry\\Machine\\HARDWARE\\ACPI",
+            L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System"
         };
 
         bool foundInReg = false;
-        for (int p = 0; p < 2 && !foundInReg; p++) {
+        for (int r = 0; r < 2 && !foundInReg; r++) {
             UNICODE_STRING regPath;
-            RtlInitUnicodeString(&regPath, acpiPaths[p]);
+            RtlInitUnicodeString(&regPath, acpiRoots[r]);
             OBJECT_ATTRIBUTES objAttr;
             objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
             objAttr.RootDirectory = nullptr;
@@ -610,45 +657,88 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
 
             void* hAcpiRoot = nullptr;
             if (NT_SUCCESS(NtOpenKey(&hAcpiRoot, KEY_ENUMERATE_SUB_KEYS, &objAttr))) {
-                // Enumerasi subkey OEM ID
                 unsigned char subKeyBuf[512];
                 unsigned long resLen = 0;
-                if (NT_SUCCESS(NtEnumerateKey(hAcpiRoot, 0, KeyBasicInformation, subKeyBuf, sizeof(subKeyBuf), &resLen))) {
+
+                for (unsigned long idx = 0; idx < 32 && !foundInReg; idx++) {
+                    NTSTATUS enumStatus = NtEnumerateKey(hAcpiRoot, idx, KeyBasicInformation, subKeyBuf, sizeof(subKeyBuf), &resLen);
+                    if (!NT_SUCCESS(enumStatus)) break;
+
                     PKEY_BASIC_INFORMATION pSubInfo = (PKEY_BASIC_INFORMATION)subKeyBuf;
                     wchar_t fullSubPath[256];
-                    StrCopy(fullSubPath, acpiPaths[p], 256);
+                    StrCopy(fullSubPath, acpiRoots[r], 256);
                     StrCat(fullSubPath, L"\\", 256);
                     unsigned long bLen = StrLen(fullSubPath);
                     unsigned long nLen = pSubInfo->NameLength / sizeof(wchar_t);
                     for (unsigned long i = 0; i < nLen && (bLen + i + 1) < 256; i++) fullSubPath[bLen + i] = pSubInfo->Name[i];
                     fullSubPath[bLen + nLen] = L'\0';
 
-                    UNICODE_STRING subKeyName;
-                    RtlInitUnicodeString(&subKeyName, fullSubPath);
-                    OBJECT_ATTRIBUTES subAttr;
-                    subAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-                    subAttr.RootDirectory = nullptr;
-                    subAttr.ObjectName = &subKeyName;
-                    subAttr.Attributes = OBJ_CASE_INSENSITIVE;
-                    subAttr.SecurityDescriptor = nullptr;
-                    subAttr.SecurityQualityOfService = nullptr;
+                    LogWriteA("    - Checking ACPI Subkey: "); LogWriteW(fullSubPath); LogWriteA("\r\n");
 
-                    void* hSub = nullptr;
-                    if (NT_SUCCESS(NtOpenKey(&hSub, KEY_QUERY_VALUE, &subAttr))) {
-                        UNICODE_STRING valName;
-                        RtlInitUnicodeString(&valName, L"00000000");
-                        static unsigned char tableValBuf[4096];
-                        unsigned long qLen = 0;
-                        if (NT_SUCCESS(NtQueryValueKey(hSub, &valName, KeyValuePartialInformation, tableValBuf, sizeof(tableValBuf), &qLen))) {
-                            PKEY_VALUE_PARTIAL_INFORMATION pPart = (PKEY_VALUE_PARTIAL_INFORMATION)tableValBuf;
-                            if (pPart->Type == REG_BINARY && pPart->DataLength >= sizeof(IBFT_CONTROL) + 48) {
-                                memcpy(pFirmware->TableBuffer, pPart->Data, pPart->DataLength);
-                                pFirmware->TableBufferLength = pPart->DataLength;
-                                foundInReg = true;
-                                LogWriteA("[+] Found iBFT binary in Registry ACPI dump!\r\n");
+                    // Periksa apakah nama subkey adalah iBFT / IBFT
+                    if (StrEqual(pSubInfo->Name, L"iBFT") || StrEqual(pSubInfo->Name, L"IBFT") ||
+                        StrStartsWith(fullSubPath + bLen, L"iBFT") || StrStartsWith(fullSubPath + bLen, L"IBFT")) {
+                        
+                        // Buka subkey ini
+                        UNICODE_STRING subKeyName;
+                        RtlInitUnicodeString(&subKeyName, fullSubPath);
+                        OBJECT_ATTRIBUTES subAttr;
+                        subAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+                        subAttr.RootDirectory = nullptr;
+                        subAttr.ObjectName = &subKeyName;
+                        subAttr.Attributes = OBJ_CASE_INSENSITIVE;
+                        subAttr.SecurityDescriptor = nullptr;
+                        subAttr.SecurityQualityOfService = nullptr;
+
+                        void* hTableKey = nullptr;
+                        if (NT_SUCCESS(NtOpenKey(&hTableKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &subAttr))) {
+                            // Cek subkey anak (OEM ID)
+                            unsigned char childBuf[512];
+                            unsigned long childResLen = 0;
+                            for (unsigned long cIdx = 0; cIdx < 8 && !foundInReg; cIdx++) {
+                                if (NT_SUCCESS(NtEnumerateKey(hTableKey, cIdx, KeyBasicInformation, childBuf, sizeof(childBuf), &childResLen))) {
+                                    PKEY_BASIC_INFORMATION pChildInfo = (PKEY_BASIC_INFORMATION)childBuf;
+                                    wchar_t childPath[256];
+                                    StrCopy(childPath, fullSubPath, 256);
+                                    StrCat(childPath, L"\\", 256);
+                                    unsigned long cbLen = StrLen(childPath);
+                                    unsigned long cnLen = pChildInfo->NameLength / sizeof(wchar_t);
+                                    for (unsigned long i = 0; i < cnLen && (cbLen + i + 1) < 256; i++) childPath[cbLen + i] = pChildInfo->Name[i];
+                                    childPath[cbLen + cnLen] = L'\0';
+
+                                    UNICODE_STRING childKeyName;
+                                    RtlInitUnicodeString(&childKeyName, childPath);
+                                    OBJECT_ATTRIBUTES childAttr;
+                                    childAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+                                    childAttr.RootDirectory = nullptr;
+                                    childAttr.ObjectName = &childKeyName;
+                                    childAttr.Attributes = OBJ_CASE_INSENSITIVE;
+                                    childAttr.SecurityDescriptor = nullptr;
+                                    childAttr.SecurityQualityOfService = nullptr;
+
+                                    void* hChild = nullptr;
+                                    if (NT_SUCCESS(NtOpenKey(&hChild, KEY_QUERY_VALUE, &childAttr))) {
+                                        UNICODE_STRING valName;
+                                        RtlInitUnicodeString(&valName, L"00000000");
+                                        static unsigned char tableValBuf[4096];
+                                        unsigned long qLen = 0;
+                                        if (NT_SUCCESS(NtQueryValueKey(hChild, &valName, KeyValuePartialInformation, tableValBuf, sizeof(tableValBuf), &qLen))) {
+                                            PKEY_VALUE_PARTIAL_INFORMATION pPart = (PKEY_VALUE_PARTIAL_INFORMATION)tableValBuf;
+                                            if (pPart->Type == REG_BINARY && pPart->DataLength >= 48) {
+                                                memcpy(pFirmware->TableBuffer, pPart->Data, pPart->DataLength);
+                                                pFirmware->TableBufferLength = pPart->DataLength;
+                                                foundInReg = true;
+                                                LogWriteA("[+] Found iBFT binary in Registry ACPI dump at: ");
+                                                LogWriteW(childPath);
+                                                LogWriteA("\r\n");
+                                            }
+                                        }
+                                        NtClose(hChild);
+                                    }
+                                }
                             }
+                            NtClose(hTableKey);
                         }
-                        NtClose(hSub);
                     }
                 }
                 NtClose(hAcpiRoot);
