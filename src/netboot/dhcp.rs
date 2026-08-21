@@ -271,10 +271,10 @@ impl DhcpServer {
                 .unwrap_or_else(|| default_bf.to_string()),
         };
 
-        info!(
-            "DHCP {:?} dari {} arch={:?} opt175={} flags=0x{:04X} bootfile={}",
-            msg_type, mac_str, client_arch, has_opt_175, req.flags, bootfile
-        );
+        // info!(
+        //     "DHCP {:?} dari {} arch={:?} opt175={} flags=0x{:04X} bootfile={}",
+        //     msg_type, mac_str, client_arch, has_opt_175, req.flags, bootfile
+        // );
 
         match msg_type {
             DhcpMessageType::Discover => {
@@ -409,10 +409,10 @@ impl DhcpServer {
         let packet = resp.serialize();
 
         // Hex dump first 48 bytes of packet for debugging
-        let hex_dump: String = packet.iter().take(48).enumerate().map(|(i, b)| {
-            format!("{:02x}{}", b, if (i + 1) % 16 == 0 { "\n" } else { " " })
-        }).collect();
-        info!("DHCP {:?} packet hex dump (first 48 bytes):\n{}", msg_type, hex_dump);
+        // let hex_dump: String = packet.iter().take(48).enumerate().map(|(i, b)| {
+        //     format!("{:02x}{}", b, if (i + 1) % 16 == 0 { "\n" } else { " " })
+        // }).collect();
+        // info!("DHCP {:?} packet hex dump (first 48 bytes):\n{}", msg_type, hex_dump);
 
         let server_ip = Ipv4Addr::from_str(&self.config.read().dhcp.as_ref().unwrap().next_server).unwrap_or(Ipv4Addr::UNSPECIFIED);
         let subnet = Ipv4Addr::from_str(&self.config.read().dhcp.as_ref().unwrap().subnet_mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
@@ -445,7 +445,7 @@ impl DhcpServer {
             if dest.ip() != &Ipv4Addr::BROADCAST {
                 let _ = self.sender.send_to(&packet, backup_dest).await;
             }
-            info!("Sukses mengirim {:?} ke {} (Bootfile: {})", msg_type, dest, bootfile);
+            // info!("Sukses mengirim {:?} ke {} (Bootfile: {})", msg_type, dest, bootfile);
         }
     }
 }
