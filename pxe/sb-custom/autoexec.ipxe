@@ -14,6 +14,9 @@ echo    iSCSI IP   : ${168}
 echo    iSCSI IQN  : ${169}
 echo
 echo ==========================================
+set initiator-iqn iqn.1991-05.com.microsoft:${hostname}
+set gateway 0.0.0.0
+
 echo    Hooking Game iSCSI disk to 0x81...
 sanhook --drive 0x81 iscsi:${168}::::iqn.2024-01.com.tmdebug:gamedisks || echo GameDisk not available
 echo
