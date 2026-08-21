@@ -37,6 +37,9 @@ extern "C" void* __cdecl memcpy(void* dest, const void* src, size_t count) {
     return dest;
 }
 
+extern "C" void __cdecl _chkstk() {}
+extern "C" void __cdecl __chkstk() {}
+
 typedef union _LARGE_INTEGER {
     struct {
         unsigned long LowPart;
@@ -104,23 +107,27 @@ typedef struct _IO_STATUS_BLOCK {
     unsigned long long Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
-#define FILE_SUPERSEDE                 0x00000000
-#define FILE_OPEN                      0x00000001
-#define FILE_CREATE                    0x00000002
-#define FILE_OPEN_IF                   0x00000003
-#define FILE_OVERWRITE                 0x00000004
 #define FILE_OVERWRITE_IF              0x00000005
-
 #define FILE_SYNCHRONOUS_IO_NONALERT   0x00000020
 #define FILE_NON_DIRECTORY_FILE        0x00000040
-
 #define GENERIC_WRITE                  0x40000000L
 #define FILE_GENERIC_WRITE             (GENERIC_WRITE | 0x00100000L | 0x0002 | 0x0004 | 0x0010 | 0x0040)
 #define SYNCHRONIZE                    0x00100000L
 
 #define REG_SZ 1
+#define REG_BINARY 3
 #define REG_DWORD 4
 #define REG_MULTI_SZ 7
+
+#define SystemFirmwareTableInformation 76
+
+typedef struct _SYSTEM_FIRMWARE_TABLE_INFORMATION {
+    unsigned long ProviderSignature;
+    unsigned long Action;
+    unsigned long TableID;
+    unsigned long TableBufferLength;
+    unsigned char TableBuffer[1];
+} SYSTEM_FIRMWARE_TABLE_INFORMATION, *PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 
 extern "C" {
     NTSYSAPI void NTAPI RtlInitUnicodeString(
@@ -185,6 +192,13 @@ extern "C" {
         unsigned long Length,
         LARGE_INTEGER* ByteOffset,
         unsigned long* Key
+    );
+
+    NTSYSAPI NTSTATUS NTAPI NtQuerySystemInformation(
+        unsigned long SystemInformationClass,
+        void* SystemInformation,
+        unsigned long SystemInformationLength,
+        unsigned long* ReturnLength
     );
 
     NTSYSAPI NTSTATUS NTAPI NtClose(
@@ -317,6 +331,28 @@ void StrCat(wchar_t* dest, const wchar_t* src, unsigned long maxChars) {
     dest[dLen + i] = L'\0';
 }
 
+void UintToWstr(unsigned int val, wchar_t* outBuf, unsigned long maxChars) {
+    if (!outBuf || maxChars < 2) return;
+    if (val == 0) {
+        outBuf[0] = L'0';
+        outBuf[1] = L'\0';
+        return;
+    }
+
+    wchar_t temp[16];
+    int tIdx = 0;
+    while (val > 0 && tIdx < 15) {
+        temp[tIdx++] = L'0' + (val % 10);
+        val /= 10;
+    }
+
+    unsigned long outIdx = 0;
+    while (tIdx > 0 && outIdx + 1 < maxChars) {
+        outBuf[outIdx++] = temp[--tIdx];
+    }
+    outBuf[outIdx] = L'\0';
+}
+
 bool IsValidIp(const wchar_t* ipStr) {
     if (!ipStr || ipStr[0] == L'\0') return false;
     if (StrEqual(ipStr, L"0.0.0.0")) return false;
@@ -342,6 +378,54 @@ bool IsValidIp(const wchar_t* ipStr) {
         }
     }
     return (dots == 3 && hasDigits);
+}
+
+// Konversi 16-byte iBFT IPv4 / IPv6 ke string IP (e.g. "192.168.180.4")
+bool FormatIpv4FromBytes(const unsigned char* raw16, wchar_t* outStr, unsigned long maxChars) {
+    if (!raw16 || !outStr || maxChars < 16) return false;
+    outStr[0] = L'\0';
+
+    // Periksa apakah ini IPv4 yang dimap (12 bytes pertama 0, atau 10 bytes 0 dan 2 bytes 0xFF)
+    unsigned char b0 = raw16[12];
+    unsigned char b1 = raw16[13];
+    unsigned char b2 = raw16[14];
+    unsigned char b3 = raw16[15];
+
+    if (b0 == 0 && b1 == 0 && b2 == 0 && b3 == 0) {
+        return false;
+    }
+
+    wchar_t seg[8];
+    UintToWstr(b0, seg, 8); StrCopy(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+    UintToWstr(b1, seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+    UintToWstr(b2, seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+    UintToWstr(b3, seg, 8); StrCat(outStr, seg, maxChars);
+
+    return IsValidIp(outStr);
+}
+
+// Konversi CIDR prefix length (misal 24) ke Subnet Mask ("255.255.255.0")
+void PrefixToSubnetMask(unsigned char prefix, wchar_t* outStr, unsigned long maxChars) {
+    if (prefix == 0 || prefix > 32) {
+        StrCopy(outStr, L"255.255.255.0", maxChars);
+        return;
+    }
+
+    unsigned long mask = 0;
+    if (prefix > 0) {
+        mask = (0xFFFFFFFFUL << (32 - prefix)) & 0xFFFFFFFFUL;
+    }
+
+    unsigned char b0 = (unsigned char)((mask >> 24) & 0xFF);
+    unsigned char b1 = (unsigned char)((mask >> 16) & 0xFF);
+    unsigned char b2 = (unsigned char)((mask >> 8) & 0xFF);
+    unsigned char b3 = (unsigned char)(mask & 0xFF);
+
+    wchar_t seg[8];
+    UintToWstr(b0, seg, 8); StrCopy(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+    UintToWstr(b1, seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+    UintToWstr(b2, seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+    UintToWstr(b3, seg, 8); StrCat(outStr, seg, maxChars);
 }
 
 // Format string ke REG_MULTI_SZ (diakhiri double null: "192.168.180.3\0\0")
@@ -434,6 +518,215 @@ bool WriteRegDword(const wchar_t* keyPathStr, const wchar_t* valNameStr, unsigne
 }
 
 // -------------------------------------------------------------
+// iBFT Parser Structure (RFC 4173 Standard)
+// -------------------------------------------------------------
+
+#pragma pack(push, 1)
+typedef struct _IBFT_STRUCTURE_HEADER {
+    unsigned char StructureId; // 1 = Control, 2 = Initiator, 3 = NIC, 4 = Target
+    unsigned char Version;
+    unsigned short Length;
+    unsigned char Index;
+    unsigned char Flags;
+} IBFT_STRUCTURE_HEADER;
+
+typedef struct _IBFT_CONTROL {
+    IBFT_STRUCTURE_HEADER Header;
+    unsigned short InitiatorOffset;
+    unsigned short Nic0Offset;
+    unsigned short Target0Offset;
+    unsigned short Nic1Offset;
+    unsigned short Target1Offset;
+} IBFT_CONTROL;
+
+typedef struct _IBFT_INITIATOR {
+    IBFT_STRUCTURE_HEADER Header;
+    unsigned char IsnsServer[16];
+    unsigned char SlpServer[16];
+    unsigned char PrimaryRadiusServer[16];
+    unsigned char SecondaryRadiusServer[16];
+    unsigned short InitiatorNameLength;
+    unsigned short InitiatorNameOffset;
+} IBFT_INITIATOR;
+
+typedef struct _IBFT_NIC {
+    IBFT_STRUCTURE_HEADER Header;
+    unsigned char IpAddress[16];
+    unsigned char SubnetMaskPrefix;
+    unsigned char Origin;
+    unsigned char Gateway[16];
+    unsigned char PrimaryDns[16];
+    unsigned char SecondaryDns[16];
+    unsigned char DhcpServer[16];
+    unsigned short Vlan;
+    unsigned char MacAddress[6];
+    unsigned short PciBusDevFunc;
+    unsigned short HostNameLength;
+    unsigned short HostNameOffset;
+} IBFT_NIC;
+#pragma pack(pop)
+
+// Membaca dan mem-parse tabel iBFT dari ACPI Firmware
+bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, wchar_t* outGw, wchar_t* outDns1, wchar_t* outDns2) {
+    LogWriteA("[+] Querying ACPI iBFT Firmware Table via NtQuerySystemInformation...\r\n");
+
+    static unsigned char queryBuffer[4096];
+    memset(queryBuffer, 0, sizeof(queryBuffer));
+    PSYSTEM_FIRMWARE_TABLE_INFORMATION pFirmware = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)queryBuffer;
+    pFirmware->ProviderSignature = 0x41435049; // 'ACPI'
+    pFirmware->Action = 0;
+    pFirmware->TableID = 0x54464269;           // 'iBFT' (little-endian for 'i','B','F','T')
+    pFirmware->TableBufferLength = sizeof(queryBuffer) - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+    unsigned long returnLength = 0;
+    NTSTATUS status = NtQuerySystemInformation(SystemFirmwareTableInformation, pFirmware, sizeof(queryBuffer), &returnLength);
+
+    // Coba dengan uppercase 'IBFT' jika 'iBFT' gagal
+    if (!NT_SUCCESS(status)) {
+        pFirmware->TableID = 0x54464249; // 'IBFT'
+        status = NtQuerySystemInformation(SystemFirmwareTableInformation, pFirmware, sizeof(queryBuffer), &returnLength);
+    }
+
+    if (!NT_SUCCESS(status) || pFirmware->TableBufferLength < sizeof(IBFT_CONTROL) + 48) {
+        LogWriteA("[-] NtQuerySystemInformation did not return iBFT. Trying Registry ACPI Table Dump...\r\n");
+
+        // Fallback: Baca dari Registry HKLM\HARDWARE\ACPI\iBFT\...\00000000
+        const wchar_t* acpiPaths[] = {
+            L"\\Registry\\Machine\\HARDWARE\\ACPI\\iBFT",
+            L"\\Registry\\Machine\\HARDWARE\\ACPI\\IBFT"
+        };
+
+        bool foundInReg = false;
+        for (int p = 0; p < 2 && !foundInReg; p++) {
+            UNICODE_STRING regPath;
+            RtlInitUnicodeString(&regPath, acpiPaths[p]);
+            OBJECT_ATTRIBUTES objAttr;
+            objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+            objAttr.RootDirectory = nullptr;
+            objAttr.ObjectName = &regPath;
+            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            objAttr.SecurityDescriptor = nullptr;
+            objAttr.SecurityQualityOfService = nullptr;
+
+            void* hAcpiRoot = nullptr;
+            if (NT_SUCCESS(NtOpenKey(&hAcpiRoot, KEY_ENUMERATE_SUB_KEYS, &objAttr))) {
+                // Enumerasi subkey OEM ID
+                unsigned char subKeyBuf[512];
+                unsigned long resLen = 0;
+                if (NT_SUCCESS(NtEnumerateKey(hAcpiRoot, 0, KeyBasicInformation, subKeyBuf, sizeof(subKeyBuf), &resLen))) {
+                    PKEY_BASIC_INFORMATION pSubInfo = (PKEY_BASIC_INFORMATION)subKeyBuf;
+                    wchar_t fullSubPath[256];
+                    StrCopy(fullSubPath, acpiPaths[p], 256);
+                    StrCat(fullSubPath, L"\\", 256);
+                    unsigned long bLen = StrLen(fullSubPath);
+                    unsigned long nLen = pSubInfo->NameLength / sizeof(wchar_t);
+                    for (unsigned long i = 0; i < nLen && (bLen + i + 1) < 256; i++) fullSubPath[bLen + i] = pSubInfo->Name[i];
+                    fullSubPath[bLen + nLen] = L'\0';
+
+                    UNICODE_STRING subKeyName;
+                    RtlInitUnicodeString(&subKeyName, fullSubPath);
+                    OBJECT_ATTRIBUTES subAttr;
+                    subAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+                    subAttr.RootDirectory = nullptr;
+                    subAttr.ObjectName = &subKeyName;
+                    subAttr.Attributes = OBJ_CASE_INSENSITIVE;
+                    subAttr.SecurityDescriptor = nullptr;
+                    subAttr.SecurityQualityOfService = nullptr;
+
+                    void* hSub = nullptr;
+                    if (NT_SUCCESS(NtOpenKey(&hSub, KEY_QUERY_VALUE, &subAttr))) {
+                        UNICODE_STRING valName;
+                        RtlInitUnicodeString(&valName, L"00000000");
+                        static unsigned char tableValBuf[4096];
+                        unsigned long qLen = 0;
+                        if (NT_SUCCESS(NtQueryValueKey(hSub, &valName, KeyValuePartialInformation, tableValBuf, sizeof(tableValBuf), &qLen))) {
+                            PKEY_VALUE_PARTIAL_INFORMATION pPart = (PKEY_VALUE_PARTIAL_INFORMATION)tableValBuf;
+                            if (pPart->Type == REG_BINARY && pPart->DataLength >= sizeof(IBFT_CONTROL) + 48) {
+                                memcpy(pFirmware->TableBuffer, pPart->Data, pPart->DataLength);
+                                pFirmware->TableBufferLength = pPart->DataLength;
+                                foundInReg = true;
+                                LogWriteA("[+] Found iBFT binary in Registry ACPI dump!\r\n");
+                            }
+                        }
+                        NtClose(hSub);
+                    }
+                }
+                NtClose(hAcpiRoot);
+            }
+        }
+
+        if (!foundInReg) {
+            LogWriteA("[-] iBFT table not available in ACPI.\r\n");
+            return false;
+        }
+    } else {
+        LogWriteA("[+] Successfully retrieved iBFT table from ACPI Firmware!\r\n");
+    }
+
+    const unsigned char* table = pFirmware->TableBuffer;
+    unsigned long tableLen = pFirmware->TableBufferLength;
+
+    // Cari Control Block (Offset 0x30 atau StructureId = 1)
+    unsigned long offset = 0x30; // Standard iBFT Header adalah 48 bytes
+    if (offset + sizeof(IBFT_CONTROL) > tableLen) return false;
+
+    IBFT_CONTROL* ctrl = (IBFT_CONTROL*)(table + offset);
+    if (ctrl->Header.StructureId != 1) {
+        // Cari secara linear
+        for (unsigned long i = 0x30; i + sizeof(IBFT_CONTROL) <= tableLen; i += 4) {
+            if (table[i] == 1) {
+                ctrl = (IBFT_CONTROL*)(table + i);
+                break;
+            }
+        }
+    }
+
+    // Ambil NIC0
+    unsigned short nicOffset = ctrl->Nic0Offset;
+    if (nicOffset > 0 && nicOffset + sizeof(IBFT_NIC) <= tableLen) {
+        IBFT_NIC* nic = (IBFT_NIC*)(table + nicOffset);
+        if (nic->Header.StructureId == 3) {
+            FormatIpv4FromBytes(nic->IpAddress, outIp, 64);
+            PrefixToSubnetMask(nic->SubnetMaskPrefix, outMask, 64);
+            FormatIpv4FromBytes(nic->Gateway, outGw, 64);
+            FormatIpv4FromBytes(nic->PrimaryDns, outDns1, 64);
+            FormatIpv4FromBytes(nic->SecondaryDns, outDns2, 64);
+
+            // Hostname dari NIC Block
+            if (nic->HostNameOffset > 0 && (nic->HostNameOffset + nic->HostNameLength) <= tableLen) {
+                const char* rawHost = (const char*)(table + nic->HostNameOffset);
+                unsigned long cLen = nic->HostNameLength < 63 ? nic->HostNameLength : 63;
+                for (unsigned long k = 0; k < cLen; k++) outHost[k] = (wchar_t)rawHost[k];
+                outHost[cLen] = L'\0';
+            }
+        }
+    }
+
+    // Jika HostName kosong, coba ekstrak dari Initiator Name (IQN)
+    if (outHost[0] == L'\0' && ctrl->InitiatorOffset > 0 && ctrl->InitiatorOffset + sizeof(IBFT_INITIATOR) <= tableLen) {
+        IBFT_INITIATOR* init = (IBFT_INITIATOR*)(table + ctrl->InitiatorOffset);
+        if (init->Header.StructureId == 2 && init->InitiatorNameOffset > 0) {
+            const char* rawIqn = (const char*)(table + init->InitiatorNameOffset);
+            unsigned long iqnLen = init->InitiatorNameLength;
+            // Ambil bagian setelah ':'
+            int colonIdx = -1;
+            for (unsigned long k = 0; k < iqnLen; k++) {
+                if (rawIqn[k] == ':') colonIdx = (int)k;
+            }
+            if (colonIdx != -1 && (unsigned long)(colonIdx + 1) < iqnLen) {
+                const char* subName = rawIqn + colonIdx + 1;
+                unsigned long subLen = iqnLen - (colonIdx + 1);
+                if (subLen > 63) subLen = 63;
+                for (unsigned long k = 0; k < subLen; k++) outHost[k] = (wchar_t)subName[k];
+                outHost[subLen] = L'\0';
+            }
+        }
+    }
+
+    return IsValidIp(outIp);
+}
+
+// -------------------------------------------------------------
 // Entry Point: Native Subsystem Application (BootExecute)
 // -------------------------------------------------------------
 
@@ -443,21 +736,6 @@ extern "C" void NtProcessStartup(void* Peb) {
     LogWriteA(" [Simple-Iscsi BootHelper] Started in BootExecute\r\n");
     LogWriteA("================================================================\r\n");
 
-    // 1. Buka Parameters iSharePnp
-    UNICODE_STRING isharePath;
-    RtlInitUnicodeString(&isharePath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\iSharePnp\\Parameters");
-
-    OBJECT_ATTRIBUTES objAttr;
-    objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-    objAttr.RootDirectory = nullptr;
-    objAttr.ObjectName = &isharePath;
-    objAttr.Attributes = OBJ_CASE_INSENSITIVE;
-    objAttr.SecurityDescriptor = nullptr;
-    objAttr.SecurityQualityOfService = nullptr;
-
-    void* hIshareKey = nullptr;
-    NTSTATUS status = NtOpenKey(&hIshareKey, KEY_QUERY_VALUE, &objAttr);
-
     wchar_t rawHostName[64] = {0};
     wchar_t targetIp[64] = {0};
     wchar_t subnetMask[64] = {0};
@@ -465,43 +743,64 @@ extern "C" void NtProcessStartup(void* Peb) {
     wchar_t dns1[64] = {0};
     wchar_t dns2[64] = {0};
 
-    if (NT_SUCCESS(status)) {
-        LogWriteA("[+] Reading iSharePnp\\Parameters...\r\n");
-        ReadRegString(hIshareKey, L"HostName", rawHostName, 64);
-        
-        // Baca BindIP (fallback ke DHCP jika BindIP kosong)
-        if (!ReadRegString(hIshareKey, L"BindIP", targetIp, 64) || !IsValidIp(targetIp)) {
-            ReadRegString(hIshareKey, L"DHCP", targetIp, 64);
-        }
+    // 1. PRIORITAS 1: Baca langsung dari iBFT (ACPI Firmware / Driverless)
+    bool gotIbft = ReadParametersFromIBFT(rawHostName, targetIp, subnetMask, gatewayIp, dns1, dns2);
 
-        ReadRegString(hIshareKey, L"Mask", subnetMask, 64);
-        if (!IsValidIp(subnetMask)) {
-            StrCopy(subnetMask, L"255.255.255.0", 64);
-        }
-
-        ReadRegString(hIshareKey, L"GatewayIP", gatewayIp, 64);
-        ReadRegString(hIshareKey, L"Dns1", dns1, 64);
-        ReadRegString(hIshareKey, L"Dns2", dns2, 64);
-
-        NtClose(hIshareKey);
-
+    if (gotIbft) {
+        LogWriteA("[+] Successfully retrieved parameters from iBFT (Driverless):\r\n");
         LogWriteA("    - HostName   : "); LogWriteW(rawHostName); LogWriteA("\r\n");
         LogWriteA("    - Target IP  : "); LogWriteW(targetIp); LogWriteA("\r\n");
         LogWriteA("    - SubnetMask : "); LogWriteW(subnetMask); LogWriteA("\r\n");
         LogWriteA("    - GatewayIP  : "); LogWriteW(gatewayIp); LogWriteA("\r\n");
         LogWriteA("    - DNS1       : "); LogWriteW(dns1); LogWriteA("\r\n");
     } else {
-        LogWriteA("[-] Failed to open iSharePnp\\Parameters key.\r\n");
+        // 2. PRIORITAS 2 (Fallback): Buka Parameters iSharePnp
+        LogWriteA("[*] Falling back to iSharePnp\\Parameters...\r\n");
+
+        UNICODE_STRING isharePath;
+        RtlInitUnicodeString(&isharePath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\iSharePnp\\Parameters");
+
+        OBJECT_ATTRIBUTES objAttr;
+        objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+        objAttr.RootDirectory = nullptr;
+        objAttr.ObjectName = &isharePath;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+        objAttr.SecurityDescriptor = nullptr;
+        objAttr.SecurityQualityOfService = nullptr;
+
+        void* hIshareKey = nullptr;
+        NTSTATUS status = NtOpenKey(&hIshareKey, KEY_QUERY_VALUE, &objAttr);
+
+        if (NT_SUCCESS(status)) {
+            ReadRegString(hIshareKey, L"HostName", rawHostName, 64);
+            if (!ReadRegString(hIshareKey, L"BindIP", targetIp, 64) || !IsValidIp(targetIp)) {
+                ReadRegString(hIshareKey, L"DHCP", targetIp, 64);
+            }
+            ReadRegString(hIshareKey, L"Mask", subnetMask, 64);
+            if (!IsValidIp(subnetMask)) {
+                StrCopy(subnetMask, L"255.255.255.0", 64);
+            }
+            ReadRegString(hIshareKey, L"GatewayIP", gatewayIp, 64);
+            ReadRegString(hIshareKey, L"Dns1", dns1, 64);
+            ReadRegString(hIshareKey, L"Dns2", dns2, 64);
+            NtClose(hIshareKey);
+
+            LogWriteA("    - HostName   : "); LogWriteW(rawHostName); LogWriteA("\r\n");
+            LogWriteA("    - Target IP  : "); LogWriteW(targetIp); LogWriteA("\r\n");
+            LogWriteA("    - SubnetMask : "); LogWriteW(subnetMask); LogWriteA("\r\n");
+            LogWriteA("    - GatewayIP  : "); LogWriteW(gatewayIp); LogWriteA("\r\n");
+            LogWriteA("    - DNS1       : "); LogWriteW(dns1); LogWriteA("\r\n");
+        } else {
+            LogWriteA("[-] Failed to open iSharePnp\\Parameters key.\r\n");
+        }
     }
 
-    // Auto-fallback Gateway jika GatewayIP dari iSharePnp kosong/tidak valid
+    // Auto-fallback Gateway jika GatewayIP kosong/tidak valid
     if (!IsValidIp(gatewayIp) && IsValidIp(targetIp)) {
         StrCopy(gatewayIp, targetIp, 64);
         int lastDotIdx = -1;
         for (int i = 0; gatewayIp[i] != L'\0'; i++) {
-            if (gatewayIp[i] == L'.') {
-                lastDotIdx = i;
-            }
+            if (gatewayIp[i] == L'.') lastDotIdx = i;
         }
         if (lastDotIdx != -1) {
             gatewayIp[lastDotIdx + 1] = L'1';
@@ -514,7 +813,6 @@ extern "C" void NtProcessStartup(void* Peb) {
     if (IsValidIp(targetIp)) {
         LogWriteA("[+] Cleaning and Configuring Network Interfaces...\r\n");
 
-        // Buffer Multi-SZ Murni (Single Entry, Double Null)
         wchar_t multiSzIp[64];
         unsigned long ipByteLen = BuildMultiSz(targetIp, multiSzIp, 64);
 
@@ -527,7 +825,6 @@ extern "C" void NtProcessStartup(void* Peb) {
             gwByteLen = BuildMultiSz(gatewayIp, multiSzGateway, 64);
         }
 
-        // DefaultGatewayMetric = "0\0\0" (Automatic)
         const wchar_t cleanMetric[] = L"0\0\0";
         unsigned long metricByteLen = sizeof(cleanMetric);
 
@@ -543,10 +840,16 @@ extern "C" void NtProcessStartup(void* Peb) {
         }
         unsigned long dnsByteLen = (StrLen(combinedDns) + 1) * sizeof(wchar_t);
 
-        // Buka root Interfaces registry
         UNICODE_STRING interfacesPath;
         RtlInitUnicodeString(&interfacesPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces");
+
+        OBJECT_ATTRIBUTES objAttr;
+        objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+        objAttr.RootDirectory = nullptr;
         objAttr.ObjectName = &interfacesPath;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+        objAttr.SecurityDescriptor = nullptr;
+        objAttr.SecurityQualityOfService = nullptr;
 
         void* hInterfacesKey = nullptr;
         if (NT_SUCCESS(NtOpenKey(&hInterfacesKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &objAttr))) {
@@ -554,7 +857,7 @@ extern "C" void NtProcessStartup(void* Peb) {
             unsigned long resultLength = 0;
 
             for (unsigned long index = 0; ; index++) {
-                status = NtEnumerateKey(hInterfacesKey, index, KeyBasicInformation, enumBuffer, sizeof(enumBuffer), &resultLength);
+                NTSTATUS status = NtEnumerateKey(hInterfacesKey, index, KeyBasicInformation, enumBuffer, sizeof(enumBuffer), &resultLength);
                 if (!NT_SUCCESS(status)) break;
 
                 PKEY_BASIC_INFORMATION pKeyInfo = (PKEY_BASIC_INFORMATION)enumBuffer;
@@ -590,7 +893,7 @@ extern "C" void NtProcessStartup(void* Peb) {
                     unsigned long enableDhcpVal = 0;
                     NtSetValueKey(hSubKey, &valEnableDhcp, 0, REG_DWORD, &enableDhcpVal, sizeof(enableDhcpVal));
 
-                    // 2. Set IPAddress Statis Murni (Hapus seluruh secondary IP sangkut)
+                    // 2. Set IPAddress Statis Murni
                     UNICODE_STRING valIp;
                     RtlInitUnicodeString(&valIp, L"IPAddress");
                     NtSetValueKey(hSubKey, &valIp, 0, REG_MULTI_SZ, multiSzIp, ipByteLen);
@@ -600,7 +903,7 @@ extern "C" void NtProcessStartup(void* Peb) {
                     RtlInitUnicodeString(&valMask, L"SubnetMask");
                     NtSetValueKey(hSubKey, &valMask, 0, REG_MULTI_SZ, multiSzMask, maskByteLen);
 
-                    // 4. Set DefaultGateway Statis (Hapus seluruh secondary gateway sangkut)
+                    // 4. Set DefaultGateway Statis
                     if (gwByteLen > 0) {
                         UNICODE_STRING valGw;
                         RtlInitUnicodeString(&valGw, L"DefaultGateway");
@@ -652,6 +955,13 @@ extern "C" void NtProcessStartup(void* Peb) {
         unsigned long hostByteLen = (StrLen(formattedHost) + 1) * sizeof(wchar_t);
 
         LogWriteA("[+] Synchronizing ComputerName: "); LogWriteW(formattedHost); LogWriteA("\r\n");
+
+        OBJECT_ATTRIBUTES objAttr;
+        objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+        objAttr.RootDirectory = nullptr;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+        objAttr.SecurityDescriptor = nullptr;
+        objAttr.SecurityQualityOfService = nullptr;
 
         // A. ComputerName\ComputerName
         UNICODE_STRING cnPath;
