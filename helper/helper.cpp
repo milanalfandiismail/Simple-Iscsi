@@ -385,23 +385,27 @@ bool FormatIpv4FromBytes(const unsigned char* raw16, wchar_t* outStr, unsigned l
     if (!raw16 || !outStr || maxChars < 16) return false;
     outStr[0] = L'\0';
 
-    // Periksa apakah ini IPv4 yang dimap (12 bytes pertama 0, atau 10 bytes 0 dan 2 bytes 0xFF)
-    unsigned char b0 = raw16[12];
-    unsigned char b1 = raw16[13];
-    unsigned char b2 = raw16[14];
-    unsigned char b3 = raw16[15];
-
-    if (b0 == 0 && b1 == 0 && b2 == 0 && b3 == 0) {
-        return false;
+    // 1. Coba byte 12..15 (IPv4-mapped IPv6: 0.0.0.0.0.0.0.0.0.0.0.0.A.B.C.D)
+    if (raw16[12] != 0 && raw16[12] != 127) {
+        wchar_t seg[8];
+        UintToWstr(raw16[12], seg, 8); StrCopy(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+        UintToWstr(raw16[13], seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+        UintToWstr(raw16[14], seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+        UintToWstr(raw16[15], seg, 8); StrCat(outStr, seg, maxChars);
+        if (IsValidIp(outStr)) return true;
     }
 
-    wchar_t seg[8];
-    UintToWstr(b0, seg, 8); StrCopy(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
-    UintToWstr(b1, seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
-    UintToWstr(b2, seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
-    UintToWstr(b3, seg, 8); StrCat(outStr, seg, maxChars);
+    // 2. Coba byte 0..3 (Direct IPv4)
+    if (raw16[0] != 0 && raw16[0] != 127) {
+        wchar_t seg[8];
+        UintToWstr(raw16[0], seg, 8); StrCopy(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+        UintToWstr(raw16[1], seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+        UintToWstr(raw16[2], seg, 8); StrCat(outStr, seg, maxChars); StrCat(outStr, L".", maxChars);
+        UintToWstr(raw16[3], seg, 8); StrCat(outStr, seg, maxChars);
+        if (IsValidIp(outStr)) return true;
+    }
 
-    return IsValidIp(outStr);
+    return false;
 }
 
 // Konversi CIDR prefix length (misal 24) ke Subnet Mask ("255.255.255.0")
@@ -756,64 +760,69 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
     const unsigned char* table = pFirmware->TableBuffer;
     unsigned long tableLen = pFirmware->TableBufferLength;
 
-    // Cari Control Block (Offset 0x30 atau StructureId = 1)
-    unsigned long offset = 0x30; // Standard iBFT Header adalah 48 bytes
-    if (offset + sizeof(IBFT_CONTROL) > tableLen) return false;
+    LogWriteA("[+] Scanning iBFT structures (Table Length: "); LogWriteHex(tableLen); LogWriteA(")...\r\n");
 
-    IBFT_CONTROL* ctrl = (IBFT_CONTROL*)(table + offset);
-    if (ctrl->Header.StructureId != 1) {
-        // Cari secara linear
-        for (unsigned long i = 0x30; i + sizeof(IBFT_CONTROL) <= tableLen; i += 4) {
-            if (table[i] == 1) {
-                ctrl = (IBFT_CONTROL*)(table + i);
+    // 1. Scan untuk NIC Block (StructureId = 3)
+    bool nicFound = false;
+    for (unsigned long i = 32; i + sizeof(IBFT_NIC) <= tableLen; i += 2) {
+        IBFT_STRUCTURE_HEADER* hdr = (IBFT_STRUCTURE_HEADER*)(table + i);
+        if (hdr->StructureId == 3 && hdr->Length >= 32 && hdr->Length <= 256) {
+            IBFT_NIC* nic = (IBFT_NIC*)hdr;
+            LogWriteA("[+] Found iBFT NIC Block at offset: "); LogWriteHex(i); LogWriteA("\r\n");
+
+            if (FormatIpv4FromBytes(nic->IpAddress, outIp, 64)) {
+                nicFound = true;
+                PrefixToSubnetMask(nic->SubnetMaskPrefix, outMask, 64);
+                FormatIpv4FromBytes(nic->Gateway, outGw, 64);
+                FormatIpv4FromBytes(nic->PrimaryDns, outDns1, 64);
+                FormatIpv4FromBytes(nic->SecondaryDns, outDns2, 64);
+
+                LogWriteA("    -> IP Extracted: "); LogWriteW(outIp); LogWriteA("\r\n");
+                LogWriteA("    -> Mask Extracted: "); LogWriteW(outMask); LogWriteA("\r\n");
+                LogWriteA("    -> Gateway Extracted: "); LogWriteW(outGw); LogWriteA("\r\n");
+                LogWriteA("    -> DNS Extracted: "); LogWriteW(outDns1); LogWriteA("\r\n");
+
+                // Ekstrak HostName dari NIC Block jika ada
+                if (nic->HostNameOffset > 0 && (nic->HostNameOffset + nic->HostNameLength) <= tableLen) {
+                    const char* rawHost = (const char*)(table + nic->HostNameOffset);
+                    unsigned long cLen = nic->HostNameLength < 63 ? nic->HostNameLength : 63;
+                    for (unsigned long k = 0; k < cLen; k++) outHost[k] = (wchar_t)rawHost[k];
+                    outHost[cLen] = L'\0';
+                    LogWriteA("    -> HostName Extracted from NIC: "); LogWriteW(outHost); LogWriteA("\r\n");
+                }
                 break;
             }
         }
     }
 
-    // Ambil NIC0
-    unsigned short nicOffset = ctrl->Nic0Offset;
-    if (nicOffset > 0 && nicOffset + sizeof(IBFT_NIC) <= tableLen) {
-        IBFT_NIC* nic = (IBFT_NIC*)(table + nicOffset);
-        if (nic->Header.StructureId == 3) {
-            FormatIpv4FromBytes(nic->IpAddress, outIp, 64);
-            PrefixToSubnetMask(nic->SubnetMaskPrefix, outMask, 64);
-            FormatIpv4FromBytes(nic->Gateway, outGw, 64);
-            FormatIpv4FromBytes(nic->PrimaryDns, outDns1, 64);
-            FormatIpv4FromBytes(nic->SecondaryDns, outDns2, 64);
-
-            // Hostname dari NIC Block
-            if (nic->HostNameOffset > 0 && (nic->HostNameOffset + nic->HostNameLength) <= tableLen) {
-                const char* rawHost = (const char*)(table + nic->HostNameOffset);
-                unsigned long cLen = nic->HostNameLength < 63 ? nic->HostNameLength : 63;
-                for (unsigned long k = 0; k < cLen; k++) outHost[k] = (wchar_t)rawHost[k];
-                outHost[cLen] = L'\0';
+    // 2. Scan untuk Initiator Block (StructureId = 2) untuk HostName fallback
+    if (outHost[0] == L'\0') {
+        for (unsigned long i = 32; i + sizeof(IBFT_INITIATOR) <= tableLen; i += 2) {
+            IBFT_STRUCTURE_HEADER* hdr = (IBFT_STRUCTURE_HEADER*)(table + i);
+            if (hdr->StructureId == 2 && hdr->Length >= 16 && hdr->Length <= 256) {
+                IBFT_INITIATOR* init = (IBFT_INITIATOR*)hdr;
+                if (init->InitiatorNameOffset > 0 && (init->InitiatorNameOffset + init->InitiatorNameLength) <= tableLen) {
+                    const char* rawIqn = (const char*)(table + init->InitiatorNameOffset);
+                    unsigned long iqnLen = init->InitiatorNameLength;
+                    int colonIdx = -1;
+                    for (unsigned long k = 0; k < iqnLen; k++) {
+                        if (rawIqn[k] == ':') colonIdx = (int)k;
+                    }
+                    if (colonIdx != -1 && (unsigned long)(colonIdx + 1) < iqnLen) {
+                        const char* subName = rawIqn + colonIdx + 1;
+                        unsigned long subLen = iqnLen - (colonIdx + 1);
+                        if (subLen > 63) subLen = 63;
+                        for (unsigned long k = 0; k < subLen; k++) outHost[k] = (wchar_t)subName[k];
+                        outHost[subLen] = L'\0';
+                        LogWriteA("    -> HostName Extracted from Initiator IQN: "); LogWriteW(outHost); LogWriteA("\r\n");
+                    }
+                }
+                break;
             }
         }
     }
 
-    // Jika HostName kosong, coba ekstrak dari Initiator Name (IQN)
-    if (outHost[0] == L'\0' && ctrl->InitiatorOffset > 0 && ctrl->InitiatorOffset + sizeof(IBFT_INITIATOR) <= tableLen) {
-        IBFT_INITIATOR* init = (IBFT_INITIATOR*)(table + ctrl->InitiatorOffset);
-        if (init->Header.StructureId == 2 && init->InitiatorNameOffset > 0) {
-            const char* rawIqn = (const char*)(table + init->InitiatorNameOffset);
-            unsigned long iqnLen = init->InitiatorNameLength;
-            // Ambil bagian setelah ':'
-            int colonIdx = -1;
-            for (unsigned long k = 0; k < iqnLen; k++) {
-                if (rawIqn[k] == ':') colonIdx = (int)k;
-            }
-            if (colonIdx != -1 && (unsigned long)(colonIdx + 1) < iqnLen) {
-                const char* subName = rawIqn + colonIdx + 1;
-                unsigned long subLen = iqnLen - (colonIdx + 1);
-                if (subLen > 63) subLen = 63;
-                for (unsigned long k = 0; k < subLen; k++) outHost[k] = (wchar_t)subName[k];
-                outHost[subLen] = L'\0';
-            }
-        }
-    }
-
-    return IsValidIp(outIp);
+    return nicFound && IsValidIp(outIp);
 }
 
 // -------------------------------------------------------------
