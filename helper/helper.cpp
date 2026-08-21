@@ -568,6 +568,17 @@ typedef struct _IBFT_NIC {
     unsigned short HostNameLength;
     unsigned short HostNameOffset;
 } IBFT_NIC;
+
+typedef struct _IBFT_TARGET {
+    IBFT_STRUCTURE_HEADER Header;
+    unsigned char TargetIpAddress[16];
+    unsigned short TargetPort;
+    unsigned char BootLun[8];
+    unsigned char ChapType;
+    unsigned char NicAssociation;
+    unsigned short TargetNameLength;
+    unsigned short TargetNameOffset;
+} IBFT_TARGET;
 #pragma pack(pop)
 
 // Membaca dan mem-parse tabel iBFT dari ACPI Firmware
@@ -795,15 +806,22 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
         }
     }
 
-    // 2. Scan untuk Initiator Block (StructureId = 2) untuk HostName fallback
-    if (outHost[0] == L'\0') {
-        for (unsigned long i = 32; i + sizeof(IBFT_INITIATOR) <= tableLen; i += 2) {
-            IBFT_STRUCTURE_HEADER* hdr = (IBFT_STRUCTURE_HEADER*)(table + i);
-            if (hdr->StructureId == 2 && hdr->Length >= 16 && hdr->Length <= 256) {
-                IBFT_INITIATOR* init = (IBFT_INITIATOR*)hdr;
-                if (init->InitiatorNameOffset > 0 && (init->InitiatorNameOffset + init->InitiatorNameLength) <= tableLen) {
-                    const char* rawIqn = (const char*)(table + init->InitiatorNameOffset);
-                    unsigned long iqnLen = init->InitiatorNameLength;
+    // 2. Scan untuk Initiator Block (StructureId = 2) untuk HostName & IQN
+    for (unsigned long i = 32; i + sizeof(IBFT_INITIATOR) <= tableLen; i += 2) {
+        IBFT_STRUCTURE_HEADER* hdr = (IBFT_STRUCTURE_HEADER*)(table + i);
+        if (hdr->StructureId == 2 && hdr->Length >= 16 && hdr->Length <= 256) {
+            IBFT_INITIATOR* init = (IBFT_INITIATOR*)hdr;
+            if (init->InitiatorNameOffset > 0 && (init->InitiatorNameOffset + init->InitiatorNameLength) <= tableLen) {
+                const char* rawIqn = (const char*)(table + init->InitiatorNameOffset);
+                unsigned long iqnLen = init->InitiatorNameLength;
+
+                wchar_t initIqnW[128] = {0};
+                unsigned long wLen = iqnLen < 127 ? iqnLen : 127;
+                for (unsigned long k = 0; k < wLen; k++) initIqnW[k] = (wchar_t)rawIqn[k];
+                initIqnW[wLen] = L'\0';
+                LogWriteA("    -> Initiator IQN: "); LogWriteW(initIqnW); LogWriteA("\r\n");
+
+                if (outHost[0] == L'\0') {
                     int colonIdx = -1;
                     for (unsigned long k = 0; k < iqnLen; k++) {
                         if (rawIqn[k] == ':') colonIdx = (int)k;
@@ -817,8 +835,46 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                         LogWriteA("    -> HostName Extracted from Initiator IQN: "); LogWriteW(outHost); LogWriteA("\r\n");
                     }
                 }
-                break;
             }
+            break;
+        }
+    }
+
+    // 3. Scan untuk Target Block (StructureId = 4) untuk Target IQN
+    for (unsigned long i = 32; i + sizeof(IBFT_TARGET) <= tableLen; i += 2) {
+        IBFT_STRUCTURE_HEADER* hdr = (IBFT_STRUCTURE_HEADER*)(table + i);
+        if (hdr->StructureId == 4 && hdr->Length >= 16 && hdr->Length <= 256) {
+            IBFT_TARGET* tgt = (IBFT_TARGET*)hdr;
+            if (tgt->TargetNameOffset > 0 && (tgt->TargetNameOffset + tgt->TargetNameLength) <= tableLen) {
+                const char* rawTgt = (const char*)(table + tgt->TargetNameOffset);
+                unsigned long tgtLen = tgt->TargetNameLength;
+
+                wchar_t tgtIqnW[128] = {0};
+                unsigned long wLen = tgtLen < 127 ? tgtLen : 127;
+                for (unsigned long k = 0; k < wLen; k++) tgtIqnW[k] = (wchar_t)rawTgt[k];
+                tgtIqnW[wLen] = L'\0';
+                LogWriteA("    -> Target IQN: "); LogWriteW(tgtIqnW); LogWriteA("\r\n");
+
+                if (outHost[0] == L'\0') {
+                    // Coba cari setelah "vhd-"
+                    int vhdIdx = -1;
+                    for (unsigned long k = 0; k + 4 <= tgtLen; k++) {
+                        if (rawTgt[k] == 'v' && rawTgt[k+1] == 'h' && rawTgt[k+2] == 'd' && rawTgt[k+3] == '-') {
+                            vhdIdx = (int)(k + 4);
+                            break;
+                        }
+                    }
+                    if (vhdIdx != -1 && (unsigned long)vhdIdx < tgtLen) {
+                        const char* subName = rawTgt + vhdIdx;
+                        unsigned long subLen = tgtLen - vhdIdx;
+                        if (subLen > 63) subLen = 63;
+                        for (unsigned long k = 0; k < subLen; k++) outHost[k] = (wchar_t)subName[k];
+                        outHost[subLen] = L'\0';
+                        LogWriteA("    -> HostName Extracted from Target IQN: "); LogWriteW(outHost); LogWriteA("\r\n");
+                    }
+                }
+            }
+            break;
         }
     }
 
