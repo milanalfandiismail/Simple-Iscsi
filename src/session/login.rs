@@ -54,7 +54,7 @@ impl Session {
             }
             if let Some(val) = params.get("MaxRecvDataSegmentLength") {
                 if let Ok(len) = val.parse::<usize>() {
-                    self.max_recv_data_segment_len = len.min(262144);
+                    self.max_recv_data_segment_len = len.min(4194304);
                 }
             }
 
@@ -119,19 +119,19 @@ impl Session {
                 self.max_recv_data_segment_len = client_max;
                 
                 // We respond with our own receive limit (what server can receive from client).
-                // 262144 (256 KB) is optimal and safe.
-                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "262144".to_string()));
+                // 4194304 (4 MB) is optimal for high speed transfer.
+                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "4194304".to_string()));
             }
             if let Some(val) = params.get("FirstBurstLength") {
                 // FirstBurstLength: MIN (client, server).
                 let client_val = val.parse::<u32>().unwrap_or(65536);
-                let resp_val = client_val.min(2097152);
+                let resp_val = client_val.min(4194304);
                 resp_params.push(("FirstBurstLength".to_string(), resp_val.to_string()));
             }
             if let Some(val) = params.get("MaxBurstLength") {
                 // MaxBurstLength: MIN (client, server).
                 let client_val = val.parse::<u32>().unwrap_or(262144);
-                let resp_val = client_val.min(2097152);
+                let resp_val = client_val.min(4194304);
                 resp_params.push(("MaxBurstLength".to_string(), resp_val.to_string()));
             }
 

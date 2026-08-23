@@ -205,7 +205,7 @@ impl Session {
             stat_sn: 1,
             exp_cmd_sn: 0,
             max_cmd_sn: 256,
-            max_recv_data_segment_len: 262144, // 256KB
+            max_recv_data_segment_len: 4194304, // 4MB
             pending_writes: HashMap::new(),
             throttle_window_start: AtomicU64::new(0),
             throttle_bytes_this_window: AtomicU64::new(0),

@@ -1,28 +1,33 @@
 #!ipxe
 
 echo ==========================================
-echo       PXE Boot - iSCSI SAN Mode
+echo       PXE Boot - iSCSI SAN Fast Mode MANTAP
 echo ==========================================
-echo
-echo    DHCP Client Info:
+echo    Client IP  : ${net0/ip}
 echo    Hostname   : ${hostname}
-echo    IP         : ${net0/ip}
-echo    Gateway    : ${net0/gateway}
-echo    MAC        : ${net0/mac}
-echo    Platform   : ${platform}
-echo    iSCSI IP   : ${168}
-echo    iSCSI IQN  : ${169}
-echo
+echo    Opt 168    : ${168:string}
+echo    Opt 169    : ${169:string}
 echo ==========================================
-set initiator-iqn iqn.1991-05.com.microsoft:${hostname}
-set gateway 0.0.0.0
 
-echo    Hooking Game iSCSI disk to 0x81...
-sanhook --drive 0x81 iscsi:${168}::::iqn.2024-01.com.tmdebug:gamedisks || echo GameDisk not available
-echo
-echo    Booting Windows from iSCSI to 0x80...
-sanboot iscsi:${168}::::${169}
-shell
-echo
-echo    Boot failed, entering shell...
+# Clear gateway in iBFT to prevent 45s router ARP delay in Windows 24H2
+clear net0/gateway
+clear gateway
+
+# 1. Target with explicit LUN 0 (Standard RFC 4173)
+isset ${169:string} && sanboot iscsi:${168:string}:::0:${169:string} ||
+
+# 2. Target with port 3260 / 3261 LUN 0
+isset ${169:string} && sanboot iscsi:${168:string}::3260:0:${169:string} ||
+isset ${169:string} && sanboot iscsi:${168:string}::3261:0:${169:string} ||
+isset ${169:string} && sanboot iscsi:${168:string}::3261::${169:string} ||
+
+# 3. Target with empty LUN
+isset ${169:string} && sanboot iscsi:${168:string}::::${169:string} ||
+
+# 4. Target with LUN 1
+isset ${169:string} && sanboot iscsi:${168:string}:::1:${169:string} ||
+
+# 5. Standard root-path
+isset ${root-path} && sanboot ${root-path} ||
+
 shell

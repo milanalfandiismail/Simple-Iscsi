@@ -1,5 +1,5 @@
 [server]
-address = "192.168.180.1"
+address = "10.10.10.253"
 port = 3260
 read_cache_gb = 4
 
@@ -35,12 +35,12 @@ w11manta222 = 'I:\VHD\LANNN_25H2_26200_9168_VMDK - Backup.VHD'
 
 [dhcp]
 enabled = true
-start_ip = "192.168.180.3"
-end_ip = "192.168.180.250"
-router = "192.168.180.1"
+start_ip = "10.10.10.240"
+end_ip = "10.10.10.250"
+router = "10.10.10.1"
 dns = "8.8.8.8"
-next_server = "192.168.180.1"
+next_server = "10.10.10.253"
 subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"
-nic_ips = ["192.168.180.1"]
+nic_ips = []
