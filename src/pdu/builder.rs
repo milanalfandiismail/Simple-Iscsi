@@ -33,8 +33,9 @@ pub fn write_bhs(pdu: &Pdu, bhs: &mut [u8; 48]) -> u32 {
     if pdu.opcode >= 0x20 {
         // Target -> Initiator PDU
         let ttt = match pdu.opcode {
-            0x20 | 0x24 | 0x25 | 0x31 => 0xFFFFFFFFu32,
-            _ => 0u32,
+            0x20 | 0x21 | 0x22 | 0x24 | 0x25 => 0xFFFFFFFFu32,
+            0x31 => pdu.initiator_task_tag, // R2T MUST NOT be 0xFFFFFFFF per RFC 7143 Section 11.8.3
+            _ => 0xFFFFFFFFu32, // Default safe 0xFFFFFFFF per RFC 7143 Section 11.4.3 & 11.6
         };
         bhs[20..24].copy_from_slice(&ttt.to_be_bytes());
         bhs[24..28].copy_from_slice(&pdu.cmd_sn.to_be_bytes());
@@ -101,5 +102,20 @@ mod tests {
 
         let parsed_len = (((packet[5] as u32) << 16) | ((packet[6] as u32) << 8) | (packet[7] as u32)) as usize;
         assert_eq!(parsed_len, 23);
+    }
+
+    #[test]
+    fn test_target_transfer_tag_scsi_and_tmf_resp() {
+        let mut scsi_resp = Pdu::default();
+        scsi_resp.opcode = 0x21; // OP_SCSI_RESP
+        let mut bhs = [0u8; 48];
+        write_bhs(&scsi_resp, &mut bhs);
+        assert_eq!(&bhs[20..24], &[0xFF, 0xFF, 0xFF, 0xFF]);
+
+        let mut tmf_resp = Pdu::default();
+        tmf_resp.opcode = 0x22; // OP_TMF_RESP
+        let mut bhs_tmf = [0u8; 48];
+        write_bhs(&tmf_resp, &mut bhs_tmf);
+        assert_eq!(&bhs_tmf[20..24], &[0xFF, 0xFF, 0xFF, 0xFF]);
     }
 }

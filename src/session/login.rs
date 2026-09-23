@@ -1,6 +1,6 @@
 use crate::pdu::{self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, STAGE_FULL_FEATURE_PHASE};
 use crate::session::Session;
-use tracing::{info, warn};
+use tracing::info;
 use tokio::io::AsyncWriteExt;
 
 impl Session {
@@ -9,7 +9,6 @@ impl Session {
         while in_login {
             let req = pdu::parser::read_pdu(&mut self.stream).await?;
             if req.opcode != OP_LOGIN_REQ {
-                warn!("Menerima opcode non-login selama fase login: 0x{:02X}", req.opcode);
                 return Ok(());
             }
 
@@ -20,10 +19,33 @@ impl Session {
             let nsg = req_flags & 0x03;
 
             let params = pdu::parser::parse_text_parameters(&req.data);
-            info!("Menerima Login Request parameters: {:?}", params);
+            
+            info!("=======================================================");
+            info!("iSCSI Login Request Diterima dari {}", self.client_ip);
+            info!("=======================================================");
+            let isid = req.lun & 0xFFFFFFFFFFFF0000;
+            info!("ISID (Initiator Session ID): 0x{:012X}", isid >> 16);
+            info!("CSG (Current Stage): {}, NSG (Next Stage): {}, Transit: {}", csg, nsg, transit);
+            
+            info!("--- Parameter Klien ---");
+            for (key, val) in &params {
+                info!("  {: <30} = {}", key, val);
+            }
+            
+            // Analisis asal request (iBFT / Windows)
             if let Some(iqn) = params.get("InitiatorName") {
                 self.initiator_iqn = iqn.clone();
+                if iqn.contains("microsoft") {
+                    info!("Analisis: Koneksi dideteksi berasal dari WINDOWS iSCSI Initiator (User-space).");
+                } else if iqn.contains("ipxe") {
+                    info!("Analisis: Koneksi dideteksi berasal dari iPXE Bootloader (iBFT).");
+                } else if iqn.contains("intel") || iqn.contains("realtek") || iqn.contains("broadcom") || iqn.contains("gpxe") {
+                    info!("Analisis: Koneksi dideteksi berasal dari UEFI/BIOS NIC Firmware (iBFT).");
+                } else {
+                    info!("Analisis: Koneksi dideteksi berasal dari custom/other initiator.");
+                }
             }
+            info!("=======================================================");
             if let Some(st) = params.get("SessionType") {
                 self.is_discovery = st == "Discovery";
             }
@@ -32,7 +54,7 @@ impl Session {
             }
             if let Some(val) = params.get("MaxRecvDataSegmentLength") {
                 if let Ok(len) = val.parse::<usize>() {
-                    self.max_recv_data_segment_len = len.min(262144);
+                    self.max_recv_data_segment_len = len.min(4194304);
                 }
             }
 
@@ -97,19 +119,19 @@ impl Session {
                 self.max_recv_data_segment_len = client_max;
                 
                 // We respond with our own receive limit (what server can receive from client).
-                // 262144 (256 KB) is optimal and safe.
-                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "262144".to_string()));
+                // 4194304 (4 MB) is optimal for high speed transfer.
+                resp_params.push(("MaxRecvDataSegmentLength".to_string(), "4194304".to_string()));
             }
             if let Some(val) = params.get("FirstBurstLength") {
                 // FirstBurstLength: MIN (client, server).
                 let client_val = val.parse::<u32>().unwrap_or(65536);
-                let resp_val = client_val.min(2097152);
+                let resp_val = client_val.min(4194304);
                 resp_params.push(("FirstBurstLength".to_string(), resp_val.to_string()));
             }
             if let Some(val) = params.get("MaxBurstLength") {
                 // MaxBurstLength: MIN (client, server).
                 let client_val = val.parse::<u32>().unwrap_or(262144);
-                let resp_val = client_val.min(2097152);
+                let resp_val = client_val.min(4194304);
                 resp_params.push(("MaxBurstLength".to_string(), resp_val.to_string()));
             }
 
@@ -133,20 +155,26 @@ impl Session {
             self.stat_sn = self.stat_sn.wrapping_add(1);
             
             self.exp_cmd_sn = req.cmd_sn.wrapping_add(1);
-            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(32);
+            self.max_cmd_sn = self.exp_cmd_sn.wrapping_add(128);
             
             resp.exp_stat_sn = self.exp_cmd_sn;
             resp.max_cmd_sn = self.max_cmd_sn;
             
-            info!("Mengirim Login Response parameters: {:?}", resp_params);
+            info!("--- Parameter Respon ---");
+            for (key, val) in &resp_params {
+                info!("  {: <30} = {}", key, val);
+            }
+            info!("=======================================================");
             resp.data = pdu::builder::build_text_parameters(&resp_params);
-
+ 
             let packet = pdu::builder::build_pdu(&resp);
             self.stream.write_all(&packet).await?;
             self.stream.flush().await?;
         }
-
+ 
+        info!("=======================================================");
         info!("Transisi login sukses. Client masuk ke FFP (Full Feature Phase).");
+        info!("=======================================================");
         Ok(())
     }
 }

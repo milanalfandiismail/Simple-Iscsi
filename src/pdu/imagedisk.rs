@@ -72,8 +72,12 @@ pub fn build_mode_sense_10(page_code: u8, _block_size: u64, alloc_len: usize) ->
 fn append_caching_page(data: &mut Vec<u8>) {
     data.push(0x08); // Page Code
     data.push(0x0A); // Page Length (10 bytes)
-    data.push(0x04); // WCE = 1 (Write Cache Enabled)
-    data.extend_from_slice(&[0; 9]); // rest
+    data.push(0x04); // WCE = 1 (Write Cache Enabled), RCD = 0
+    data.push(0x00); // Retention priority
+    data.extend_from_slice(&[0x00, 0x00]); // Disable pre-fetch transfer length
+    data.extend_from_slice(&[0x00, 0x00]); // Minimum pre-fetch
+    data.extend_from_slice(&[0xFF, 0xFF]); // Maximum pre-fetch (unlimited prefetch for SANBOOT)
+    data.extend_from_slice(&[0xFF, 0xFF]); // Maximum pre-fetch ceiling (unlimited)
 }
 
 /// SCSI Control Page (0x0A) — 12 bytes

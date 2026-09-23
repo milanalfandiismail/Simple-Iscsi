@@ -80,8 +80,8 @@ pub async fn start_server(
                             .with_time(std::time::Duration::from_secs(30))
                             .with_interval(std::time::Duration::from_secs(5));
                         let _ = socket.set_tcp_keepalive(&keepalive);
-                        let _ = socket.set_send_buffer_size(512 * 1024);
-                        let _ = socket.set_recv_buffer_size(512 * 1024);
+                        let _ = socket.set_send_buffer_size(2 * 1024 * 1024);
+                        let _ = socket.set_recv_buffer_size(2 * 1024 * 1024);
                         std::mem::forget(socket);
                     }
                 }

@@ -1,0 +1,8 @@
+#!ipxe
+clear net0/gateway
+clear gateway
+isset ${root-path} && sanboot ${root-path} ||
+isset ${169:string} && sanboot iscsi:${168:string}::3300:0:${169:string} ||
+isset ${169:string} && sanboot iscsi:${168:string}::3260:0:${169:string} ||
+isset ${169:string} && sanboot iscsi:${168:string}:::0:${169:string} ||
+shell
