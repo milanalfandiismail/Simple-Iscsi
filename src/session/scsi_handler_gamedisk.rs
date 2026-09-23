@@ -35,13 +35,14 @@ impl SessionContext {
         trace!("SCSI_WRITE (gamedisk) ITT {}: expected_data_len={}, calculated_len={}, num_blocks={}, immediate_len={}",
               req.initiator_task_tag, expected_len, calculated_len, num_blocks, req.data.len());
 
-        let mut write_buf: Vec<u8> = Vec::with_capacity(expected_len);
+        let mut write_buf = vec![0u8; expected_len];
         let mut bytes_received = 0;
 
         let immediate_len = req.data.len();
         if immediate_len > 0 {
-            write_buf.extend_from_slice(&req.data);
-            bytes_received = immediate_len;
+            let copy_len = immediate_len.min(expected_len);
+            write_buf[..copy_len].copy_from_slice(&req.data[..copy_len]);
+            bytes_received = copy_len;
         }
 
         if bytes_received < expected_len {
@@ -57,6 +58,7 @@ impl SessionContext {
                     num_blocks,
                     expected_len,
                     buffer: write_buf,
+                    data_sn_count: 0,
                 });
             }
             
@@ -67,25 +69,44 @@ impl SessionContext {
         let itt = req.initiator_task_tag;
         let cache_opt = self.client_caches.get(&lun_id).cloned();
         let backend = self.backends.get(&lun_id).cloned().unwrap();
+        let tx = self.tx.clone();
+        let stats = std::sync::Arc::clone(&self.stats);
+        let client_ip = self.client_ip.clone();
 
-        let res = tokio::task::spawn_blocking(move || {
-            if let Some(cache) = cache_opt {
-                cache.write_stream(lba, 0, &write_buf)
-            } else {
-                backend.write_blocks(lba, num_blocks, &write_buf)
-            }
-        }).await?;
+        tokio::spawn(async move {
+            let res = tokio::task::spawn_blocking(move || {
+                if let Some(cache) = cache_opt {
+                    cache.write_stream(lba, 0, &write_buf)
+                } else {
+                    backend.write_blocks(lba, num_blocks, &write_buf)
+                }
+            }).await;
 
-        match res {
-            Ok(_) => {
-                self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-                self.stats.record_write(&self.client_ip, expected_len as u64);
+            match res {
+                Ok(Ok(_)) => {
+                    let _ = tx.send(crate::session::WriterMessage::ScsiResponse {
+                        itt,
+                        status: 0x00,
+                        exp_data_sn: 0,
+                        expected_len: 0,
+                        actual_len: 0,
+                    }).await;
+                    stats.record_write(&client_ip, expected_len as u64);
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("Gagal menulis data ke disk LUN {} LBA {}: {}", lun_id, lba, e);
+                    let _ = tx.send(crate::session::WriterMessage::CheckCondition {
+                        itt,
+                        key: 0x03,
+                        asc: 0x0C,
+                        ascq: 0x00,
+                    }).await;
+                }
+                Err(e) => {
+                    tracing::error!("Disk write task panicked: {}", e);
+                }
             }
-            Err(e) => {
-                tracing::error!("Gagal menulis data ke disk LUN {} LBA {}: {}", lun_id, lba, e);
-                self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
-            }
-        }
+        });
         Ok(())
     }
 }

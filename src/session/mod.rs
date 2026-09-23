@@ -29,6 +29,7 @@ pub struct PendingWrite {
     pub num_blocks: u32,
     pub expected_len: usize,
     pub buffer: Vec<u8>,
+    pub data_sn_count: u32,
 }
 
 pub struct WriteJob {
@@ -205,7 +206,7 @@ impl Session {
             stat_sn: 1,
             exp_cmd_sn: 0,
             max_cmd_sn: 256,
-            max_recv_data_segment_len: 262144, // 256KB
+            max_recv_data_segment_len: 4194304, // 4MB
             pending_writes: HashMap::new(),
             throttle_window_start: AtomicU64::new(0),
             throttle_bytes_this_window: AtomicU64::new(0),
@@ -367,11 +368,16 @@ impl Session {
                     }
                 };
 
-                let is_immediate = req.is_immediate;
-                if !is_immediate && req.cmd_sn != 0xFFFFFFFF {
+                let is_cmd = req.opcode == OP_SCSI_CMD 
+                    || req.opcode == OP_NOP_OUT 
+                    || req.opcode == OP_TEXT_REQ 
+                    || req.opcode == OP_LOGOUT_REQ 
+                    || req.opcode == OP_TMF_REQ;
+
+                if is_cmd && !req.is_immediate && req.cmd_sn != 0xFFFFFFFF {
                     let next_exp = req.cmd_sn.wrapping_add(1);
                     context_reader.exp_cmd_sn.store(next_exp, Ordering::Relaxed);
-                    context_reader.max_cmd_sn.store(next_exp.wrapping_add(32), Ordering::Relaxed);
+                    context_reader.max_cmd_sn.store(next_exp.wrapping_add(128), Ordering::Relaxed);
                 }
 
                 match req.opcode {

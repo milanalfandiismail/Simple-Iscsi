@@ -106,19 +106,23 @@ impl SessionContext {
 
             let mut buf = vec![0u8; total_bytes];
 
-            // Fast-Path: Cek apakah ada di RAM Cache gamedisk langsung (Zero spawn_blocking)
+            // Fast-Path: Cek apakah ada di RAM Writeback Cache atau Read Cache VHD langsung (Zero spawn_blocking)
             let cache_hit = {
                 let mut hit = false;
                 if let Some(ref cache) = cache_opt {
-                    let mut in_writeback = false;
-                    for i in 0..num_blocks {
-                        if cache.contains_lba(lba + i as u64) {
-                            in_writeback = true;
-                            break;
+                    if cache.try_read_ram_cache(lba, num_blocks, &mut buf).is_some() {
+                        hit = true;
+                    } else {
+                        let mut in_writeback = false;
+                        for i in 0..num_blocks {
+                            if cache.contains_lba(lba + i as u64) {
+                                in_writeback = true;
+                                break;
+                            }
                         }
-                    }
-                    if !in_writeback {
-                        hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
+                        if !in_writeback {
+                            hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
+                        }
                     }
                 } else {
                     hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
@@ -142,8 +146,9 @@ impl SessionContext {
 
             match res {
                 Ok(buf) => {
-                     self.send_scsi_data_in(itt, &buf, 0x00, req.expected_data_len).await?;
-                     self.stats.record_read(&self.client_ip, buf.len() as u64);
+                     let buf_len = buf.len() as u64;
+                     self.send_scsi_data_in(itt, buf, 0x00, req.expected_data_len).await?;
+                     self.stats.record_read(&self.client_ip, buf_len);
                 }
                 Err(e) => {
                     error!("Gagal membaca disk LUN {} LBA {}: {}", req.lun, itt, e);
@@ -207,20 +212,30 @@ impl SessionContext {
 
     pub(super) async fn handle_data_out(&self, req: Pdu) -> Result<(), std::io::Error> {
         let itt = req.initiator_task_tag;
+        let buffer_offset = u32::from_be_bytes(req.custom_bhs[8..12].try_into().unwrap()) as usize;
         
         let mut is_complete = false;
         let mut pending_lba = 0;
         let mut expected_len = 0;
         let mut num_blocks = 0;
         let mut lun_id = 0;
+        let mut data_sn_count = 0;
         let mut buffer_clone = Vec::new();
 
         {
             let mut pending_guard = self.pending_writes.lock();
             if let Some(pending) = pending_guard.get_mut(&itt) {
-                pending.buffer.extend_from_slice(&req.data);
-                
-                if pending.buffer.len() >= pending.expected_len {
+                pending.data_sn_count += 1;
+                let data_len = req.data.len();
+                if buffer_offset + data_len <= pending.expected_len {
+                    if pending.buffer.len() < pending.expected_len {
+                        pending.buffer.resize(pending.expected_len, 0);
+                    }
+                    pending.buffer[buffer_offset..buffer_offset + data_len].copy_from_slice(&req.data);
+                }
+
+                // Cek final flag (F bit = 0x80) atau buffer terisi penuh
+                if (req.flags & 0x80) != 0 || buffer_offset + data_len >= pending.expected_len {
                     is_complete = true;
                 }
             } else {
@@ -235,36 +250,56 @@ impl SessionContext {
                     expected_len = pending.expected_len;
                     num_blocks = pending.num_blocks;
                     lun_id = pending.lun_id;
+                    data_sn_count = pending.data_sn_count;
                     buffer_clone = pending.buffer;
                 }
             }
         }
 
         if is_complete {
-            trace!("DATA_OUT Complete for ITT {}: buffer_len={}, expected_len={}, data_segment_len={}", 
-                  itt, buffer_clone.len(), expected_len, req.data_segment_len);
+            trace!("DATA_OUT Complete for ITT {}: buffer_len={}, expected_len={}, data_sn_count={}", 
+                  itt, buffer_clone.len(), expected_len, data_sn_count);
 
             let cache_opt = self.client_caches.get(&lun_id).cloned();
             let backend = self.backends.get(&lun_id).cloned().unwrap();
+            let tx = self.tx.clone();
+            let stats = std::sync::Arc::clone(&self.stats);
+            let client_ip = self.client_ip.clone();
 
-            let res = tokio::task::spawn_blocking(move || {
-                if let Some(cache) = cache_opt {
-                    cache.write_stream(pending_lba, 0, &buffer_clone)
-                } else {
-                    backend.write_blocks(pending_lba, num_blocks, &buffer_clone)
-                }
-            }).await? ;
+            tokio::spawn(async move {
+                let res = tokio::task::spawn_blocking(move || {
+                    if let Some(cache) = cache_opt {
+                        cache.write_stream(pending_lba, 0, &buffer_clone)
+                    } else {
+                        backend.write_blocks(pending_lba, num_blocks, &buffer_clone)
+                    }
+                }).await;
 
-            match res {
-                Ok(_) => {
-                    self.send_scsi_response(itt, 0x00, 0, 0, 0).await?;
-                    self.stats.record_write(&self.client_ip, expected_len as u64);
+                match res {
+                    Ok(Ok(_)) => {
+                        let _ = tx.send(WriterMessage::ScsiResponse {
+                            itt,
+                            status: 0x00,
+                            exp_data_sn: data_sn_count,
+                            expected_len: 0,
+                            actual_len: 0,
+                        }).await;
+                        stats.record_write(&client_ip, expected_len as u64);
+                    }
+                    Ok(Err(e)) => {
+                        error!("Gagal menulis data (Data-Out) ke disk LUN {} LBA {}: {}", lun_id, pending_lba, e);
+                        let _ = tx.send(WriterMessage::CheckCondition {
+                            itt,
+                            key: 0x03,
+                            asc: 0x0C,
+                            ascq: 0x00,
+                        }).await;
+                    }
+                    Err(e) => {
+                        error!("Disk write task panicked: {}", e);
+                    }
                 }
-                Err(e) => {
-                    error!("Gagal menulis data (Data-Out) ke disk LUN {} LBA {}: {}", lun_id, pending_lba, e);
-                    self.send_scsi_check_condition(itt, 0x03, 0x0C, 0x00).await?;
-                }
-            }
+            });
         }
         
         Ok(())

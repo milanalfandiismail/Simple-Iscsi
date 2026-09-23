@@ -28,10 +28,10 @@ pub async fn read_pdu<R: AsyncRead + Unpin>(reader: &mut R) -> std::io::Result<P
             u32::from_be_bytes(bhs[28..32].try_into().unwrap()),
             0u32,
         )
-    } else if opcode == 0x05 { // OP_DATA_OUT
+    } else if opcode == 0x05 { // OP_DATA_OUT (RFC 7143 Section 11.7: No CmdSN, ExpStatSN is at bytes 28-32)
         (
             0u32,
-            u32::from_be_bytes(bhs[24..28].try_into().unwrap()),
+            0xFFFFFFFFu32,
             u32::from_be_bytes(bhs[28..32].try_into().unwrap()),
             0u32,
         )
@@ -62,8 +62,8 @@ pub async fn read_pdu<R: AsyncRead + Unpin>(reader: &mut R) -> std::io::Result<P
         // iSCSI menyelaraskan segment data ke batas 4 byte (padding)
         let padding_len = (4 - (data_len % 4)) % 4;
         if padding_len > 0 {
-            let mut pad = vec![0u8; padding_len];
-            reader.read_exact(&mut pad).await?;
+            let mut pad = [0u8; 4];
+            reader.read_exact(&mut pad[..padding_len]).await?;
         }
     }
 

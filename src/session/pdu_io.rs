@@ -5,15 +5,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use std::sync::Arc;
 
-fn pack_iov(slices: &[std::io::IoSlice<'_>]) -> Vec<u8> {
-    let total_len: usize = slices.iter().map(|s| s.len()).sum();
-    let mut buf = Vec::with_capacity(total_len);
-    for slice in slices {
-        buf.extend_from_slice(slice);
-    }
-    buf
-}
-
 pub async fn write_message(
     write_half: &mut OwnedWriteHalf,
     context: &Arc<SessionContext>,
@@ -37,7 +28,7 @@ pub async fn write_message(
             resp.flags = 0x80; // F (Final)
             resp.lun = lun;
             resp.initiator_task_tag = itt;
-            resp.cmd_sn = 0; // R2T is not a status PDU; StatSN is not incremented
+            resp.cmd_sn = *stat_sn; // RFC 7143 Section 11.8.3: StatSN carries next StatSN, NOT advanced
             resp.exp_stat_sn = context.exp_cmd_sn.load(std::sync::atomic::Ordering::Relaxed);
             resp.max_cmd_sn = context.max_cmd_sn.load(std::sync::atomic::Ordering::Relaxed);
 
@@ -105,22 +96,18 @@ pub async fn write_message(
                         resp[44..48].copy_from_slice(&(residual as u32).to_be_bytes());
                     }
 
-                    let iov = [
-                        std::io::IoSlice::new(&bhs),
-                        std::io::IoSlice::new(&data[offset..offset + chunk_len]),
-                        std::io::IoSlice::new(&pad_arr[..pad]),
-                        std::io::IoSlice::new(&resp),
-                    ];
-                    let packet = pack_iov(&iov);
-                    write_half.write_all(&packet).await?;
+                    write_half.write_all(&bhs).await?;
+                    write_half.write_all(&data[offset..offset + chunk_len]).await?;
+                    if pad > 0 {
+                        write_half.write_all(&pad_arr[..pad]).await?;
+                    }
+                    write_half.write_all(&resp).await?;
                 } else {
-                    let iov = [
-                        std::io::IoSlice::new(&bhs),
-                        std::io::IoSlice::new(&data[offset..offset + chunk_len]),
-                        std::io::IoSlice::new(&pad_arr[..pad]),
-                    ];
-                    let packet = pack_iov(&iov);
-                    write_half.write_all(&packet).await?;
+                    write_half.write_all(&bhs).await?;
+                    write_half.write_all(&data[offset..offset + chunk_len]).await?;
+                    if pad > 0 {
+                        write_half.write_all(&pad_arr[..pad]).await?;
+                    }
                 }
 
                 offset += chunk_len;
@@ -188,6 +175,7 @@ pub async fn write_message(
             write_half.write_all(&packet).await?;
         }
     }
+    write_half.flush().await?;
     Ok(())
 }
 
@@ -211,13 +199,13 @@ impl SessionContext {
     pub(super) async fn send_scsi_data_in(
         &self,
         itt: u32,
-        data: &[u8],
+        data: Vec<u8>,
         status: u8,
         expected_len: u32,
     ) -> Result<(), std::io::Error> {
         let _ = self.tx.send(WriterMessage::DataIn {
             itt,
-            data: data.to_vec(),
+            data,
             status,
             expected_len,
         }).await;
@@ -269,7 +257,7 @@ impl SessionContext {
                 self.send_scsi_response(req.initiator_task_tag, status, 0, req.expected_data_len, 0).await?;
             }
             ScsiResult::Data { data, status } => {
-                self.send_scsi_data_in(req.initiator_task_tag, &data, status, req.expected_data_len).await?;
+                self.send_scsi_data_in(req.initiator_task_tag, data, status, req.expected_data_len).await?;
             }
             ScsiResult::CheckCondition { key, asc, ascq } => {
                 self.send_scsi_check_condition(req.initiator_task_tag, key, asc, ascq).await?;

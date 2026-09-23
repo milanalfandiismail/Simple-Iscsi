@@ -17,8 +17,10 @@ pub struct ClientCache {
     map_path: PathBuf,
     file_read: Option<Arc<std::fs::File>>,
     file_write: Option<Arc<std::fs::File>>,
-    block_map: DashMap<u64, u64>, // LBA -> offset in cache.bin
-    next_write_offset: AtomicU64,
+    block_map: Arc<DashMap<u64, u64>>, // LBA -> offset in cache.bin
+    ram_cache: Arc<DashMap<u64, Arc<Vec<u8>>>>, // LBA -> in-memory 512B block data
+    flush_tx: std::sync::mpsc::SyncSender<(u64, u64, Arc<Vec<u8>>)>,
+    next_write_offset: Arc<AtomicU64>,
     block_size: u64,
     max_cache_size: u64,
     is_super: bool,
@@ -110,33 +112,58 @@ impl ClientCache {
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            file_options.share_mode(1 | 2); // FILE_SHARE_READ | FILE_SHARE_WRITE
+            file_options.share_mode(1 | 2 | 4); // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
         }
-        let file_handle = file_options.open(&file_path)?;
-        let file_handle_arc = Arc::new(file_handle);
+        let file_write_handle = file_options.open(&file_path)?;
 
-        // Periodically sync file writes to disk in the background (disabled to prevent FlushFileBuffers locks)
-        /*
-        let file_write_weak = Arc::downgrade(&file_handle_arc);
+        let target_alloc = (1024 * 1024 * 1024).min(max_cache_gb * 1024 * 1024 * 1024);
+        if let Ok(meta) = file_write_handle.metadata() {
+            if meta.len() < target_alloc {
+                let _ = file_write_handle.set_len(target_alloc);
+            }
+        }
+
+        let mut read_options = OpenOptions::new();
+        read_options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            read_options.share_mode(1 | 2 | 4);
+        }
+        let file_read_handle = read_options.open(&file_path)?;
+
+        let block_map = Arc::new(block_map);
+        let ram_cache = Arc::new(DashMap::new());
+        let (flush_tx, flush_rx) = std::sync::mpsc::sync_channel::<(u64, u64, Arc<Vec<u8>>)>(16384);
+
+        let bg_block_map = Arc::clone(&block_map);
+        let bg_file_write = Arc::new(file_write_handle.try_clone()?);
+        let bg_block_size = block_size;
         std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                if let Some(file) = file_write_weak.upgrade() {
-                    let _ = file.sync_all();
-                } else {
-                    break;
+            while let Ok((start_lba, base_offset, data_arc)) = flush_rx.recv() {
+                if let Err(e) = file_write_all_at(&bg_file_write, base_offset, &data_arc) {
+                    tracing::error!("Gagal menulis background writeback ke disk: {}", e);
+                }
+                let num_blocks = data_arc.len() / (bg_block_size as usize);
+                for i in 0..num_blocks {
+                    let lba = start_lba + i as u64;
+                    let off = base_offset + (i as u64) * bg_block_size;
+                    bg_block_map.insert(lba, off);
                 }
             }
         });
-        */
+
+        let next_write_offset_arc = Arc::new(AtomicU64::new(next_write_offset));
 
         Ok(Self {
             file_path,
             map_path,
-            file_read: Some(file_handle_arc.clone()),
-            file_write: Some(file_handle_arc),
+            file_read: Some(Arc::new(file_read_handle)),
+            file_write: Some(Arc::new(file_write_handle)),
             block_map,
-            next_write_offset: AtomicU64::new(next_write_offset),
+            ram_cache,
+            flush_tx,
+            next_write_offset: next_write_offset_arc,
             block_size,
             max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
             is_super,
@@ -153,7 +180,23 @@ impl ClientCache {
     }
 
     pub fn contains_lba(&self, lba: u64) -> bool {
-        self.block_map.contains_key(&lba)
+        self.ram_cache.contains_key(&lba) || self.block_map.contains_key(&lba)
+    }
+
+    pub fn try_read_ram_cache(&self, first_lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<()> {
+        let block_size = self.block_size as usize;
+        let n = num_blocks as usize;
+        for i in 0..n {
+            let lba = first_lba + i as u64;
+            if let Some(ram_data) = self.ram_cache.get(&lba) {
+                let start = i * block_size;
+                let end = start + block_size;
+                buf[start..end].copy_from_slice(&ram_data);
+            } else {
+                return None;
+            }
+        }
+        Some(())
     }
 
     pub fn read_blocks_cached(
@@ -169,14 +212,24 @@ impl ClientCache {
         let mut i = 0;
         while i < n {
             let lba = first_lba + i as u64;
-            if let Some(offset_ref) = self.block_map.get(&lba) {
-                // Blok yang ada di cache (contigous)
+            
+            // 1. Cek RAM Cache (Instant 0 ms)
+            if let Some(ram_data) = self.ram_cache.get(&lba) {
+                let byte_start = i * block_size;
+                let byte_end = byte_start + block_size;
+                buf[byte_start..byte_end].copy_from_slice(&ram_data);
+                i += 1;
+            // 2. Cek Disk Cache (.bin)
+            } else if let Some(offset_ref) = self.block_map.get(&lba) {
                 let start_idx = i;
                 let mut current_off = *offset_ref;
                 let base_off = current_off;
                 i += 1;
                 while i < n {
                     let next_lba = first_lba + i as u64;
+                    if self.ram_cache.contains_key(&next_lba) {
+                        break;
+                    }
                     if let Some(next_off_ref) = self.block_map.get(&next_lba) {
                         let next_off = *next_off_ref;
                         if next_off == current_off + self.block_size {
@@ -192,13 +245,13 @@ impl ClientCache {
                 let byte_start = start_idx * block_size;
                 let byte_end = i * block_size;
                 file_read_exact_at(self.file_read.as_ref().unwrap(), base_off, &mut buf[byte_start..byte_end])?;
+            // 3. Baca dari Base VHD
             } else {
-                // Blok yang tidak ada di cache (baca dari base VHD)
                 let start_idx = i;
                 i += 1;
                 while i < n {
                     let next_lba = first_lba + i as u64;
-                    if self.block_map.contains_key(&next_lba) {
+                    if self.ram_cache.contains_key(&next_lba) || self.block_map.contains_key(&next_lba) {
                         break;
                     }
                     i += 1;
@@ -251,34 +304,24 @@ impl ClientCache {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data harus block-aligned"));
         }
 
-        // Count new blocks for capacity check
-        let mut new_blocks_count = 0;
-        for i in 0..num_blocks {
-            let lba = start_lba + i as u64;
-            if !self.block_map.contains_key(&lba) {
-                new_blocks_count += 1;
-            }
-        }
-
-        if new_blocks_count > 0 {
-            let total_needed = (new_blocks_count as u64) * self.block_size;
-            self.ensure_capacity(total_needed)?;
-        }
-
-        // ALWAYS APPEND: Write the entire buffer sequentially at the end of the bin file!
         let total_write_len = data.len() as u64;
         let base_offset = self.next_write_offset.fetch_add(total_write_len, Ordering::SeqCst);
-        self.total_bytes_written.fetch_add((new_blocks_count as u64) * self.block_size, Ordering::SeqCst);
 
-        // Update the block map to point to the new offsets in the appended data
+        let data_arc = Arc::new(data.to_vec());
+
+        // Simpan ke RAM cache secara instan (< 0.001 ms)
         for i in 0..num_blocks {
             let lba = start_lba + i as u64;
-            let off = base_offset + (i as u64) * self.block_size;
-            self.block_map.insert(lba, off);
+            let start = i * block_size;
+            let end = start + block_size;
+            let block_vec = data[start..end].to_vec();
+            self.ram_cache.insert(lba, Arc::new(block_vec));
         }
 
-        file_write_all_at(self.file_write.as_ref().unwrap(), base_offset, data)?;
+        // Kirim ke worker thread untuk penulisan disk di background
+        let _ = self.flush_tx.send((start_lba, base_offset, data_arc));
 
+        self.total_bytes_written.fetch_add(total_write_len, Ordering::Relaxed);
         Ok(())
     }
 
