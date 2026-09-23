@@ -116,7 +116,7 @@ impl ClientCache {
         }
         let file_write_handle = file_options.open(&file_path)?;
 
-        let target_alloc = (1024 * 1024 * 1024).min(max_cache_gb * 1024 * 1024 * 1024);
+        let target_alloc = (128 * 1024 * 1024).min(max_cache_gb * 1024 * 1024 * 1024);
         if let Ok(meta) = file_write_handle.metadata() {
             if meta.len() < target_alloc {
                 let _ = file_write_handle.set_len(target_alloc);
