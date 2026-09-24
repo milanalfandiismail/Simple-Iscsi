@@ -265,21 +265,52 @@ function populateNetworkDropdowns() {
     }
 }
 
-// Live Stats Polling Loop
+// Live Stats Polling Loop & Realtime Client Sync
 function initStatsStream() {
+    let clientsSyncCounter = 0;
+
     const fetchStats = async () => {
-        const data = await apiGet('/api/stats');
-        if (data) {
-            handleStatsData(data);
-        } else {
-            updateServiceCard('iscsi', { enabled: false, port: 0 });
-            updateServiceCard('dhcp', { enabled: false, port: 0 });
-            updateServiceCard('tftp', { enabled: false, port: 0 });
+        try {
+            const data = await apiGet('/api/stats');
+            if (data) {
+                handleStatsData(data);
+            } else {
+                updateServiceCard('iscsi', { enabled: false, port: 0 });
+                updateServiceCard('dhcp', { enabled: false, port: 0 });
+                updateServiceCard('tftp', { enabled: false, port: 0 });
+            }
+        } catch (e) {
+            console.error('Stats poll error:', e);
+        }
+
+        // Realtime sync clients.toml every 2 seconds to instantly capture auto-added clients
+        clientsSyncCounter++;
+        if (clientsSyncCounter >= 2) {
+            clientsSyncCounter = 0;
+            refreshClientsDataSilently();
         }
     };
 
     fetchStats();
     setInterval(fetchStats, 1000);
+}
+
+// Background silent client sync
+async function refreshClientsDataSilently() {
+    try {
+        const data = await apiGet('/api/clients/json');
+        if (data && Array.isArray(data.client)) {
+            const oldStr = JSON.stringify(clientsObj ? clientsObj.client : []);
+            const newStr = JSON.stringify(data.client);
+            if (oldStr !== newStr) {
+                clientsObj = data;
+                renderClientsManagerTable();
+                renderDashboardClientsTable();
+            }
+        }
+    } catch (err) {
+        console.error('refreshClientsDataSilently error:', err);
+    }
 }
 
 function handleStatsData(data) {
@@ -399,14 +430,14 @@ function updateServiceCard(name, service) {
     }
 }
 
-// Client Merging (Static clients.toml + Dynamic Live DHCP Clients)
+// Client Merging (Static clients.toml + Dynamic Live DHCP Clients + Active Sessions)
 function getMergedDashboardClients() {
-    const staticClients = (clientsObj && clientsObj.client) ? [...clientsObj.client] : [];
+    const staticClients = (clientsObj && Array.isArray(clientsObj.client)) ? [...clientsObj.client] : [];
     const staticIps = new Set(staticClients.map(c => c.ip));
 
-    if (stats && stats.clients) {
+    if (stats && Array.isArray(stats.clients)) {
         stats.clients.forEach(activeClient => {
-            if (!staticIps.has(activeClient.ip)) {
+            if (activeClient && activeClient.ip && !staticIps.has(activeClient.ip)) {
                 staticClients.push({
                     hostname: `DHCP-${activeClient.ip.split('.').pop()}`,
                     ip: activeClient.ip,
@@ -418,6 +449,26 @@ function getMergedDashboardClients() {
                     pxe: '-',
                     isDynamic: true
                 });
+                staticIps.add(activeClient.ip);
+            }
+        });
+    }
+
+    if (stats && Array.isArray(stats.dhcp_leases)) {
+        stats.dhcp_leases.forEach(lease => {
+            if (lease && lease.ip && !staticIps.has(lease.ip)) {
+                staticClients.push({
+                    hostname: `DHCP-${lease.ip.split('.').pop()}`,
+                    ip: lease.ip,
+                    mac: lease.mac || 'DHCP Lease',
+                    dns: '-',
+                    gateway: '-',
+                    next_server: '-',
+                    image_manager: 'Gamedisk Only',
+                    pxe: '-',
+                    isDynamic: true
+                });
+                staticIps.add(lease.ip);
             }
         });
     }
