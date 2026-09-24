@@ -155,4 +155,5 @@ cargo test
 ---
 
 ## 📄 Lisensi
-Didistribusikan di bawah lisensi MIT / Proprietary sesuai ketentuan tim pengembang Simple-Iscsi.
+Proyek ini didistribusikan di bawah lisensi **MIT License** © 2026 **Milan Alfandi Ismail**.  
+Lihat file [**`LICENSE`**](file:///c:/Project%20GIT/Simple-Iscsi/LICENSE) untuk ketentuan lisensi lengkap.
