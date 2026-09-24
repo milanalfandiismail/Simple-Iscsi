@@ -351,10 +351,10 @@ function updateServiceCard(name, service) {
         portEl.textContent = `Port: ${service.port}`;
         if (service.enabled) {
             pillEl.textContent = '🟢 Enabled';
-            pillEl.className = 'pill-status text-xs font-medium px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20';
+            pillEl.className = 'pill-status text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
         } else {
             pillEl.textContent = '🔴 Disabled';
-            pillEl.className = 'pill-status text-xs font-medium px-3 py-1 rounded-full bg-[#1c1c1c]/[0.04] text-[#1c1c1c] border border-[#eceae4]';
+            pillEl.className = 'pill-status text-xs font-semibold px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200';
         }
     }
 }
@@ -371,8 +371,8 @@ function renderDashboardClientsTable() {
         tbody.innerHTML = `<tr><td colspan="11" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">🔌</div>
-                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Belum Ada Klien Aktif</h3>
-                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
+                <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Belum Ada Klien Aktif</h3>
+                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
             </div>
         </td></tr>`;
         const totalPcsEl = document.getElementById('stat-total-pcs');
@@ -392,8 +392,8 @@ function renderDashboardClientsTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">🟢 Online</span>`
-            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-800 border border-rose-500/20">🔴 Offline</span>`;
+            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
+            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
         const superBadge = isSuper ? ` <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1.5">⚡ Super Client</span>` : '';
@@ -401,19 +401,19 @@ function renderDashboardClientsTable() {
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
-        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
+        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-4 px-5">${statusSpan}</td>
-            <td class="py-4 px-5 font-semibold text-[#1c1c1c]">${c.ip}${superBadge}${dynamicBadge}</td>
-            <td class="py-4 px-5 text-[#5f5f5d]">${c.dns || '-'}</td>
-            <td class="py-4 px-5 text-[#5f5f5d]">${c.gateway || '-'}</td>
-            <td class="py-4 px-5 font-mono text-xs text-[#1c1c1c] bg-[#1c1c1c]/[0.02] rounded px-1.5 py-0.5">${c.image_manager || 'None (Gamedisk)'}</td>
-            <td class="py-4 px-5 text-[#5f5f5d]">${c.next_server || '-'}</td>
-            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-4 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-4 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-4 px-5 text-xs text-[#5f5f5d]">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-3.5 px-5">${statusSpan}</td>
+            <td class="py-3.5 px-5 font-semibold text-stone-900">${c.ip}${superBadge}${dynamicBadge}</td>
+            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
+            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-stone-800 bg-stone-100 rounded px-1.5 py-0.5 inline-block my-2">${c.image_manager || 'None (Gamedisk)'}</td>
+            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
+            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-3.5 px-5 text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
         tbody.appendChild(row);
     });
@@ -429,8 +429,8 @@ function renderClientsManagerTable() {
         tbody.innerHTML = `<tr><td colspan="13" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">💻</div>
-                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Daftar Klien Kosong</h3>
-                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
+                <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Daftar Klien Kosong</h3>
+                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
             </div>
         </td></tr>`;
         return;
@@ -448,29 +448,29 @@ function renderClientsManagerTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">🟢 Online</span>`
-            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-800 border border-rose-500/20">🔴 Offline</span>`;
+            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
+            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
         const superBadge = isSuper ? ` <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1.5">⚡ Super Client</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
-        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors cursor-pointer";
+        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-4 px-5">${statusSpan}</td>
-            <td class="py-4 px-5 font-semibold text-[#1c1c1c]">${c.hostname || 'PC'}${superBadge}</td>
-            <td class="py-4 px-5 font-mono text-xs">${c.ip}</td>
-            <td class="py-4 px-5 font-mono text-xs text-[#5f5f5d]">${c.mac}</td>
-            <td class="py-4 px-5 text-[#5f5f5d]">${c.dns || '-'}</td>
-            <td class="py-4 px-5 text-[#5f5f5d]">${c.gateway || '-'}</td>
-            <td class="py-4 px-5 font-mono text-xs text-[#1c1c1c]">${c.image_manager || 'Gamedisk'}</td>
-            <td class="py-4 px-5 text-[#5f5f5d]">${c.next_server || '-'}</td>
-            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-4 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-4 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-4 px-5 text-xs text-[#5f5f5d]">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-3.5 px-5">${statusSpan}</td>
+            <td class="py-3.5 px-5 font-semibold text-stone-900">${c.hostname || 'PC'}${superBadge}</td>
+            <td class="py-3.5 px-5 font-mono text-xs">${c.ip}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-stone-500">${c.mac}</td>
+            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
+            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-stone-800">${c.image_manager || 'Gamedisk'}</td>
+            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
+            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-3.5 px-5 text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
 
         // Double click or click to edit client configuration
@@ -617,8 +617,8 @@ function renderVhdTable() {
         tbody.innerHTML = `<tr><td colspan="4" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">💿</div>
-                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Belum Ada VHD</h3>
-                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
+                <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Belum Ada VHD</h3>
+                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
             </div>
         </td></tr>`;
         return;
@@ -627,14 +627,14 @@ function renderVhdTable() {
     tbody.innerHTML = '';
     Object.entries(configObj.image_manager).forEach(([key, path]) => {
         const row = document.createElement('tr');
-        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
+        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-4 px-5 font-mono text-xs font-semibold text-[#1c1c1c]">${key}</td>
-            <td class="py-4 px-5 font-mono text-xs text-[#5f5f5d]">${path}</td>
-            <td class="py-4 px-5 text-xs text-[#5f5f5d]" id="snapshots-count-${key}">Loading...</td>
-            <td class="py-4 px-5" style="text-align: right;">
-                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] transition-all mr-2" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
-                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-xs" onclick="showVhdSnapshots('${key}')">Snapshots</button>
+            <td class="py-3.5 px-5 font-mono text-xs font-bold text-stone-900">${key}</td>
+            <td class="py-3.5 px-5 font-mono text-xs text-stone-500">${path}</td>
+            <td class="py-3.5 px-5 text-xs text-stone-500 font-medium" id="snapshots-count-${key}">Loading...</td>
+            <td class="py-3.5 px-5" style="text-align: right;">
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all mr-2" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 shadow-sm transition-all" onclick="showVhdSnapshots('${key}')">Snapshots</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -742,8 +742,8 @@ async function loadWritebackFiles() {
         tbody.innerHTML = `<tr><td colspan="4" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">✨</div>
-                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Writeback Bersih</h3>
-                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Belum ada file cache writeback aktif. Cache akan terbuat otomatis saat klien menyala.</p>
+                <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Writeback Bersih</h3>
+                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Belum ada file cache writeback aktif. Cache akan terbuat otomatis saat klien menyala.</p>
             </div>
         </td></tr>`;
         return;
@@ -752,13 +752,13 @@ async function loadWritebackFiles() {
     tbody.innerHTML = '';
     data.forEach(f => {
         const row = document.createElement('tr');
-        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
+        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-4 px-5 font-mono text-xs font-semibold text-[#1c1c1c]">${f.name}</td>
-            <td class="py-4 px-5 font-mono text-xs">${formatBytes(f.size)}</td>
-            <td class="py-4 px-5 text-xs text-[#5f5f5d] font-mono">${f.path}</td>
-            <td class="py-4 px-5" style="text-align: right;">
-                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="clearWritebackCache('${f.path}')">Hapus</button>
+            <td class="py-3.5 px-5 font-mono text-xs font-bold text-stone-900">${f.name}</td>
+            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(f.size)}</td>
+            <td class="py-3.5 px-5 text-xs text-stone-500 font-mono">${f.path}</td>
+            <td class="py-3.5 px-5" style="text-align: right;">
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-all" onclick="clearWritebackCache('${f.path}')">Hapus</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -863,7 +863,7 @@ async function populateSystemDrives() {
     if (!container) return;
 
     if (systemDrivesList.length === 0) {
-        container.innerHTML = '<span class="text-[#5f5f5d] text-sm py-4">Memuat disk...</span>';
+        container.innerHTML = '<span class="text-stone-500 text-sm py-4">Memuat disk...</span>';
         const detailList = await apiGet('/api/system/logical_drives_detail');
         if (detailList && Array.isArray(detailList)) {
             systemDrivesList = detailList;
@@ -871,7 +871,7 @@ async function populateSystemDrives() {
     }
 
     if (systemDrivesList.length === 0) {
-        container.innerHTML = '<span class="text-[#5f5f5d] text-sm py-4">Gagal mendeteksi drive sistem.</span>';
+        container.innerHTML = '<span class="text-stone-500 text-sm py-4">Gagal mendeteksi drive sistem.</span>';
         return;
     }
 
@@ -887,25 +887,25 @@ async function populateSystemDrives() {
             }
 
             const card = document.createElement('div');
-            card.className = 'bg-[#fcfbf8] border border-[#eceae4] hover:border-[#1c1c1c]/40 rounded-xl p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
+            card.className = 'bg-white border border-stone-200 hover:border-stone-400 rounded-xl p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
 
             let badgeHTML = '';
             if (isBoot) {
-                badgeHTML += `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">💿 Boot VHD</span>`;
+                badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">💿 Boot VHD</span>`;
             }
             if (isWb) {
-                badgeHTML += `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">💾 Writeback</span>`;
+                badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">💾 Writeback</span>`;
             }
             if (isGd) {
-                badgeHTML += `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200">🎮 Raw GameDisk</span>`;
+                badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200">🎮 Raw GameDisk</span>`;
             }
             if (badgeHTML === '') {
-                badgeHTML = `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 border border-gray-200">Unallocated</span>`;
+                badgeHTML = `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-stone-100 text-stone-700 border border-stone-200">Unallocated</span>`;
             }
 
             card.innerHTML = `
                 <div class="text-4xl mb-3">💽</div>
-                <h3 class="font-['Outfit'] font-bold text-base text-[#1c1c1c] mb-3">Disk ${d.letter}:</h3>
+                <h3 class="font-['Outfit'] font-bold text-base text-stone-900 mb-3">Disk ${d.letter}:</h3>
                 <div class="flex flex-wrap justify-center gap-2">
                     ${badgeHTML}
                 </div>
@@ -1087,8 +1087,8 @@ async function showVhdSnapshots(key) {
     const tbody = document.getElementById('vhd-snapshots-tbody');
     tbody.innerHTML = `<tr><td colspan="3" class="py-12 px-6 text-center">
         <div class="animate-pulse flex flex-col gap-3">
-            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-3/4 mx-auto"></div>
-            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-1/2 mx-auto"></div>
+            <div class="h-4 bg-stone-200 rounded w-3/4 mx-auto"></div>
+            <div class="h-4 bg-stone-200 rounded w-1/2 mx-auto"></div>
         </div>
     </td></tr>`;
 
@@ -1097,19 +1097,19 @@ async function showVhdSnapshots(key) {
         tbody.innerHTML = '';
         data.forEach(snapshot => {
             const row = document.createElement('tr');
-            row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
+            row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
             const filename = snapshot.path.split(/[/\\]/).pop();
             row.innerHTML = `
-                <td class="py-4 px-5 font-semibold text-[#1c1c1c]">Snapshot #${snapshot.index}</td>
-                <td class="py-4 px-5 font-mono text-xs text-[#5f5f5d]" title="${snapshot.path}">${filename}</td>
-                <td class="py-4 px-5" style="text-align: right;">
-                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-xs" onclick="restoreSnapshotAction('${key}', ${snapshot.index})">🔄 Restore</button>
+                <td class="py-3.5 px-5 font-semibold text-stone-900">Snapshot #${snapshot.index}</td>
+                <td class="py-3.5 px-5 font-mono text-xs text-stone-500" title="${snapshot.path}">${filename}</td>
+                <td class="py-3.5 px-5" style="text-align: right;">
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 shadow-sm transition-all" onclick="restoreSnapshotAction('${key}', ${snapshot.index})">🔄 Restore</button>
                 </td>
             `;
             tbody.appendChild(row);
         });
     } else {
-        tbody.innerHTML = '<tr><td colspan="3" class="py-8 px-5 text-center text-[#5f5f5d]">Tidak ada snapshot (backup) untuk image ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="py-8 px-5 text-center text-stone-500">Tidak ada snapshot (backup) untuk image ini.</td></tr>';
     }
 }
 
@@ -1265,23 +1265,23 @@ async function loadTftpFolders() {
     
     if (folders && Array.isArray(folders)) {
         if (folders.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-[#5f5f5d]">Tidak ada folder boot loader terdaftar.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-stone-500">Tidak ada folder boot loader terdaftar.</td></tr>';
             return;
         }
         tbody.innerHTML = '';
         folders.forEach(f => {
             const row = document.createElement('tr');
-            row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
+            row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
             row.innerHTML = `
-                <td class="py-4 px-5 font-semibold text-[#1c1c1c]">${f}</td>
-                <td class="py-4 px-5" style="text-align: right;">
-                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="deleteTftpFolderAction('${f}')">🗑️ Hapus</button>
+                <td class="py-3.5 px-5 font-semibold text-stone-900">${f}</td>
+                <td class="py-3.5 px-5" style="text-align: right;">
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 active:scale-[0.98] transition-all" onclick="deleteTftpFolderAction('${f}')">🗑️ Hapus</button>
                 </td>
             `;
             tbody.appendChild(row);
         });
     } else {
-        tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-[#5f5f5d]">Gagal memuat folder TFTP (Periksa konfigurasi TFTP root directory).</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-stone-500">Gagal memuat folder TFTP (Periksa konfigurasi TFTP root directory).</td></tr>';
     }
 }
 
@@ -1317,17 +1317,17 @@ function renderNicIpsList() {
     if (!container) return;
 
     if (serverNicIps.length === 0) {
-        container.innerHTML = '<span class="text-[#5f5f5d] text-center text-xs py-1">Belum ada IP ditambahkan.</span>';
+        container.innerHTML = '<span class="text-stone-500 text-center text-xs py-1">Belum ada IP ditambahkan.</span>';
         return;
     }
 
     container.innerHTML = '';
     serverNicIps.forEach((ip, idx) => {
         const row = document.createElement('div');
-        row.className = 'flex justify-between items-center bg-[#f7f4ed] px-3.5 py-2 rounded-md border border-[#eceae4] font-mono text-xs text-[#1c1c1c]';
+        row.className = 'flex justify-between items-center bg-white px-3.5 py-2 rounded-lg border border-stone-200 font-mono text-xs text-stone-900 shadow-xs';
         row.innerHTML = `
             <span>🌐 ${ip}</span>
-            <button type="button" class="inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="removeNicIpAction(${idx})">🗑️ Remove</button>
+            <button type="button" class="inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium rounded-md bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all" onclick="removeNicIpAction(${idx})">🗑️ Remove</button>
         `;
         container.appendChild(row);
     });
@@ -1426,20 +1426,23 @@ function showToast(message, type = 'info') {
     if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = 'toast-msg';
     
-    // Lovable-style colors based on type
-    if (type === 'success') toast.style.cssText = 'background: #22c55e; color: white;';
-    else if (type === 'error') toast.style.cssText = 'background: #ef4444; color: white;';
-    else if (type === 'warning') toast.style.cssText = 'background: #f59e0b; color: white;';
-    else toast.style.cssText = 'background: var(--color-text); color: var(--color-bg);';
-
+    let colorClasses = 'bg-stone-900 text-white border-stone-800 shadow-xl';
     let icon = 'ℹ️';
-    if (type === 'success') icon = '✅';
-    if (type === 'error') icon = '❌';
-    if (type === 'warning') icon = '⚠️';
 
-    toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-content">${message}</span>`;
+    if (type === 'success') {
+        colorClasses = 'bg-emerald-600 text-white border-emerald-700 shadow-lg shadow-emerald-900/20';
+        icon = '✅';
+    } else if (type === 'error') {
+        colorClasses = 'bg-rose-600 text-white border-rose-700 shadow-lg shadow-rose-900/20';
+        icon = '❌';
+    } else if (type === 'warning') {
+        colorClasses = 'bg-amber-600 text-white border-amber-700 shadow-lg shadow-amber-900/20';
+        icon = '⚠️';
+    }
+
+    toast.className = `toast-msg flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold shadow-lg ${colorClasses}`;
+    toast.innerHTML = `<span class="text-base">${icon}</span><span class="flex-1">${message}</span>`;
     container.appendChild(toast);
 
     // Animate in
@@ -1452,7 +1455,7 @@ function showToast(message, type = 'info') {
     // Auto dismiss
     setTimeout(() => {
         toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 400); // match transition duration
-    }, 4500); // give it a bit more time to read full info
+        setTimeout(() => toast.remove(), 400);
+    }, 4500);
 }
 
