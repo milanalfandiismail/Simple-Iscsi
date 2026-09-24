@@ -174,13 +174,9 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
         }
 
         ("GET", "/api/config/json") => {
-            match crate::config::load_config("config.toml") {
-                Ok(cfg) => {
-                    match serde_json::to_string(&cfg) {
-                        Ok(json_str) => build_response(200, "OK", "application/json", &json_str),
-                        Err(e) => build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
-                    }
-                }
+            let cfg = crate::config::load_config("config.toml").unwrap_or_else(|_| (*config.read()).clone());
+            match serde_json::to_string(&cfg) {
+                Ok(json_str) => build_response(200, "OK", "application/json", &json_str),
                 Err(e) => build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
             }
         }
