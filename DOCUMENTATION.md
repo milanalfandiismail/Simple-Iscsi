@@ -3,6 +3,12 @@
 
 ---
 
+> [!IMPORTANT]
+> **Catatan Kompatibilitas Driver Client (Third-Party Drivers):**  
+> Untuk saat ini, sistem operasi Windows pada image client masih menggunakan komponen driver PNP / virtual network filter pihak ketiga (**Third-Party Driver** dari **CCBoot** atau **iSharedisk** seperti `CCBootPnp.sys` / `iSharePnp.sys`) untuk binding awal NIC adapter hardware saat OS pertama kali menyala. Seluruh transfer I/O data iSCSI, koneksi SANBOOT, negosiasi PDU, SCSI command execution, dan writeback caching sepenuhnya ditangani secara independen oleh **Target Server Simple-Iscsi**. Integrasi boot helper (`helper.exe`) dan parser ACPI iBFT dibangun untuk menjembatani konfigurasi IP otomatis dan transisi bertahap menuju arsitektur *100% native driverless*.
+
+---
+
 ## DAFTAR ISI
 1. [BAB 1: Pengenalan & Arsitektur Global Sistem](#bab-1-pengenalan--arsitektur-global-sistem)
 2. [BAB 2: Network Booting (PXE, DHCP Handshake, TFTP, & iPXE Scripting)](#bab-2-network-booting-pxe-dhcp-handshake-tftp--ipxe-scripting)
@@ -28,51 +34,51 @@ Pada sistem diskless SANBOOT:
 
 ```mermaid
 flowchart TD
-    subgraph Client_Side ["PC Client (Diskless)"]
-        NIC_ROM["UEFI / BIOS PXE Network ROM"]
-        IPXE_ENV["iPXE Bootloader (ipxe.efi)"]
-        WIN_KERNEL["Windows Kernel & Storport Driver (msiscsi.sys)"]
-        HELPER_SVC["Boot Helper Native Service (helper.exe)"]
+    subgraph Client_Side ["PC Client Diskless"]
+        NIC_ROM["UEFI or BIOS PXE Network ROM"]
+        IPXE_ENV["iPXE Bootloader ipxe.efi"]
+        WIN_KERNEL["Windows Kernel and Storport Driver msiscsi.sys"]
+        HELPER_SVC["Boot Helper Native Service helper.exe"]
     end
 
-    subgraph Network_Fabric ["Gigabit Network Fabric (1 Gbps LAN Switch)"]
+    subgraph Network_Fabric ["Gigabit Network Fabric 1 Gbps LAN"]
         NET_DHCP["DHCP UDP 67/68"]
         NET_TFTP["TFTP UDP 69"]
-        NET_ISCSI["iSCSI TCP 3260 / 3300 (Full Feature Phase Data Stream)"]
+        NET_ISCSI["iSCSI TCP 3260/3300 Data Stream"]
     end
 
-    subgraph Server_Side ["Target Server (Simple-Iscsi)"]
-        SRV_NET["Netboot Engine (src/netboot/)"]
-        SRV_SESSION["Session & PDU Handler (src/session/)"]
-        SRV_SCSI["SCSI Layer SBC-3/SPC-4 (src/scsi_gamedisk.rs)"]
-        SRV_CACHE["Writeback Cache Engine (src/writeback_gamedisk.rs)"]
-        VHD_STORE["Windows Base VHD (Read-Only)"]
-        RAW_STORE["Game Physical Disk Drive (\\.\\PhysicalDriveX)"]
-        WB_STORE["Client Cache .bin (128 MB Initial Pre-Alloc)"]
+    subgraph Server_Side ["Target Server Simple-Iscsi"]
+        SRV_NET["Netboot Engine src/netboot/"]
+        SRV_SESSION["Session and PDU Handler src/session/"]
+        SRV_SCSI["SCSI Layer SBC-3/SPC-4 src/scsi_gamedisk.rs"]
+        SRV_CACHE["Writeback Cache Engine src/writeback_gamedisk.rs"]
+        VHD_STORE["Windows Base VHD Read-Only"]
+        RAW_STORE["Game Physical Disk Drive"]
+        WB_STORE["Client Cache .bin 128 MB Initial"]
     end
 
-    NIC_ROM -->|1. DHCPDISCOVER| NET_DHCP
+    NIC_ROM -->|"1. DHCPDISCOVER"| NET_DHCP
     NET_DHCP --> SRV_NET
-    SRV_NET -->|2. DHCPOFFER + Option 17/170| NET_DHCP
+    SRV_NET -->|"2. DHCPOFFER with Option 17/170"| NET_DHCP
     NET_DHCP --> NIC_ROM
 
-    NIC_ROM -->|3. TFTP RRQ| NET_TFTP
+    NIC_ROM -->|"3. TFTP RRQ"| NET_TFTP
     NET_TFTP --> SRV_NET
-    SRV_NET -->|4. ipxe-shim.efi & autoexec.ipxe| IPXE_ENV
+    SRV_NET -->|"4. ipxe-shim.efi and autoexec.ipxe"| IPXE_ENV
 
-    IPXE_ENV -->|5. SANHOOK 0x81 GameDisk| NET_ISCSI
-    IPXE_ENV -->|6. SANBOOT 0x80 Windows OS| NET_ISCSI
+    IPXE_ENV -->|"5. SANHOOK 0x81 GameDisk"| NET_ISCSI
+    IPXE_ENV -->|"6. SANBOOT 0x80 Windows OS"| NET_ISCSI
     NET_ISCSI --> SRV_SESSION
     SRV_SESSION --> SRV_SCSI
 
-    SRV_SCSI -->|Read Base OS Blocks| VHD_STORE
-    SRV_SCSI -->|Read Game Storage Blocks| RAW_STORE
-    SRV_SCSI <-->|Read Hit / Write Stream| SRV_CACHE
+    SRV_SCSI -->|"Read Base OS Blocks"| VHD_STORE
+    SRV_SCSI -->|"Read Game Storage Blocks"| RAW_STORE
+    SRV_SCSI <-->|"Read Hit / Write Stream"| SRV_CACHE
     SRV_CACHE <--> WB_STORE
 
-    IPXE_ENV -->|7. Transfer Execution Control| WIN_KERNEL
-    WIN_KERNEL -->|8. Continuous SCSI Pipeline (900+ Mbps)| NET_ISCSI
-    HELPER_SVC -->|9. Parse ACPI iBFT & Clean Static IP| WIN_KERNEL
+    IPXE_ENV -->|"7. Transfer Execution Control"| WIN_KERNEL
+    WIN_KERNEL -->|"8. Continuous SCSI Pipeline 900+ Mbps"| NET_ISCSI
+    HELPER_SVC -->|"9. Parse ACPI iBFT and Clean Static IP"| WIN_KERNEL
 ```
 
 ---
@@ -205,22 +211,22 @@ Byte 0       Byte 1       Byte 2       Byte 3
 
 | OpCode | Hex | Arah Transmisi | Nama Perintah | Fungsi Utama |
 | :--- | :--- | :--- | :--- | :--- |
-| `OP_NOP_OUT` | `0x00` | Initiator $\rightarrow$ Target | NOP-Out (Ping) | Verifikasi *keep-alive* koneksi atau memicu respons NOP-In target. |
-| `OP_SCSI_CMD` | `0x01` | Initiator $\rightarrow$ Target | SCSI Command | Mengirim perintah SCSI (READ, WRITE, INQUIRY, dll.) via 16-byte CDB. |
-| `OP_TMF_REQ` | `0x02` | Initiator $\rightarrow$ Target | Task Management Request | Manajemen antrean/reset SCSI (LUN Reset, Abort Task). |
-| `OP_LOGIN_REQ` | `0x03` | Initiator $\rightarrow$ Target | Login Request | Memulai sesi iSCSI dan negosiasi parameter operasional. |
-| `OP_TEXT_REQ` | `0x04` | Initiator $\rightarrow$ Target | Text Request | Penemuan target (*SendTargets discovery*) dan pertukaran teks. |
-| `OP_DATA_OUT` | `0x05` | Initiator $\rightarrow$ Target | SCSI Data-Out | Mengirim data penulisan dari Initiator ke Target (Write payload). |
-| `OP_LOGOUT_REQ` | `0x06` | Initiator $\rightarrow$ Target | Logout Request | Mengakhiri sesi iSCSI secara bersih (*clean teardown*). |
-| `OP_NOP_IN` | `0x20` | Target $\rightarrow$ Initiator | NOP-In (Pong) | Membalas NOP-Out atau probe kesehatan koneksi dari target. |
-| `OP_SCSI_RESP` | `0x21` | Target $\rightarrow$ Initiator | SCSI Response | Mengembalikan status penyelesaian SCSI (GOOD `0x00`, CHECK CONDITION `0x02`). |
-| `OP_TMF_RESP` | `0x22` | Target $\rightarrow$ Initiator | Task Management Response | Mengembalikan status fungsi TMF. |
-| `OP_LOGIN_RESP` | `0x23` | Target $\rightarrow$ Initiator | Login Response | Mengonfirmasi tahap login atau transisi ke Full Feature Phase. |
-| `OP_TEXT_RESP` | `0x24` | Target $\rightarrow$ Initiator | Text Response | Membalas daftar target IQN yang tersedia. |
-| `OP_DATA_IN` | `0x25` | Target $\rightarrow$ Initiator | SCSI Data-In | Mengirim payload pembacaan (Read data) dari target ke Initiator. |
-| `OP_R2T` | `0x31` | Target $\rightarrow$ Initiator | Ready To Transfer (R2T) | Memberitahu Initiator bahwa Target siap menerima payload Data-Out berikutnya. |
-| `OP_LOGOUT_RESP`| `0x26` | Target $\rightarrow$ Initiator | Logout Response | Mengonfirmasi penutupan sesi. |
-| `OP_REJECT` | `0x3F` | Target $\rightarrow$ Initiator | Reject | Menolak PDU yang mengalami korupsi atau pelanggaran protokol. |
+| `OP_NOP_OUT` | `0x00` | Initiator → Target | NOP-Out (Ping) | Verifikasi *keep-alive* koneksi atau memicu respons NOP-In target. |
+| `OP_SCSI_CMD` | `0x01` | Initiator → Target | SCSI Command | Mengirim perintah SCSI (READ, WRITE, INQUIRY, dll.) via 16-byte CDB. |
+| `OP_TMF_REQ` | `0x02` | Initiator → Target | Task Management Request | Manajemen antrean/reset SCSI (LUN Reset, Abort Task). |
+| `OP_LOGIN_REQ` | `0x03` | Initiator → Target | Login Request | Memulai sesi iSCSI dan negosiasi parameter operasional. |
+| `OP_TEXT_REQ` | `0x04` | Initiator → Target | Text Request | Penemuan target (*SendTargets discovery*) dan pertukaran teks. |
+| `OP_DATA_OUT` | `0x05` | Initiator → Target | SCSI Data-Out | Mengirim data penulisan dari Initiator ke Target (Write payload). |
+| `OP_LOGOUT_REQ` | `0x06` | Initiator → Target | Logout Request | Mengakhiri sesi iSCSI secara bersih (*clean teardown*). |
+| `OP_NOP_IN` | `0x20` | Target → Initiator | NOP-In (Pong) | Membalas NOP-Out atau probe kesehatan koneksi dari target. |
+| `OP_SCSI_RESP` | `0x21` | Target → Initiator | SCSI Response | Mengembalikan status penyelesaian SCSI (GOOD `0x00`, CHECK CONDITION `0x02`). |
+| `OP_TMF_RESP` | `0x22` | Target → Initiator | Task Management Response | Mengembalikan status fungsi TMF. |
+| `OP_LOGIN_RESP` | `0x23` | Target → Initiator | Login Response | Mengonfirmasi tahap login atau transisi ke Full Feature Phase. |
+| `OP_TEXT_RESP` | `0x24` | Target → Initiator | Text Response | Membalas daftar target IQN yang tersedia. |
+| `OP_DATA_IN` | `0x25` | Target → Initiator | SCSI Data-In | Mengirim payload pembacaan (Read data) dari target ke Initiator. |
+| `OP_R2T` | `0x31` | Target → Initiator | Ready To Transfer (R2T) | Memberitahu Initiator bahwa Target siap menerima payload Data-Out berikutnya. |
+| `OP_LOGOUT_RESP`| `0x26` | Target → Initiator | Logout Response | Mengonfirmasi penutupan sesi. |
+| `OP_REJECT` | `0x3F` | Target → Initiator | Reject | Menolak PDU yang mengalami korupsi atau pelanggaran protokol. |
 
 ---
 
@@ -241,8 +247,8 @@ Sebuah sesi iSCSI melewati beberapa tahap (*Stages*) yang diatur oleh bit `CSG` 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> FREE : TCP Connect (Port 3260/3300)
-    FREE --> STAGE_0 : Login Request (CSG=0, NSG=1, Transit=True)
+    [*] --> FREE : TCP Connect
+    FREE --> STAGE_0 : Login Request (CSG=0, NSG=1)
     
     state STAGE_0 {
         [*] --> Security_Negotiation
@@ -253,26 +259,26 @@ stateDiagram-v2
     
     state STAGE_1 {
         [*] --> Parameter_Negotiation
-        Parameter_Negotiation --> Negotiate_Burst : MaxRecvDataSegmentLength, BurstLength
-        Negotiate_Burst --> Negotiate_Queues : MaxOutstandingR2T, ImmediateData
+        Parameter_Negotiation --> Negotiate_Burst : Burst Lengths
+        Negotiate_Burst --> Negotiate_Queues : Queues and ImmedData
         Negotiate_Queues --> OPNS_Done : Parameter Accepted
     }
     
-    STAGE_1 --> STAGE_3 : Login Response (CSG=1, NSG=3, Transit=True)
+    STAGE_1 --> STAGE_3 : Login Response (CSG=1, NSG=3)
     
     state STAGE_3 {
         [*] --> Full_Feature_Phase
-        Full_Feature_Phase --> SCSI_Command_Dispatch : OP_SCSI_CMD (0x01)
+        Full_Feature_Phase --> SCSI_Command_Dispatch : OP_SCSI_CMD
         SCSI_Command_Dispatch --> SCSI_Read : READ 10 / READ 16
         SCSI_Command_Dispatch --> SCSI_Write : WRITE 10 / WRITE 16
         SCSI_Command_Dispatch --> SCSI_Inquiry : INQUIRY / MODE SENSE
-        SCSI_Read --> Full_Feature_Phase : OP_DATA_IN (0x25) + Status
-        SCSI_Write --> Full_Feature_Phase : OP_R2T (0x31) / OP_SCSI_RESP (0x21)
-        SCSI_Inquiry --> Full_Feature_Phase : OP_SCSI_RESP (0x21)
+        SCSI_Read --> Full_Feature_Phase : OP_DATA_IN + Status
+        SCSI_Write --> Full_Feature_Phase : OP_R2T / OP_SCSI_RESP
+        SCSI_Inquiry --> Full_Feature_Phase : OP_SCSI_RESP
     }
     
-    STAGE_3 --> LOGOUT_PHASE : OP_LOGOUT_REQ (0x06)
-    LOGOUT_PHASE --> [*] : OP_LOGOUT_RESP (0x26) & Session Destroyed
+    STAGE_3 --> LOGOUT_PHASE : OP_LOGOUT_REQ
+    LOGOUT_PHASE --> [*] : OP_LOGOUT_RESP
 ```
 
 ### Parameter Operasional yang Dinegosiasikan pada Stage 1 (Operational Negotiation):
@@ -298,24 +304,24 @@ Target Simple-Iscsi bertindak sebagai virtual SCSI Controller yang mengemulasika
 
 ```mermaid
 flowchart TD
-    CDB_IN["PDU SCSI Command CDB (Opcode = cdb[0])"]
+    CDB_IN["PDU SCSI Command CDB"]
     
-    CDB_IN -->|0x12| INQ["handle_inquiry()"]
-    CDB_IN -->|0x25| RC10["handle_read_capacity_10()"]
-    CDB_IN -->|0x9E| RC16["handle_service_action_in_16()"]
-    CDB_IN -->|0x28| R10["handle_read_10()"]
-    CDB_IN -->|0x88| R16["handle_read_16()"]
-    CDB_IN -->|0x2A / 0x8A| W["handle_write() -> Writeback Cache"]
-    CDB_IN -->|0xA0| RLUN["handle_report_luns()"]
-    CDB_IN -->|0x1A / 0x5A| MS["handle_mode_sense()"]
+    CDB_IN -->|"0x12"| INQ["handle_inquiry()"]
+    CDB_IN -->|"0x25"| RC10["handle_read_capacity_10()"]
+    CDB_IN -->|"0x9E"| RC16["handle_service_action_in_16()"]
+    CDB_IN -->|"0x28"| R10["handle_read_10()"]
+    CDB_IN -->|"0x88"| R16["handle_read_16()"]
+    CDB_IN -->|"0x2A / 0x8A"| W["handle_write() -> Writeback Cache"]
+    CDB_IN -->|"0xA0"| RLUN["handle_report_luns()"]
+    CDB_IN -->|"0x1A / 0x5A"| MS["handle_mode_sense()"]
     
-    INQ -->|Standard (EVPD=0)| INQ_STD["Byte 7: CmdQue = 1 (QD 32-64 Enabled)"]
-    INQ -->|VPD 0xB0| INQ_B0["VPD Block Limits (Granularity 4K, Max Transfer 4MB)"]
-    INQ -->|VPD 0xB1| INQ_B1["VPD Characteristics (SSD Non-Rotating 0x0001)"]
+    INQ -->|"Standard EVPD=0"| INQ_STD["Byte 7: CmdQue = 1 (QD 32-64 Enabled)"]
+    INQ -->|"VPD 0xB0"| INQ_B0["VPD Block Limits (Granularity 4K, Max Transfer 4MB)"]
+    INQ -->|"VPD 0xB1"| INQ_B1["VPD Characteristics (SSD Non-Rotating 0x0001)"]
     
     R10 --> FAST_RAM{"Hit di DashMap RAM Cache?"}
-    FAST_RAM -->|Ya (0 ms)| RAM_RET["Direct Memory Slice Copy"]
-    FAST_RAM -->|Tidak| DISK_RET["Spawn Blocking Backend Read"]
+    FAST_RAM -->|"Ya (0 ms)"| RAM_RET["Direct Memory Slice Copy"]
+    FAST_RAM -->|"Tidak"| DISK_RET["Spawn Blocking Backend Read"]
 ```
 
 ---
@@ -331,8 +337,8 @@ Saat driver Windows Storport (`msiscsi.sys`) memuat disk target, Windows membaca
 // Byte 7: 0x02 (CmdQue = 1: Tagged Command Queuing / NCQ Didukung!)
 response_data.extend_from_slice(&[0x00, 0x00, 0x06, 0x02, 31, 0x00, 0x00, 0x02]);
 ```
-* **Jika `CmdQue = 0`:** Windows mengunci antrean ke **Queue Depth (QD) = 1 (Stop-and-Wait)** $\rightarrow$ Throughput kabel LAN tercekik di $\sim$10 MB/s.
-* **Jika `CmdQue = 1` (`0x02`):** Windows membuka antrean pipa paralel **Queue Depth 32 hingga 64** $\rightarrow$ Throughput melesat ke **900+ Mbps**.
+* **Jika `CmdQue = 0`:** Windows mengunci antrean ke **Queue Depth (QD) = 1 (Stop-and-Wait)** → Throughput kabel LAN tercekik di ~10 MB/s.
+* **Jika `CmdQue = 1` (`0x02`):** Windows membuka antrean pipa paralel **Queue Depth 32 hingga 64** → Throughput melesat ke **900+ Mbps**.
 
 ---
 
@@ -383,7 +389,7 @@ flowchart TD
     WRITE_REQ["Client SCSI WRITE (LBA, Data)"]
     
     subgraph Layer1 ["Layer 1: Lock-Free RAM Cache (0 ms Latency)"]
-        DASHMAP["DashMap<u64, Arc<Vec<u8>>>"]
+        DASHMAP["DashMap Memory Table"]
     end
     
     subgraph Layer2 ["Layer 2: Background Async Disk Sync"]
@@ -393,13 +399,13 @@ flowchart TD
         BLOCK_MAP["Atomic Offset Block Map (.map)"]
     end
     
-    WRITE_REQ -->|1. Simpan Instan ke RAM| DASHMAP
-    WRITE_REQ -->|2. Non-blocking Enqueue| CHANNEL
-    WRITE_REQ -->|3. Kirim Status Selesai ke Windows| RESP["SCSI Response GOOD (0x00)"]
+    WRITE_REQ -->|"1. Simpan Instan ke RAM"| DASHMAP
+    WRITE_REQ -->|"2. Non-blocking Enqueue"| CHANNEL
+    WRITE_REQ -->|"3. Kirim Status Selesai ke Windows"| RESP["SCSI Response GOOD (0x00)"]
     
-    CHANNEL -->|4. Pop Task| WORKER
-    WORKER -->|5. Write at Base Offset| FILE_BIN
-    WORKER -->|6. Update LBA -> Offset Table| BLOCK_MAP
+    CHANNEL -->|"4. Pop Task"| WORKER
+    WORKER -->|"5. Write at Base Offset"| FILE_BIN
+    WORKER -->|"6. Update LBA to Offset Table"| BLOCK_MAP
 ```
 
 ---
@@ -415,7 +421,7 @@ if let Ok(meta) = file_write_handle.metadata() {
 }
 ```
 
-* **Jika 0 Byte:** Selama proses booting, Windows menulis $\sim$50–100 MB file log/registry. Filesystem host server akan melakukan syscall *`ExtendFile`* puluhan ribu kali per detik yang menyebabkan fragmentasi file dan *I/O lock contention* (stuttering).
+* **Jika 0 Byte:** Selama proses booting, Windows menulis ~50–100 MB file log/registry. Filesystem host server akan melakukan syscall *`ExtendFile`* puluhan ribu kali per detik yang menyebabkan fragmentasi file dan *I/O lock contention* (stuttering).
 * **Jika 128 MB:** Seluruh burst data boot Windows langsung ditampung dalam 1 blok alokasi kontinu tanpa jeda alokasi.
 * **Auto-Grow:** Jika pemakaian client melebihi 128 MB, file `.bin` otomatis mengembang dinamis hingga batas `max_cache_per_client_gb` di `config.toml`.
 * **Isolasi Diskless:** Saat client logout/disconnect, seluruh file cache `.bin` dan `.map` milik client tersebut dihapus bersih secara otomatis.
@@ -433,19 +439,19 @@ flowchart TD
     subgraph iBFT_Parsing ["1. Ekstraksi ACPI iBFT (Driverless)"]
         FIRMWARE["GetSystemFirmwareTable('ACPI', 'TFBI')"]
         PARSE_IP["Ekstraksi: IP Client, Subnet, Gateway, DNS"]
-        PARSE_NAME["Ekstraksi: Hostname & Initiator IQN"]
+        PARSE_NAME["Ekstraksi: Hostname and Initiator IQN"]
     end
     
     subgraph IP_Cleaning ["2. Deep IP Cleaner"]
-        REG_SCAN["Pindai HKLM\\...\\Tcpip\\Parameters\\Interfaces"]
+        REG_SCAN["Pindai Registry Tcpip Interfaces"]
         FIND_GHOST["Temukan Network Adapter Virtual / Non-Aktif"]
         CLEAR_OLD["Hapus IP Statis Lawas yang Menumpuk"]
     end
     
     subgraph IP_Injection ["3. Injeksi IP Statis Instan"]
-        SET_IP["Set Static IP & Subnet ke Active Physical NIC"]
-        SET_GW["Set Gateway & Primary/Secondary DNS"]
-        SET_HOST["Set ComputerName & Hostname"]
+        SET_IP["Set Static IP and Subnet ke Active Physical NIC"]
+        SET_GW["Set Gateway and Primary/Secondary DNS"]
+        SET_HOST["Set ComputerName and Hostname"]
     end
     
     subgraph REG_TUNE ["4. Penyetelan Kinerja iSCSI Windows"]
@@ -453,11 +459,32 @@ flowchart TD
         TUNE_BURST["Set MaxBurstLength = 2097152 (2 MB)"]
     end
     
-    START --> FIRMWARE --> PARSE_IP --> PARSE_NAME
-    PARSE_NAME --> REG_SCAN --> FIND_GHOST --> CLEAR_OLD
-    CLEAR_OLD --> SET_IP --> SET_GW --> SET_HOST
-    SET_HOST --> TUNE_LEN --> TUNE_BURST --> END_READY["Windows Masuk Desktop Mulus Tanpa Delay DHCP"]
+    START --> FIRMWARE
+    FIRMWARE --> PARSE_IP
+    PARSE_IP --> PARSE_NAME
+    PARSE_NAME --> REG_SCAN
+    REG_SCAN --> FIND_GHOST
+    FIND_GHOST --> CLEAR_OLD
+    CLEAR_OLD --> SET_IP
+    SET_IP --> SET_GW
+    SET_GW --> SET_HOST
+    SET_HOST --> TUNE_LEN
+    TUNE_LEN --> TUNE_BURST
+    TUNE_BURST --> END_READY["Windows Masuk Desktop Mulus Tanpa Delay DHCP"]
 ```
+
+## 7.2 Status Integrasi Driver Client & Penggunaan Third-Party Driver (CCBoot & iSharedisk)
+
+Dalam ekosistem diskless Windows saat ini, proses booting SANBOOT iSCSI melibatkan dua komponen utama pada sisi client:
+
+1. **Inisialisasi NIC Adapter Hardware (PNP Driver Level):**
+   * Saat Windows kernel (`ntoskrnl.exe`) dan NDIS (*Network Driver Interface Specification*) pertama kali memuat driver kartu jaringan (Intel/Realtek/Aquantia), adapter jaringan membutuhkan filter driver PNP agar koneksi socket TCP level kernel ke target server tidak terputus (*link drop*).
+   * **Untuk saat ini, sistem masih menggunakan filter driver PNP pihak ketiga (*Third-Party Driver*) yaitu CCBoot (`CCBootPnp.sys`) atau iSharedisk (`iSharePnp.sys`) pada image Windows master client.** Driver ini bertugas menjaga *binding* kartu LAN agar tetap aktif saat transisi fase boot real-mode iPXE ke protected mode Windows.
+
+2. **Peran Target Server Simple-Iscsi & `helper.exe`:**
+   * Seluruh pertukaran data I/O block storage (VHD OS & GameDisk), pemrosesan paket iSCSI RFC 7143, state machine SCSI SPC-4/SBC-3, dan alokasi *Writeback Cache Engine 128 MB* ditangani **100% secara independen oleh Simple-Iscsi Target Server**.
+   * Utilitas `helper.exe` mengambil alih konfigurasi jaringan runtime (IP, subnet, gateway, DNS, hostname) langsung dari tabel firmware ACPI iBFT dan membersihkan residu IP lama tanpa bergantung pada software client CCBoot/iSharedisk berbayar.
+   * Arsitektur ini dirancang sebagai jembatan transisi yang stabil menuju pengembangan modul *native filter driver open-source* mandiri di masa depan.
 
 ---
 
@@ -465,15 +492,15 @@ flowchart TD
 
 ## 8.1 Ringkasan Perbandingan Teknis: Sebelum vs Sesudah Optimasi
 
-| Parameter Teknis | Kondisi Lama (Mentok $\sim$10 MB/s) | Kondisi Baru (Tembus **900+ Mbps**) |
+| Parameter Teknis | Kondisi Lama (Mentok ~10 MB/s) | Kondisi Baru (Tembus **900+ Mbps**) |
 | :--- | :--- | :--- |
-| **SCSI INQUIRY Byte 7** | `0x00` (`CmdQue = 0`) $\rightarrow$ **Queue Depth dikunci ke 1** | **`0x02` (`CmdQue = 1`)** $\rightarrow$ **Queue Depth terbuka ke 32–64** |
+| **SCSI INQUIRY Byte 7** | `0x00` (`CmdQue = 0`) → **Queue Depth dikunci ke 1** | **`0x02` (`CmdQue = 1`)** → **Queue Depth terbuka ke 32–64** |
 | **PDU Target Transfer Tag** | `0x00000000` (Pelanggaran RFC 7143 §10.4.5) | **`0xFFFFFFFF`** (Standar Resmi RFC 7143) |
 | **Write ExpDataSN** | Selalu `0` (Memicu *packet loss panic* di Windows) | **Sinkron terhitung** sesuai jumlah `DataSN` yang diterima |
 | **VPD Page 0xB0** | Offset byte bergeser (Data dianggap korup oleh Windows) | **Optimal Granularity 4 KB & Max Transfer 4 MB** |
 | **Alokasi Cache Awal** | 1 GB kaku atau 0 Byte dinamis | **128 MB Pre-Allocation + Auto-Grow dinamis** |
 | **Script iPXE SANHOOK** | Menggunakan `--drive 0x81` tanpa fallback atau menimpa `0x80` | **GameDisk dikunci di `0x81`, Boot OS dikunci di `0x80`** |
-| **Throughput LAN 1 Gbps** | $\sim$10.6 MB/s ($\sim$85 Mbps) | **$\sim$112.5 MB/s (900+ Mbps)** |
+| **Throughput LAN 1 Gbps** | ~10.6 MB/s (~85 Mbps) | **~112.5 MB/s (900+ Mbps)** |
 
 ---
 
