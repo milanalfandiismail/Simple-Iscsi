@@ -403,17 +403,17 @@ function renderDashboardClientsTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-3.5 px-5">${statusSpan}</td>
-            <td class="py-3.5 px-5 font-semibold text-stone-900">${c.ip}${superBadge}${dynamicBadge}</td>
-            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
-            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-stone-800 bg-stone-100 rounded px-1.5 py-0.5 inline-block my-2">${c.image_manager || 'None (Gamedisk)'}</td>
-            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
-            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-3.5 px-5 text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap">${statusSpan}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-semibold text-stone-900">${c.ip}${superBadge}${dynamicBadge}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-800"><span class="bg-stone-100 rounded px-1.5 py-0.5">${c.image_manager || 'None (Gamedisk)'}</span></td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
         tbody.appendChild(row);
     });
@@ -458,19 +458,19 @@ function renderClientsManagerTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-3.5 px-5">${statusSpan}</td>
-            <td class="py-3.5 px-5 font-semibold text-stone-900">${c.hostname || 'PC'}${superBadge}</td>
-            <td class="py-3.5 px-5 font-mono text-xs">${c.ip}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-stone-500">${c.mac}</td>
-            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
-            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-stone-800">${c.image_manager || 'Gamedisk'}</td>
-            <td class="py-3.5 px-5 text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
-            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-3.5 px-5 text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap">${statusSpan}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-semibold text-stone-900">${c.hostname || 'PC'}${superBadge}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${c.ip}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-500">${c.mac}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-800">${c.image_manager || 'Gamedisk'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
 
         // Double click or click to edit client configuration
@@ -629,10 +629,10 @@ function renderVhdTable() {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-3.5 px-5 font-mono text-xs font-bold text-stone-900">${key}</td>
-            <td class="py-3.5 px-5 font-mono text-xs text-stone-500">${path}</td>
-            <td class="py-3.5 px-5 text-xs text-stone-500 font-medium" id="snapshots-count-${key}">Loading...</td>
-            <td class="py-3.5 px-5" style="text-align: right;">
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs font-bold text-stone-900">${key}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-500">${path}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-medium" id="snapshots-count-${key}">Loading...</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap" style="text-align: right;">
                 <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all mr-2" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
                 <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 shadow-sm transition-all" onclick="showVhdSnapshots('${key}')">Snapshots</button>
             </td>
@@ -754,13 +754,15 @@ async function loadWritebackFiles() {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-3.5 px-5 font-mono text-xs font-bold text-stone-900">${f.name}</td>
-            <td class="py-3.5 px-5 font-mono text-xs">${formatBytes(f.size)}</td>
-            <td class="py-3.5 px-5 text-xs text-stone-500 font-mono">${f.path}</td>
-            <td class="py-3.5 px-5" style="text-align: right;">
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs font-bold text-stone-900">${f.name}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(f.size)}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-mono">${f.path}</td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap" style="text-align: right;">
                 <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-all" onclick="clearWritebackCache('${f.path}')">Hapus</button>
             </td>
         `;
+        tbody.appendChild(row);
+    });
         tbody.appendChild(row);
     });
 }
@@ -887,7 +889,7 @@ async function populateSystemDrives() {
             }
 
             const card = document.createElement('div');
-            card.className = 'bg-white border border-stone-200 hover:border-stone-400 rounded-xl p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
+            card.className = 'bg-white border border-stone-200 hover:border-stone-400 rounded-xl p-4 sm:p-5 lg:p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
 
             let badgeHTML = '';
             if (isBoot) {
@@ -1100,9 +1102,9 @@ async function showVhdSnapshots(key) {
             row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
             const filename = snapshot.path.split(/[/\\]/).pop();
             row.innerHTML = `
-                <td class="py-3.5 px-5 font-semibold text-stone-900">Snapshot #${snapshot.index}</td>
-                <td class="py-3.5 px-5 font-mono text-xs text-stone-500" title="${snapshot.path}">${filename}</td>
-                <td class="py-3.5 px-5" style="text-align: right;">
+                <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-semibold text-stone-900">Snapshot #${snapshot.index}</td>
+                <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-500" title="${snapshot.path}">${filename}</td>
+                <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap" style="text-align: right;">
                     <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 shadow-sm transition-all" onclick="restoreSnapshotAction('${key}', ${snapshot.index})">🔄 Restore</button>
                 </td>
             `;
@@ -1273,8 +1275,8 @@ async function loadTftpFolders() {
             const row = document.createElement('tr');
             row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
             row.innerHTML = `
-                <td class="py-3.5 px-5 font-semibold text-stone-900">${f}</td>
-                <td class="py-3.5 px-5" style="text-align: right;">
+                <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-semibold text-stone-900">${f}</td>
+                <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap" style="text-align: right;">
                     <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 active:scale-[0.98] transition-all" onclick="deleteTftpFolderAction('${f}')">🗑️ Hapus</button>
                 </td>
             `;
