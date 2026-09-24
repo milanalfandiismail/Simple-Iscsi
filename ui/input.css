@@ -10,30 +10,7 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@layer base {
-  /* Global standard: tidak ada zoom pada body */
-  html, body {
-    font-size: 100%;
-    zoom: 1;
-  }
-}
-
 @layer utilities {
-  /* Zoom khusus untuk tabel Daftar Penggunaan I/O Klien & Klien Manager pada breakpoint LG & XL */
-  @media (min-width: 1024px) and (max-width: 1279px) {
-    #tab-dashboard table,
-    #tab-clients table {
-      zoom: 0.84;
-    }
-  }
-
-  @media (min-width: 1280px) and (max-width: 1535px) {
-    #tab-dashboard table,
-    #tab-clients table {
-      zoom: 0.92;
-    }
-  }
-
   /* Tab Navigation Visibility */
   .tab-panel {
     display: none;
