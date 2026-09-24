@@ -410,6 +410,15 @@ impl DhcpServer {
         let root_path = format!("iscsi:{}::{}:0:{}", next_server_str, server_port, iscsi_iqn);
         resp.options.insert(17, root_path.as_bytes().to_vec());
 
+        // Option 170: GameDisk Root-Path (RFC 4173 URI for secondary/game drive)
+        if !self.config.read().gamedisk.is_empty() {
+            let gd_iqn = &self.config.read().gamedisk_target.target_iqn;
+            if !gd_iqn.is_empty() {
+                let gd_root_path = format!("iscsi:{}::{}:0:{}", next_server_str, server_port, gd_iqn);
+                resp.options.insert(170, gd_root_path.as_bytes().to_vec());
+            }
+        }
+
         let is_broadcast = (req.flags & 0x8000) != 0;
         let packet = resp.serialize();
 
