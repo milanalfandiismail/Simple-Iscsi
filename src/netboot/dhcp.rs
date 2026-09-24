@@ -4,7 +4,6 @@ use tracing::{info, warn, error, debug};
 use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr};
 use std::collections::{HashMap, BTreeMap};
 use tokio::sync::Mutex;
-use bytes::Buf;
 use std::str::FromStr;
 use socket2::{Socket, Domain, Type, Protocol};
 
@@ -211,9 +210,13 @@ impl DhcpServer {
     }
 
     async fn allocate_ip(&self, mac: &[u8; 6], client_conf: Option<&ClientConfig>) -> Ipv4Addr {
+        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
         if let Some(c) = client_conf {
             let static_ip_str = &c.ip;
             if let Ok(ip) = Ipv4Addr::from_str(static_ip_str) {
+                self.stats.dhcp_leases.insert(mac_str, ip.to_string());
                 return ip;
             } else {
                 warn!("IP statis tidak valid di clients.toml untuk MAC: {:?}", mac);
@@ -222,6 +225,7 @@ impl DhcpServer {
 
         let mut leases = self.leases.lock().await;
         if let Some(ip) = leases.get(mac) {
+            self.stats.dhcp_leases.insert(mac_str.clone(), ip.to_string());
             return *ip;
         }
 
@@ -229,8 +233,6 @@ impl DhcpServer {
         let ip = self.allocate_next_free_ip(&clients_guard, &leases).await;
         leases.insert(*mac, ip);
 
-        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         self.stats.dhcp_leases.insert(mac_str, ip.to_string());
 
         ip
