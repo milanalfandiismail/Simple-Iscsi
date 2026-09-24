@@ -20,6 +20,8 @@ pub struct Config {
     pub dhcp: Option<DhcpConfig>,
 }
 
+fn default_true() -> bool { true }
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct DhcpConfig {
     pub enabled: bool,
@@ -34,6 +36,8 @@ pub struct DhcpConfig {
     pub pxe_default: Option<String>,
     #[serde(default)]
     pub nic_ips: Option<Vec<String>>,
+    #[serde(default = "default_true")]
+    pub auto_add_client: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]

@@ -39,3 +39,4 @@ subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"
 nic_ips = ["192.168.180.1"]
+auto_add_client = true

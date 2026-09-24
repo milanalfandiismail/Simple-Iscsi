@@ -332,10 +332,16 @@
                                     <span class="text-lg sm:text-xl">🔌</span>
                                     <h2 class="text-sm sm:text-base font-bold text-stone-900 font-['General_Sans','Outfit',sans-serif] m-0">DHCP Server Configuration</h2>
                                 </div>
-                                <label class="flex items-center gap-1.5 text-xs font-semibold cursor-pointer m-0 bg-stone-50 px-2.5 py-1 rounded-full border border-stone-300">
-                                    <input type="checkbox" id="set-dhcp-enabled" class="w-3.5 h-3.5 rounded text-indigo-600">
-                                    <span>Aktif</span>
-                                </label>
+                                <div class="flex items-center gap-2">
+                                    <label class="flex items-center gap-1.5 text-xs font-semibold cursor-pointer m-0 bg-stone-50 px-2.5 py-1 rounded-full border border-stone-300" title="Auto-Add: Klien baru yang belum terdaftar otomatis ditambahkan ke clients.toml">
+                                        <input type="checkbox" id="set-dhcp-auto-add" class="w-3.5 h-3.5 rounded text-amber-500">
+                                        <span>Auto-Add</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 text-xs font-semibold cursor-pointer m-0 bg-stone-50 px-2.5 py-1 rounded-full border border-stone-300">
+                                        <input type="checkbox" id="set-dhcp-enabled" class="w-3.5 h-3.5 rounded text-indigo-600">
+                                        <span>Aktif</span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="space-y-4 text-xs sm:text-sm">
                                 <div>

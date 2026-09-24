@@ -1283,6 +1283,8 @@ async function loadConfigJson() {
         if (currentCfg.dhcp) {
             const enabledEl = document.getElementById('set-dhcp-enabled');
             if (enabledEl) enabledEl.checked = !!currentCfg.dhcp.enabled;
+            const autoAddEl = document.getElementById('set-dhcp-auto-add');
+            if (autoAddEl) autoAddEl.checked = currentCfg.dhcp.auto_add_client !== false;
             const nextEl = document.getElementById('set-dhcp-next');
             if (nextEl) nextEl.value = currentCfg.dhcp.next_server || '';
             const startIpEl = document.getElementById('set-dhcp-start-ip');
@@ -1405,6 +1407,7 @@ async function saveConfigJson(e) {
 
     configObj.dhcp = {
         enabled: dhcpEnabled,
+        auto_add_client: document.getElementById('set-dhcp-auto-add')?.checked ?? true,
         next_server: nextServerVal,
         start_ip: startIpVal,
         end_ip: endIpVal,
