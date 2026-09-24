@@ -1,10 +1,11 @@
 #!ipxe
 clear net0/gateway
 clear gateway
-isset ${170:string} && sanhook --drive 0x81 ${170:string} || isset ${168:string} && sanhook --drive 0x81 iscsi:${168:string}::3300:0:iqn.2024-01.com.tmdebug:gamedisks || sanhook --drive 0x81 iscsi:${168:string}::3260:0:iqn.2024-01.com.tmdebug:gamedisks || echo GameDisk not available
+isset ${170:string} && sanhook --no-describe ${170:string} || isset ${168:string} && sanhook --no-describe iscsi:${168:string}::3300:0:iqn.2024-01.com.tmdebug:gamedisks || sanhook --no-describe iscsi:${168:string}::3260:0:iqn.2024-01.com.tmdebug:gamedisks ||
 isset ${root-path} && sanboot ${root-path} ||
 isset ${169:string} && sanboot iscsi:${168:string}::3300:0:${169:string} ||
 isset ${169:string} && sanboot iscsi:${168:string}::3260:0:${169:string} ||
 isset ${169:string} && sanboot iscsi:${168:string}:::0:${169:string} ||
 shell
+
 
