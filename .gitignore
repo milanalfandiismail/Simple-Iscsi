@@ -33,3 +33,7 @@ iscsi-server-planning.md
 # Frontend
 node_modules/
 package-lock.json
+
+# Local Configurations (Personal Data)
+config.toml
+clients.toml
