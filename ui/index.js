@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initial Data Sequence
     await loadInitialData();
 
-    // Start Live SSE Stream
+    // Start Live Stats Polling Loop (1-second intervals)
     initStatsStream();
 
     // Background Auto-sync
@@ -126,10 +126,15 @@ async function apiPost(url, body = {}) {
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: typeof body === 'string' ? body : JSON.stringify(body)
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return await res.json();
+        }
+        const text = await res.text();
+        return { status: 'ok', message: text };
     } catch (err) {
         console.error(`POST ${url} failed:`, err);
         return null;
@@ -207,7 +212,7 @@ function showToast(message, type = 'info') {
 
 // Server Network Interfaces
 async function loadNetworkInterfaces() {
-    const data = await apiGet('/api/network/interfaces');
+    const data = await apiGet('/api/system/network_interfaces');
     if (data && Array.isArray(data)) {
         availableNetworkIps = data;
         populateNetworkDropdowns();
@@ -237,24 +242,21 @@ function populateNetworkDropdowns() {
     });
 }
 
-// Real-Time SSE Event Stream
+// Live Stats Polling Loop
 function initStatsStream() {
-    const eventSource = new EventSource('/api/stats');
-
-    eventSource.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
+    const fetchStats = async () => {
+        const data = await apiGet('/api/stats');
+        if (data) {
             handleStatsData(data);
-        } catch (e) {
-            console.error('Error parsing SSE stats data:', e);
+        } else {
+            updateServiceCard('iscsi', { enabled: false, port: 0 });
+            updateServiceCard('dhcp', { enabled: false, port: 0 });
+            updateServiceCard('tftp', { enabled: false, port: 0 });
         }
     };
 
-    eventSource.onerror = () => {
-        updateServiceCard('iscsi', { enabled: false, port: 0 });
-        updateServiceCard('dhcp', { enabled: false, port: 0 });
-        updateServiceCard('tftp', { enabled: false, port: 0 });
-    };
+    fetchStats();
+    setInterval(fetchStats, 1000);
 }
 
 function handleStatsData(data) {
@@ -607,7 +609,7 @@ async function populateClientImageDropdown() {
         });
     }
 
-    const vhdFiles = await apiGet('/api/vhd/files');
+    const vhdFiles = await apiGet('/api/system/vhds');
     if (vhdFiles && Array.isArray(vhdFiles)) {
         vhdFiles.forEach(file => {
             if (!configObj || !configObj.image_manager || !configObj.image_manager[file]) {
@@ -680,7 +682,7 @@ async function autoAllocateNextServerIpsAction() {
 }
 
 async function loadClientsJson() {
-    const data = await apiGet('/api/clients');
+    const data = await apiGet('/api/clients/json');
     if (data) {
         clientsObj = data;
         renderClientsManagerTable();
@@ -689,7 +691,7 @@ async function loadClientsJson() {
 }
 
 async function saveClientsJson() {
-    const res = await apiPost('/api/clients', clientsObj);
+    const res = await apiPost('/api/clients/json', clientsObj);
     return res && res.status === 'ok';
 }
 
@@ -769,7 +771,7 @@ function closeVhdCrudModal() {
 }
 
 async function selectVhdFileViaExplorer() {
-    const res = await apiPost('/api/browse/vhd');
+    const res = await apiPost('/api/system/select_vhd');
     if (res && res.path) {
         document.getElementById('vhd-path').value = res.path;
     }
@@ -828,10 +830,10 @@ async function showVhdSnapshots(imageKey) {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-2.5 px-3.5 font-mono text-xs font-semibold text-stone-900">${snap.name}</td>
-            <td class="py-2.5 px-3.5 font-mono text-xs text-stone-500">${formatBytes(snap.size)}</td>
+            <td class="py-2.5 px-3.5 font-mono text-xs font-semibold text-stone-900">${snap.path || snap.name}</td>
+            <td class="py-2.5 px-3.5 font-mono text-xs text-stone-500">${snap.index !== undefined ? '#' + snap.index : ''}</td>
             <td class="py-2.5 px-3.5 text-right">
-                <button class="inline-flex items-center justify-center px-3 py-1 text-xs font-semibold rounded-md bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all" onclick="restoreSnapshotAction('${imageKey}', '${snap.name}')">⏪ Restore</button>
+                <button class="inline-flex items-center justify-center px-3 py-1 text-xs font-semibold rounded-md bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all" onclick="restoreSnapshotAction('${imageKey}', '${snap.path || snap.name}')">⏪ Restore</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -856,55 +858,50 @@ async function restoreSnapshotAction(imageKey, snapshotName) {
 
 // Disk Management & Dynamic Storage Handlers
 async function loadDiskPartitions() {
-    const disks = await apiGet('/api/disks');
-    if (disks && Array.isArray(disks)) {
-        renderDiskGrid(disks);
+    const drives = await apiGet('/api/system/logical_drives_detail');
+    if (drives && Array.isArray(drives)) {
+        renderDiskGrid(drives);
     }
 }
 
-function renderDiskGrid(disks) {
+function renderDiskGrid(drives) {
     const container = document.getElementById('disk-grid-container');
     if (!container) return;
 
-    if (disks.length === 0) {
+    if (drives.length === 0) {
         container.innerHTML = `<div class="col-span-full py-10 text-center text-stone-500">Memindai disk fisik...</div>`;
         return;
     }
 
     container.innerHTML = '';
-    disks.forEach(disk => {
+    drives.forEach(drive => {
         const card = document.createElement('div');
         card.className = "bg-white border border-stone-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-xs card-hover";
 
-        let partitionsHtml = '';
-        if (disk.partitions && disk.partitions.length > 0) {
-            partitionsHtml = disk.partitions.map(p => {
-                const roleBadge = p.role ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">${p.role.toUpperCase()}</span>` : '';
-                return `
-                    <div class="p-2.5 rounded-lg border border-stone-200 hover:border-indigo-400 bg-stone-50/50 cursor-pointer flex items-center justify-between transition-all" onclick="openPartitionModal('${p.mount_point}', '${p.role || 'none'}')">
-                        <div>
-                            <span class="font-bold text-xs font-mono text-stone-900">${p.mount_point}</span>
-                            <span class="text-[11px] text-stone-500 ml-1.5">${formatBytes(p.free_bytes)} free</span>
-                        </div>
-                        ${roleBadge}
-                    </div>
-                `;
-            }).join('');
-        } else {
-            partitionsHtml = `<p class="text-xs text-stone-400 italic">Tidak ada partisi terdeteksi</p>`;
+        let currentRole = 'none';
+        if (configObj && configObj.disk_storage) {
+            if (configObj.disk_storage.boot_dir && configObj.disk_storage.boot_dir.startsWith(drive.letter)) currentRole = 'boot';
+            else if (configObj.disk_storage.writeback_dir && configObj.disk_storage.writeback_dir.startsWith(drive.letter)) currentRole = 'writeback';
+            else if (configObj.disk_storage.gamedisk_dir && configObj.disk_storage.gamedisk_dir.startsWith(drive.letter)) currentRole = 'gamedisk';
         }
+
+        const roleBadge = currentRole !== 'none' ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">${currentRole.toUpperCase()}</span>` : '';
 
         card.innerHTML = `
             <div>
                 <div class="flex items-center gap-2 pb-2.5 border-b border-stone-100 mb-3">
                     <span class="text-lg">🗄️</span>
                     <div>
-                        <h3 class="font-bold text-xs sm:text-sm text-stone-900 truncate">${disk.name}</h3>
-                        <p class="text-[10px] text-stone-400 font-mono">${formatBytes(disk.total_bytes)}</p>
+                        <h3 class="font-bold text-xs sm:text-sm text-stone-900 truncate">Drive ${drive.letter}:</h3>
+                        <p class="text-[10px] text-stone-400 font-mono">${drive.physical_disk || 'Logical Volume'}</p>
                     </div>
                 </div>
-                <div class="space-y-2">
-                    ${partitionsHtml}
+                <div class="p-2.5 rounded-lg border border-stone-200 hover:border-indigo-400 bg-stone-50/50 cursor-pointer flex items-center justify-between transition-all" onclick="openPartitionModal('${drive.letter}:\\\\', '${currentRole}')">
+                    <div>
+                        <span class="font-bold text-xs font-mono text-stone-900">${drive.letter}:\\</span>
+                        <span class="text-[11px] text-stone-500 ml-1.5">Klik untuk alokasi</span>
+                    </div>
+                    ${roleBadge}
                 </div>
             </div>
         `;
@@ -975,7 +972,7 @@ async function loadWritebackFiles() {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-2.5 px-3.5 font-mono text-xs font-semibold text-stone-900">${item.filename}</td>
+            <td class="py-2.5 px-3.5 font-mono text-xs font-semibold text-stone-900">${item.name || item.path}</td>
             <td class="py-2.5 px-3.5 font-mono text-xs text-stone-500">${formatBytes(item.size)}</td>
         `;
         tbody.appendChild(row);
@@ -984,7 +981,7 @@ async function loadWritebackFiles() {
 
 async function clearWritebackCache() {
     showConfirmModal('Bersihkan Cache', 'Apakah Anda yakin ingin menghapus semua file cache writeback yang tersimpan?', async () => {
-        const res = await apiPost('/api/writeback/clear');
+        const res = await apiPost('/api/writeback/clear', {});
         if (res && res.status === 'ok') {
             showToast('Cache writeback berhasil dibersihkan', 'success');
             loadWritebackFiles();
@@ -996,7 +993,7 @@ async function clearWritebackCache() {
 
 // Central Settings & Config Handlers
 async function loadConfigJson() {
-    const data = await apiGet('/api/config');
+    const data = await apiGet('/api/config/json');
     if (!data) return;
     configObj = data;
 
@@ -1130,22 +1127,18 @@ async function saveConfigJson(e) {
 
     const success = await saveConfigJsonFull();
     if (success) {
-        // Trigger background DHCP restart if enabled
-        if (configObj.dhcp.enabled) {
-            await apiPost('/api/dhcp/restart');
-        }
         showToast('Konfigurasi sentral berhasil disimpan', 'success');
     }
 }
 
 async function saveConfigJsonFull() {
-    const res = await apiPost('/api/config', configObj);
+    const res = await apiPost('/api/config/json', configObj);
     return res && res.status === 'ok';
 }
 
 // TFTP Bootloader Folders
 async function loadTftpFolders() {
-    const folders = await apiGet('/api/tftp/folders');
+    const folders = await apiGet('/api/system/tftp_folders');
     const datalist = document.getElementById('tftp-folders-list');
     const tbody = document.getElementById('tftp-folders-tbody');
 
@@ -1170,7 +1163,7 @@ async function loadTftpFolders() {
             row.innerHTML = `
                 <td class="py-2.5 px-4 font-mono text-xs font-semibold text-stone-900">${f}</td>
                 <td class="py-2.5 px-4 text-right">
-                    <span class="text-xs text-stone-400">Default Path</span>
+                    <button type="button" class="text-rose-600 hover:text-rose-800 text-xs font-semibold" onclick="deleteTftpFolderAction('${f}')">Hapus</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -1181,7 +1174,7 @@ async function loadTftpFolders() {
 function createNewTftpFolderPrompt() {
     const name = prompt('Masukkan nama folder TFTP boot loader baru:');
     if (name && name.trim()) {
-        apiPost('/api/tftp/folder', { folder_name: name.trim() }).then(res => {
+        apiPost('/api/system/tftp_folders/create', { folder_name: name.trim() }).then(res => {
             if (res && res.status === 'ok') {
                 showToast(`Folder TFTP '${name}' berhasil dibuat`, 'success');
                 loadTftpFolders();
@@ -1190,6 +1183,18 @@ function createNewTftpFolderPrompt() {
             }
         });
     }
+}
+
+function deleteTftpFolderAction(folderName) {
+    showConfirmModal('Hapus Folder TFTP', `Yakin ingin menghapus folder TFTP '${folderName}'?`, async () => {
+        const res = await apiPost('/api/system/tftp_folders/delete', { folder_name: folderName });
+        if (res && res.status === 'ok') {
+            showToast(`Folder TFTP '${folderName}' berhasil dihapus`, 'success');
+            loadTftpFolders();
+        } else {
+            showToast('Gagal menghapus folder TFTP', 'error');
+        }
+    });
 }
 
 // Context Menu Handlers
@@ -1224,20 +1229,15 @@ async function ctxEnableSuperClient() {
     const ip = selectedContextClient.ip;
     const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === ip;
 
-    if (!configObj.windows) configObj.windows = {};
+    const action = isSuper ? 'disable' : 'enable';
+    const res = await apiPost('/api/superclient/set', { ip, action });
 
-    if (isSuper) {
-        configObj.windows.super_client_ip = '';
-        await saveConfigJsonFull();
-        showToast(`Super Client dinonaktifkan untuk IP ${ip}`, 'info');
-    } else {
-        configObj.windows.super_client_ip = ip;
-        await saveConfigJsonFull();
-        showToast(`Super Client diaktifkan untuk IP ${ip}`, 'success');
+    if (res) {
+        showToast(isSuper ? `Super Client dinonaktifkan untuk IP ${ip}` : `Super Client diaktifkan untuk IP ${ip}`, 'success');
+        await loadConfigJson();
+        renderClientsManagerTable();
+        renderDashboardClientsTable();
     }
-
-    renderClientsManagerTable();
-    renderDashboardClientsTable();
 }
 
 async function ctxClearWriteback() {
