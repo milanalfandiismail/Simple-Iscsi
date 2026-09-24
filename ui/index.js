@@ -872,15 +872,23 @@ function renderDiskGrid(drives) {
     const container = document.getElementById('disk-grid-container');
     if (!container) return;
 
-    if (drives.length === 0) {
+    if (!Array.isArray(drives) || drives.length === 0) {
         container.innerHTML = `<div class="col-span-full py-10 text-center text-stone-500">Memindai disk fisik...</div>`;
         return;
     }
 
+    window._systemDrivesMap = {};
     container.innerHTML = '';
+
+    const normalizeDisk = (p) => (p || '').replace(/\\+/g, '\\').toLowerCase().trim();
+
     drives.forEach(drive => {
         const letter = (drive.letter || '').toUpperCase();
+        window._systemDrivesMap[letter] = drive;
         let currentRole = 'none';
+
+        const drivePhysNorm = normalizeDisk(drive.physical_disk);
+        const letterVolNorm = normalizeDisk(`\\\\.\\${letter}:`);
 
         if (configObj) {
             // 1. Check Boot VHD directory
@@ -892,10 +900,11 @@ function renderDiskGrid(drives) {
                 currentRole = 'writeback';
             }
             // 3. Check Gamedisk physical drives or volume
-            else if (configObj.gamedisk && configObj.gamedisk.some(gd => {
-                if (!gd.physical_disk) return false;
-                const matchPhys = drive.physical_disk && gd.physical_disk.toLowerCase() === drive.physical_disk.toLowerCase();
-                const matchVol = gd.physical_disk.toLowerCase().includes(letter.toLowerCase() + ":");
+            else if (configObj.gamedisk && Array.isArray(configObj.gamedisk) && configObj.gamedisk.some(gd => {
+                if (!gd || !gd.physical_disk) return false;
+                const normGd = normalizeDisk(gd.physical_disk);
+                const matchPhys = drivePhysNorm && normGd === drivePhysNorm;
+                const matchVol = normGd === letterVolNorm || normGd.includes(letter.toLowerCase() + ":");
                 return matchPhys || matchVol;
             })) {
                 currentRole = 'gamedisk';
@@ -974,7 +983,7 @@ function renderDiskGrid(drives) {
                 </div>
 
                 <!-- Interactive Allocation Action Button -->
-                <button type="button" class="w-full group px-3 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700/80 bg-stone-50/80 hover:bg-indigo-50/70 dark:bg-stone-800/50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-600/60 cursor-pointer flex items-center justify-between transition-all active:scale-[0.99] text-left" onclick="openPartitionModal('${drive.letter}', '${drive.physical_disk || ''}', '${currentRole}')">
+                <button type="button" class="w-full group px-3 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700/80 bg-stone-50/80 hover:bg-indigo-50/70 dark:bg-stone-800/50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-600/60 cursor-pointer flex items-center justify-between transition-all active:scale-[0.99] text-left" onclick="openPartitionModal('${letter}', '${currentRole}')">
                     <div class="flex items-center gap-2">
                         <span class="text-xs group-hover:scale-110 transition-transform">⚙️</span>
                         <span class="font-semibold text-xs text-stone-800 dark:text-stone-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-['General_Sans','Outfit',sans-serif]">Ubah Alokasi Role</span>
@@ -987,13 +996,15 @@ function renderDiskGrid(drives) {
     });
 }
 
-function openPartitionModal(letter, physicalDisk, currentRole) {
+function openPartitionModal(letter, currentRole) {
+    const drive = (window._systemDrivesMap && window._systemDrivesMap[letter]) || { letter, physical_disk: '' };
+    const physicalDisk = drive.physical_disk || '';
     const modal = document.getElementById('partition-modal');
     modal.style.display = 'flex';
     document.getElementById('partition-modal-desc').textContent = `Pilih fungsi atau lepas alokasi untuk Drive ${letter}:\\ (${physicalDisk || 'Logical Volume'}).`;
     const mountInput = document.getElementById('partition-mount-point');
     mountInput.value = letter;
-    mountInput.dataset.physicalDisk = physicalDisk || '';
+    mountInput.dataset.physicalDisk = physicalDisk;
 
     const radios = document.querySelectorAll('input[name="partition-role"]');
     radios.forEach(r => {
@@ -1007,7 +1018,8 @@ function closePartitionModal() {
 
 async function savePartitionRoleAction() {
     const letter = (document.getElementById('partition-mount-point').value || '').toUpperCase();
-    const physicalDisk = document.getElementById('partition-mount-point').dataset.physicalDisk || '';
+    const drive = (window._systemDrivesMap && window._systemDrivesMap[letter]) || {};
+    const physicalDisk = drive.physical_disk || document.getElementById('partition-mount-point').dataset.physicalDisk || '';
     const selectedRadio = document.querySelector('input[name="partition-role"]:checked');
     const role = selectedRadio ? selectedRadio.value : 'none';
 
@@ -1030,6 +1042,10 @@ async function savePartitionRoleAction() {
     };
     if (!configObj.gamedisk) configObj.gamedisk = [];
 
+    const normalizeDisk = (p) => (p || '').replace(/\\+/g, '\\').toLowerCase().trim();
+    const normTargetPhys = normalizeDisk(physicalDisk);
+    const normLetterVol = normalizeDisk(`\\\\.\\${letter}:`);
+
     // 1. Clear previous role for this drive letter
     if (configObj.windows && configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
         configObj.windows.vhd_dir = "";
@@ -1037,11 +1053,12 @@ async function savePartitionRoleAction() {
     if (configObj.writeback && configObj.writeback.writeback_dirs) {
         configObj.writeback.writeback_dirs = configObj.writeback.writeback_dirs.filter(dir => dir && !dir.toUpperCase().startsWith(letter));
     }
-    if (configObj.gamedisk) {
+    if (configObj.gamedisk && Array.isArray(configObj.gamedisk)) {
         configObj.gamedisk = configObj.gamedisk.filter(gd => {
-            if (!gd.physical_disk) return false;
-            const matchPhys = physicalDisk && gd.physical_disk.toLowerCase() === physicalDisk.toLowerCase();
-            const matchVol = gd.physical_disk.toLowerCase().includes(letter.toLowerCase() + ":");
+            if (!gd || !gd.physical_disk) return false;
+            const normGd = normalizeDisk(gd.physical_disk);
+            const matchPhys = normTargetPhys && normGd === normTargetPhys;
+            const matchVol = normGd === normLetterVol || normGd.includes(letter.toLowerCase() + ":");
             return !matchPhys && !matchVol;
         });
     }
@@ -1054,6 +1071,7 @@ async function savePartitionRoleAction() {
         configObj.writeback.writeback_dirs.push(`${letter}:\\writeback`);
     } else if (role === 'gamedisk') {
         const targetDiskPath = physicalDisk ? physicalDisk : `\\\\.\\${letter}:`;
+        if (!configObj.gamedisk) configObj.gamedisk = [];
         configObj.gamedisk.push({
             physical_disk: targetDiskPath,
             block_size: 512,
@@ -1071,7 +1089,8 @@ async function savePartitionRoleAction() {
     const saved = await saveConfigJsonFull();
     if (saved) {
         closePartitionModal();
-        loadDiskPartitions();
+        await loadConfigJson();
+        await loadDiskPartitions();
         showToast(role === 'none' ? `Alokasi peran Drive ${letter}: berhasil dilepas` : `Peran Drive ${letter}: berhasil diubah ke ${role.toUpperCase()}`, 'success');
     } else {
         showToast(`Gagal menyimpan alokasi partisi Drive ${letter}:`, 'error');
