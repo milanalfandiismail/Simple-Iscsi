@@ -10,6 +10,10 @@ Mendukung kecepatan transfer hingga **900+ Mbps (~112 MB/s)** pada jaringan kabe
 > Seluruh spesifikasi mendalam mengenai format DHCP Option (17, 168, 169, 170), protokol iSCSI RFC 7143 (BHS 48-byte, OpCodes, Seq Numbers), SCSI Layer (INQUIRY, VPD 0xB0, Multi-LUN), Writeback Engine, dan ACPI iBFT Helper terdokumentasi secara utuh di:  
 > 👉 [**`DOCUMENTATION.md`**](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md)
 
+> [!NOTE]
+> **Status Driver Client (Third-Party Driver):**  
+> Untuk saat ini, inisialisasi awal binding adapter jaringan (NIC PNP) pada image master Windows client masih menggunakan filter driver pihak ketiga (**CCBoot** atau **iSharedisk** seperti `CCBootPnp.sys` / `iSharePnp.sys`). Seluruh storage I/O, SANBOOT, PDU RFC 7143, SCSI SPC-4/SBC-3, dan alokasi writeback cache sepenuhnya diproses secara independen oleh **Target Server Simple-Iscsi**.
+
 ---
 
 ## ✨ Fitur Utama
