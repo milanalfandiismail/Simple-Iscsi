@@ -94,10 +94,29 @@ function toggleMobileNav() {
 
 // Initial Data Loader
 async function loadInitialData() {
-    await loadNetworkInterfaces();
-    await loadConfigJson();
-    await loadClientsJson();
-    loadWritebackFiles();
+    try {
+        await loadNetworkInterfaces();
+    } catch (err) {
+        console.error('loadNetworkInterfaces error:', err);
+    }
+
+    try {
+        await loadConfigJson();
+    } catch (err) {
+        console.error('loadConfigJson error:', err);
+    }
+
+    try {
+        await loadClientsJson();
+    } catch (err) {
+        console.error('loadClientsJson error:', err);
+    }
+
+    try {
+        loadWritebackFiles();
+    } catch (err) {
+        console.error('loadWritebackFiles error:', err);
+    }
 }
 
 function initAutoSyncIntervals() {
@@ -688,9 +707,17 @@ async function autoAllocateNextServerIpsAction() {
 }
 
 async function loadClientsJson() {
-    const data = await apiGet('/api/clients/json');
-    if (data) {
-        clientsObj = data;
+    try {
+        const data = await apiGet('/api/clients/json');
+        if (data && data.client) {
+            clientsObj = data;
+        } else {
+            clientsObj = { client: [] };
+        }
+    } catch (err) {
+        console.error('loadClientsJson error:', err);
+        clientsObj = { client: [] };
+    } finally {
         renderClientsManagerTable();
         renderDashboardClientsTable();
     }
@@ -1157,74 +1184,87 @@ async function clearWritebackCache() {
 
 // Central Settings & Config Handlers
 async function loadConfigJson() {
-    const data = await apiGet('/api/config/json');
-    if (!data) return;
-    configObj = data;
-
-    // Server
-    if (data.server) {
-        const addrEl = document.getElementById('set-server-address');
-        if (addrEl) {
-            const addr = Array.isArray(data.server.address) ? data.server.address[0] : data.server.address;
-            addrEl.value = addr || '0.0.0.0';
+    try {
+        const data = await apiGet('/api/config/json');
+        if (data) {
+            configObj = data;
+        } else if (!configObj) {
+            configObj = {
+                server: { address: '0.0.0.0', port: 3260, read_cache_gb: 4 },
+                dhcp: { enabled: true, start_ip: '10.10.10.100', end_ip: '10.10.10.200', router: '10.10.10.1', dns: '8.8.8.8', subnet_mask: '255.255.255.0', next_server: '10.10.10.1', nic_ips: [] },
+                image_manager: {}
+            };
         }
-        const portEl = document.getElementById('set-server-port');
-        if (portEl) portEl.value = data.server.port || 3260;
-        const cacheEl = document.getElementById('set-server-cache');
-        if (cacheEl) cacheEl.value = data.server.read_cache_gb || 4;
-    }
 
-    // Target IQN Prefix
-    const iqnEl = document.getElementById('set-gamedisk-iqn');
-    if (iqnEl) {
-        if (data.gamedisk_target && data.gamedisk_target.target_iqn) {
-            iqnEl.value = data.gamedisk_target.target_iqn;
-        } else if (data.windows && data.windows.target_iqn_prefix) {
-            iqnEl.value = data.windows.target_iqn_prefix;
+        const currentCfg = configObj || {};
+
+        // Server
+        if (currentCfg.server) {
+            const addrEl = document.getElementById('set-server-address');
+            if (addrEl) {
+                const addr = Array.isArray(currentCfg.server.address) ? currentCfg.server.address[0] : currentCfg.server.address;
+                addrEl.value = addr || '0.0.0.0';
+            }
+            const portEl = document.getElementById('set-server-port');
+            if (portEl) portEl.value = currentCfg.server.port || 3260;
+            const cacheEl = document.getElementById('set-server-cache');
+            if (cacheEl) cacheEl.value = currentCfg.server.read_cache_gb || 4;
         }
+
+        // Target IQN Prefix
+        const iqnEl = document.getElementById('set-gamedisk-iqn');
+        if (iqnEl) {
+            if (currentCfg.gamedisk_target && currentCfg.gamedisk_target.target_iqn) {
+                iqnEl.value = currentCfg.gamedisk_target.target_iqn;
+            } else if (currentCfg.windows && currentCfg.windows.target_iqn_prefix) {
+                iqnEl.value = currentCfg.windows.target_iqn_prefix;
+            }
+        }
+
+        // DHCP
+        if (currentCfg.dhcp) {
+            const enabledEl = document.getElementById('set-dhcp-enabled');
+            if (enabledEl) enabledEl.checked = !!currentCfg.dhcp.enabled;
+            const nextEl = document.getElementById('set-dhcp-next');
+            if (nextEl) nextEl.value = currentCfg.dhcp.next_server || '';
+            const startIpEl = document.getElementById('set-dhcp-start-ip');
+            if (startIpEl) startIpEl.value = currentCfg.dhcp.start_ip || '';
+            const endIpEl = document.getElementById('set-dhcp-end-ip');
+            if (endIpEl) endIpEl.value = currentCfg.dhcp.end_ip || '';
+            const maskEl = document.getElementById('set-dhcp-mask');
+            if (maskEl) maskEl.value = currentCfg.dhcp.subnet_mask || currentCfg.dhcp.netmask || '255.255.255.0';
+            const gwEl = document.getElementById('set-dhcp-gateway');
+            if (gwEl) gwEl.value = currentCfg.dhcp.router || currentCfg.dhcp.gateway || '';
+            const dnsEl = document.getElementById('set-dhcp-dns');
+            if (dnsEl) dnsEl.value = currentCfg.dhcp.dns || '8.8.8.8';
+
+            renderNicIpsList(currentCfg.dhcp.nic_ips || []);
+        }
+
+        // TFTP
+        const dirEl = document.getElementById('set-tftp-dir');
+        const pxeEl = document.getElementById('set-pxe-default');
+        if (currentCfg.dhcp && currentCfg.dhcp.tftp_dir && dirEl) dirEl.value = currentCfg.dhcp.tftp_dir;
+        else if (currentCfg.tftp && currentCfg.tftp.tftp_dir && dirEl) dirEl.value = currentCfg.tftp.tftp_dir;
+
+        if (currentCfg.dhcp && currentCfg.dhcp.pxe_default && pxeEl) pxeEl.value = currentCfg.dhcp.pxe_default;
+        else if (currentCfg.tftp && currentCfg.tftp.pxe_default && pxeEl) pxeEl.value = currentCfg.tftp.pxe_default;
+
+        // Storage Parameters
+        if (currentCfg.writeback) {
+            const maxCacheEl = document.getElementById('disk-max-cache-gb');
+            if (maxCacheEl) maxCacheEl.value = currentCfg.writeback.max_cache_per_client_gb || 10;
+            const throttleEl = document.getElementById('disk-throttle-mb');
+            if (throttleEl) throttleEl.value = currentCfg.writeback.max_write_speed_mbps || 100000;
+        }
+    } catch (err) {
+        console.error('loadConfigJson error:', err);
+    } finally {
+        renderVhdTable();
+        loadDiskPartitions();
+        loadTftpFolders();
+        populateNetworkDropdowns();
     }
-
-    // DHCP
-    if (data.dhcp) {
-        const enabledEl = document.getElementById('set-dhcp-enabled');
-        if (enabledEl) enabledEl.checked = !!data.dhcp.enabled;
-        const nextEl = document.getElementById('set-dhcp-next');
-        if (nextEl) nextEl.value = data.dhcp.next_server || '';
-        const startIpEl = document.getElementById('set-dhcp-start-ip');
-        if (startIpEl) startIpEl.value = data.dhcp.start_ip || '';
-        const endIpEl = document.getElementById('set-dhcp-end-ip');
-        if (endIpEl) endIpEl.value = data.dhcp.end_ip || '';
-        const maskEl = document.getElementById('set-dhcp-mask');
-        if (maskEl) maskEl.value = data.dhcp.subnet_mask || data.dhcp.netmask || '255.255.255.0';
-        const gwEl = document.getElementById('set-dhcp-gateway');
-        if (gwEl) gwEl.value = data.dhcp.router || data.dhcp.gateway || '';
-        const dnsEl = document.getElementById('set-dhcp-dns');
-        if (dnsEl) dnsEl.value = data.dhcp.dns || '8.8.8.8';
-
-        renderNicIpsList(data.dhcp.nic_ips || []);
-    }
-
-    // TFTP
-    const dirEl = document.getElementById('set-tftp-dir');
-    const pxeEl = document.getElementById('set-pxe-default');
-    if (data.dhcp && data.dhcp.tftp_dir && dirEl) dirEl.value = data.dhcp.tftp_dir;
-    else if (data.tftp && data.tftp.tftp_dir && dirEl) dirEl.value = data.tftp.tftp_dir;
-
-    if (data.dhcp && data.dhcp.pxe_default && pxeEl) pxeEl.value = data.dhcp.pxe_default;
-    else if (data.tftp && data.tftp.pxe_default && pxeEl) pxeEl.value = data.tftp.pxe_default;
-
-    // Storage Parameters
-    if (data.writeback) {
-        const maxCacheEl = document.getElementById('disk-max-cache-gb');
-        if (maxCacheEl) maxCacheEl.value = data.writeback.max_cache_per_client_gb || 10;
-        const throttleEl = document.getElementById('disk-throttle-mb');
-        if (throttleEl) throttleEl.value = data.writeback.max_write_speed_mbps || 100000;
-    }
-
-    renderVhdTable();
-    loadDiskPartitions();
-    loadTftpFolders();
-    populateNetworkDropdowns();
 }
 
 function renderNicIpsList(nicIps) {

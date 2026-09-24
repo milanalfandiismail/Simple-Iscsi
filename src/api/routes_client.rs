@@ -8,13 +8,13 @@ pub fn get_clients_json() -> String {
                 Ok(clients_cfg) => {
                     match serde_json::to_string(&clients_cfg) {
                         Ok(json_str) => crate::server_api::build_response(200, "OK", "application/json", &json_str),
-                        Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+                        Err(_) => crate::server_api::build_response(200, "OK", "application/json", r#"{"client":[]}"#),
                     }
                 }
-                Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+                Err(_) => crate::server_api::build_response(200, "OK", "application/json", r#"{"client":[]}"#),
             }
         }
-        Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+        Err(_) => crate::server_api::build_response(200, "OK", "application/json", r#"{"client":[]}"#),
     }
 }
 

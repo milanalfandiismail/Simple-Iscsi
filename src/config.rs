@@ -211,32 +211,26 @@ pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn
         Ok(c) => c,
         Err(_) => return Ok(HashMap::new()),
     };
-    let config: ClientsConfig = toml::from_str(&content)?;
+    let config: ClientsConfig = match toml::from_str(&content) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to parse {}: {}. Returning empty map.", path, e);
+            return Ok(HashMap::new());
+        }
+    };
 
-    // Validasi duplicate MAC (strict — HashMap key conflict)
+    let mut map: HashMap<String, ClientConfig> = HashMap::new();
     let mut mac_set = HashSet::new();
-    for client in &config.clients {
-        let mac_lower = client.mac.to_lowercase();
-        if !mac_set.insert(mac_lower) {
-            return Err(format!("Duplicate MAC address: {} (client: {})",
-                client.mac, client.hostname.as_deref().unwrap_or("?")).into());
+    for client in config.clients {
+        let mac_norm = client.mac.trim().replace('-', ":").to_lowercase();
+        if mac_set.insert(mac_norm) {
+            map.insert(client.mac.clone(), client);
+        } else {
+            warn!("Duplicate MAC address in {}: {} (client: {}) — skipping duplicate",
+                path, client.mac, client.hostname.as_deref().unwrap_or("?"));
         }
     }
 
-    // Cek duplicate IP (warning only — valid untuk DHCP beda client)
-    let mut ip_set = HashSet::new();
-    for client in &config.clients {
-        if !ip_set.insert(client.ip.clone()) {
-            warn!("Duplicate IP address: {} (client: {}) — allowed jika di subnet berbeda",
-                client.ip, client.hostname.as_deref().unwrap_or("?"));
-        }
-    }
-
-    let map: HashMap<String, ClientConfig> = config
-        .clients
-        .into_iter()
-        .map(|c| (c.mac.clone(), c))
-        .collect();
     info!("Loaded {} client(s) from {}", map.len(), path);
     Ok(map)
 }
@@ -321,13 +315,16 @@ pub fn auto_fix_duplicate_ips(clients_path: &str, start_ip: &str, end_ip: &str) 
 }
 
 pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn std::error::Error>> {
-    // Load existing dulu untuk validasi duplicate
-    let existing = load_clients(path)?;
+    let client_mac_norm = client.mac.trim().replace('-', ":").to_lowercase();
+    let existing = load_clients(path).unwrap_or_default();
 
-    // Validasi duplicate MAC (strict)
-    if existing.contains_key(&client.mac) {
-        return Err(format!("MAC already exists: {} (used by {})",
-            client.mac, existing[&client.mac].hostname.as_deref().unwrap_or("?")).into());
+    // Validasi duplicate MAC (normalized)
+    for (existing_mac, existing_client) in &existing {
+        let existing_mac_norm = existing_mac.trim().replace('-', ":").to_lowercase();
+        if existing_mac_norm == client_mac_norm {
+            return Err(format!("MAC already exists: {} (used by {})",
+                client.mac, existing_client.hostname.as_deref().unwrap_or("?")).into());
+        }
     }
 
     // Cek duplicate IP (warning only)
