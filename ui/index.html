@@ -21,10 +21,10 @@
     <div class="flex flex-col lg:flex-row min-h-screen w-full">
 
         <!-- SIDEBAR NAVIGATION -->
-        <aside class="w-full lg:w-64 xl:w-72 bg-white border-b lg:border-b-0 lg:border-r border-stone-200 flex flex-col justify-between shrink-0 sticky top-0 z-40 lg:h-screen transition-colors">
+        <aside class="w-full lg:w-56 xl:w-64 bg-white border-b lg:border-b-0 lg:border-r border-stone-200 flex flex-col justify-between shrink-0 sticky top-0 z-40 lg:h-screen transition-colors">
             
             <!-- Brand & Navigation List -->
-            <div class="p-4 sm:p-5 lg:p-6">
+            <div class="p-4 sm:p-5 lg:p-5 xl:p-6">
                 <!-- Brand Header -->
                 <div class="flex items-center justify-between lg:justify-start gap-3 pb-4 sm:pb-5 border-b border-stone-100 mb-4 sm:mb-6">
                     <div class="flex items-center gap-3">
@@ -69,7 +69,7 @@
             </div>
 
             <!-- Footer: Theme Toggle & Status Indicator -->
-            <div class="p-4 sm:p-5 lg:p-6 border-t border-stone-100 flex flex-col gap-3">
+            <div class="p-4 sm:p-5 lg:p-5 xl:p-6 border-t border-stone-100 flex flex-col gap-3">
                 <button type="button" id="theme-toggle-btn" class="w-full flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 transition-all">
                     🌙 Mode Gelap
                 </button>
@@ -81,7 +81,7 @@
         </aside>
 
         <!-- MAIN VIEW CANVAS -->
-        <main class="flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 w-full overflow-x-hidden">
+        <main class="flex-1 p-3.5 sm:p-5 lg:p-4 xl:p-8 2xl:p-10 w-full min-w-0 overflow-x-hidden">
 
             <!-- TAB 1: DASHBOARD -->
             <section id="tab-dashboard" class="tab-panel active w-full">
@@ -96,7 +96,7 @@
                 <!-- Service Status Cards Grid -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
                     <!-- iSCSI Card -->
-                    <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 lg:p-6 flex items-center justify-between gap-3 card-hover shadow-xs">
+                    <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 lg:p-5 xl:p-6 flex items-center justify-between gap-3 card-hover shadow-xs">
                         <div class="min-w-0">
                             <h3 class="font-semibold text-sm sm:text-base text-stone-900 truncate mb-0.5">iSCSI Daemon</h3>
                             <p id="iscsi-port-info" class="text-[11px] sm:text-xs text-stone-500 font-mono">Port: ...</p>
@@ -105,7 +105,7 @@
                     </div>
 
                     <!-- DHCP Card -->
-                    <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 lg:p-6 flex items-center justify-between gap-3 card-hover shadow-xs">
+                    <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 lg:p-5 xl:p-6 flex items-center justify-between gap-3 card-hover shadow-xs">
                         <div class="min-w-0">
                             <h3 class="font-semibold text-sm sm:text-base text-stone-900 truncate mb-0.5">DHCP Server</h3>
                             <p id="dhcp-port-info" class="text-[11px] sm:text-xs text-stone-500 font-mono">Port: ...</p>
@@ -114,7 +114,7 @@
                     </div>
 
                     <!-- TFTP Card -->
-                    <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 lg:p-6 flex items-center justify-between gap-3 card-hover shadow-xs sm:col-span-2 lg:col-span-1">
+                    <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 lg:p-5 xl:p-6 flex items-center justify-between gap-3 card-hover shadow-xs sm:col-span-2 lg:col-span-1">
                         <div class="min-w-0">
                             <h3 class="font-semibold text-sm sm:text-base text-stone-900 truncate mb-0.5">TFTP Server</h3>
                             <p id="tftp-port-info" class="text-[11px] sm:text-xs text-stone-500 font-mono">Port: ...</p>
@@ -125,29 +125,29 @@
 
                 <!-- Stats Counters Grid -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                    <div class="bg-white border border-stone-200 rounded-xl p-5 sm:p-6 lg:p-7 flex flex-col gap-1.5 shadow-xs card-hover">
+                    <div class="bg-white border border-stone-200 rounded-xl p-5 sm:p-6 lg:p-6 xl:p-7 flex flex-col gap-1.5 shadow-xs card-hover">
                         <span class="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-500">Total Active Connections</span>
                         <span class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-stone-900 font-['General_Sans','Outfit',sans-serif]" id="stat-conns">0</span>
                     </div>
-                    <div class="bg-white border border-stone-200 rounded-xl p-5 sm:p-6 lg:p-7 flex flex-col gap-1.5 shadow-xs card-hover">
+                    <div class="bg-white border border-stone-200 rounded-xl p-5 sm:p-6 lg:p-6 xl:p-7 flex flex-col gap-1.5 shadow-xs card-hover">
                         <span class="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-500">Total Configured PCs</span>
                         <span class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-stone-900 font-['General_Sans','Outfit',sans-serif]" id="stat-total-pcs">0</span>
                     </div>
                 </div>
 
                 <!-- Real-time IO Clients Table Card -->
-                <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
+                <div class="bg-white border border-stone-200 rounded-xl p-3.5 sm:p-5 lg:p-4 xl:p-6 2xl:p-7 mb-6 sm:mb-8 shadow-xs">
                     <h2 class="text-base sm:text-lg font-bold text-stone-900 font-['General_Sans','Outfit',sans-serif] pb-3 sm:pb-4 border-b border-stone-100 mb-4 sm:mb-6">Daftar Penggunaan I/O Klien</h2>
                     <div class="w-full overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-[11px] lg:text-[11px] xl:text-xs 2xl:text-sm border-collapse">
+                        <table class="w-full text-left text-[11px] lg:text-[9.5px] xl:text-xs 2xl:text-sm border-collapse">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Klien & Status</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Jaringan</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Image & PXE</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read I/O</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write I/O</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Klien & Status</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Jaringan</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Image & PXE</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read I/O</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write I/O</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="dashboard-clients-tbody" class="divide-y divide-stone-100">
@@ -173,17 +173,17 @@
                     </div>
                 </header>
 
-                <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
+                <div class="bg-white border border-stone-200 rounded-xl p-3.5 sm:p-5 lg:p-4 xl:p-6 2xl:p-7 mb-6 sm:mb-8 shadow-xs">
                     <div class="w-full overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-[11px] lg:text-[11px] xl:text-xs 2xl:text-sm border-collapse">
+                        <table class="w-full text-left text-[11px] lg:text-[9.5px] xl:text-xs 2xl:text-sm border-collapse">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Klien & Status</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Jaringan</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Image & PXE</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read I/O</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write I/O</th>
-                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4 text-[10.5px] lg:text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Klien & Status</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Jaringan</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Image & PXE</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read I/O</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write I/O</th>
+                                    <th class="py-2.5 px-2.5 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 text-[10.5px] lg:text-[9.5px] xl:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="clients-tbody" class="divide-y divide-stone-100">

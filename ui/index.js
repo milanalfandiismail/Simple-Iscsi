@@ -439,47 +439,47 @@ function renderDashboardClientsTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
-            : `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
+            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
+            : `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
-        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 ml-1">DHCP</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[9.5px] lg:text-[9px] xl:text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
+        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[9.5px] lg:text-[9px] xl:text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 ml-1">DHCP</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
                 <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     ${statusSpan}
-                    <span class="font-bold text-stone-900 text-xs sm:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || c.ip}</span>
+                    <span class="font-bold text-stone-900 text-xs lg:text-[11px] xl:text-xs 2xl:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || c.ip}</span>
                     ${superBadge}${dynamicBadge}
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
+                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="text-xs lg:text-[9.5px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1 flex-nowrap whitespace-nowrap">
                     <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[120px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-900 truncate max-w-[90px] lg:max-w-[75px] xl:max-w-[130px] 2xl:max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="client-read-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="client-read-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="client-write-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="client-write-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
-                <div class="text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="client-uptime text-xs lg:text-[9.5px] xl:text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] lg:text-[9px] xl:text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
         tbody.appendChild(row);
@@ -515,46 +515,46 @@ function renderClientsManagerTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
-            : `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
+            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
+            : `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[9.5px] lg:text-[9px] xl:text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
                 <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     ${statusSpan}
-                    <span class="font-bold text-stone-900 text-xs sm:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || 'PC'}</span>
+                    <span class="font-bold text-stone-900 text-xs lg:text-[11px] xl:text-xs 2xl:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || 'PC'}</span>
                     ${superBadge}
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip} • ${c.mac}</div>
+                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip} • ${c.mac}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="text-xs lg:text-[9.5px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1 flex-nowrap whitespace-nowrap">
                     <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[120px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-900 truncate max-w-[90px] lg:max-w-[75px] xl:max-w-[130px] 2xl:max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="client-read-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="client-read-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="client-write-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="client-write-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
-                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
-                <div class="text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
+            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+                <div class="client-uptime text-xs lg:text-[9.5px] xl:text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] lg:text-[9px] xl:text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
 
