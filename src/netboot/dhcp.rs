@@ -209,10 +209,15 @@ impl DhcpServer {
 
         if is_new_client {
             if let Some(ref conf) = client_conf {
-                if let Err(e) = crate::config::append_client("clients.toml", conf) {
-                    error!("Gagal auto-add klien baru ke clients.toml: {}", e);
+                let auto_add = self.config.read().dhcp.as_ref().map(|d| d.auto_add_client).unwrap_or(true);
+                if auto_add {
+                    if let Err(e) = crate::config::append_client("clients.toml", conf) {
+                        error!("Gagal auto-add klien baru ke clients.toml: {}", e);
+                    } else {
+                        info!("Berhasil Auto-Add Klien Baru: {} ({}) -> IP: {}", conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
+                    }
                 } else {
-                    info!("Berhasil Auto-Add Klien Baru: {} ({}) -> IP: {}", conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
+                    info!("Auto-Add dinonaktifkan. Klien {} ({}) dilayani sementara dengan IP: {}", conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
                 }
             }
         }
