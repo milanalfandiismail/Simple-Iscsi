@@ -11,38 +11,29 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
-  /* Default Mobile & Tablet (<1024px): 100% standard */
-  html {
+  /* Global standard: tidak ada zoom pada body */
+  html, body {
     font-size: 100%;
-  }
-
-  body {
     zoom: 1;
-  }
-
-  /* Breakpoint LG (1024px - 1279px): CSS zoom 82% agar seluruh tabel & dashboard muat penuh tanpa scroll */
-  @media (min-width: 1024px) and (max-width: 1279px) {
-    body {
-      zoom: 0.82;
-    }
-  }
-
-  /* Breakpoint XL (1280px - 1535px): CSS zoom 90% */
-  @media (min-width: 1280px) and (max-width: 1535px) {
-    body {
-      zoom: 0.90;
-    }
-  }
-
-  /* Breakpoint 2XL+ (>=1536px): 100% native */
-  @media (min-width: 1536px) {
-    body {
-      zoom: 1;
-    }
   }
 }
 
 @layer utilities {
+  /* Zoom khusus untuk tabel Daftar Penggunaan I/O Klien & Klien Manager pada breakpoint LG & XL */
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    #tab-dashboard table,
+    #tab-clients table {
+      zoom: 0.84;
+    }
+  }
+
+  @media (min-width: 1280px) and (max-width: 1535px) {
+    #tab-dashboard table,
+    #tab-clients table {
+      zoom: 0.92;
+    }
+  }
+
   /* Tab Navigation Visibility */
   .tab-panel {
     display: none;
