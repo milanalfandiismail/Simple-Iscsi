@@ -16,7 +16,7 @@ product_revision = "1.00"
 
 [windows]
 target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
-vhd_dir = 'C:\vhd'
+vhd_dir = ""
 block_size = 512
 vendor_id = "RUSTISCS"
 product_id = "WindowsBoot"
@@ -26,7 +26,7 @@ super_client_ip = ""
 super_client_action = "none"
 
 [writeback]
-writeback_dirs = ['C:\writeback']
+writeback_dirs = []
 max_cache_per_client_gb = 10
 max_write_speed_mbps = 100000
 

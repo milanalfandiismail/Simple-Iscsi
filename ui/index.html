@@ -234,7 +234,7 @@
                 </header>
 
                 <!-- Dynamic Disk Grid -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6 mb-6 sm:mb-8" id="disk-grid-container">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8" id="disk-grid-container">
                     <!-- Disk cards loaded dynamically here -->
                 </div>
 
@@ -289,7 +289,7 @@
                         <p class="text-xs sm:text-sm text-stone-500 mt-1">Konfigurasi daemon iSCSI, DHCP server, multi-NIC load balancing, dan folder bootloader TFTP.</p>
                     </div>
                     <div class="flex items-center gap-2.5 shrink-0">
-                        <button type="submit" form="settings-form" class="btn-primary inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm shadow-xs whitespace-nowrap">💾 Simpan Konfigurasi</button>
+                        <button type="button" onclick="saveConfigJson(event)" class="btn-primary inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm shadow-xs whitespace-nowrap">💾 Simpan Konfigurasi</button>
                     </div>
                 </header>
 
@@ -340,8 +340,8 @@
                             <div class="space-y-4 text-xs sm:text-sm">
                                 <div>
                                     <label class="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1.5">IP Server DHCP (Next Server)</label>
-                                    <select id="set-dhcp-next" class="w-full px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm rounded-md border border-stone-300 bg-white text-stone-900 shadow-xs transition-all"></select>
-                                    <p class="text-[11px] text-stone-500 mt-1 leading-relaxed">IP Server perespons DHCP & PXE Boot klien.</p>
+                                    <input type="text" id="set-dhcp-next" list="network-ips-datalist" placeholder="e.g. 192.168.180.1" class="w-full px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm rounded-md border border-stone-300 bg-white text-stone-900 shadow-xs transition-all">
+                                    <p class="text-[11px] text-stone-500 mt-1 leading-relaxed">IP Server perespons DHCP & PXE Boot klien (isi manual / pilih saran).</p>
                                 </div>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                     <div>
@@ -469,7 +469,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1.5">Next Server (Server IP)</label>
-                        <select id="client-next-server" class="w-full px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm rounded-md border border-stone-300 bg-white text-stone-900 shadow-xs transition-all"></select>
+                        <input type="text" id="client-next-server" list="network-ips-datalist" placeholder="e.g. 192.168.180.1" class="w-full px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm rounded-md border border-stone-300 bg-white text-stone-900 shadow-xs transition-all">
                     </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">

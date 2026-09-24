@@ -221,24 +221,18 @@ async function loadNetworkInterfaces() {
 
 function populateNetworkDropdowns() {
     const serverSelect = document.getElementById('set-server-address');
-    const dhcpSelect = document.getElementById('set-dhcp-next');
-    const clientNextSelect = document.getElementById('client-next-server');
     const datalist = document.getElementById('network-ips-datalist');
 
     if (serverSelect) {
         serverSelect.innerHTML = '';
         serverSelect.add(new Option('0.0.0.0 (Semua Interface)', '0.0.0.0'));
     }
-    if (dhcpSelect) dhcpSelect.innerHTML = '';
-    if (clientNextSelect) clientNextSelect.innerHTML = '';
     if (datalist) datalist.innerHTML = '';
 
     availableNetworkIps.forEach(ip => {
         if (ip !== '0.0.0.0') {
             if (serverSelect) serverSelect.add(new Option(ip, ip));
         }
-        if (dhcpSelect) dhcpSelect.add(new Option(ip, ip));
-        if (clientNextSelect) clientNextSelect.add(new Option(ip, ip));
         if (datalist) {
             const opt = document.createElement('option');
             opt.value = ip;
@@ -962,9 +956,9 @@ function renderDiskGrid(drives) {
                         <div class="w-8 h-8 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center text-base shrink-0 font-mono">
                             🗄️
                         </div>
-                        <div class="min-w-0">
-                            <h3 class="font-bold text-sm sm:text-base text-stone-900 dark:text-white truncate leading-tight font-['General_Sans','Outfit',sans-serif]">Drive ${drive.letter}:</h3>
-                            <p class="text-[10px] text-stone-400 font-mono truncate mt-0.5" title="${drive.physical_disk || 'Logical Volume'}">${drive.physical_disk || 'Logical Volume'}</p>
+                        <div class="min-w-0 flex-1">
+                            <h3 class="font-bold text-sm sm:text-base text-stone-900 dark:text-white leading-tight font-['General_Sans','Outfit',sans-serif]">Drive ${drive.letter}:\\</h3>
+                            <p class="text-[11px] text-stone-500 dark:text-stone-400 font-mono mt-1 break-all leading-tight">${drive.physical_disk || 'Logical Volume (Direct)'}</p>
                         </div>
                     </div>
                     <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${roleConfig.badgeClass}">
@@ -1257,35 +1251,47 @@ function removeNicIpAction(ip) {
 }
 
 async function saveConfigJson(e) {
-    if (e) e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!configObj) configObj = {};
 
+    const serverAddrInput = document.getElementById('set-server-address');
+    const serverPortInput = document.getElementById('set-server-port');
+    const serverCacheInput = document.getElementById('set-server-cache');
+    const gamediskIqnInput = document.getElementById('set-gamedisk-iqn');
+
     configObj.server = {
-        address: document.getElementById('set-server-address').value || '0.0.0.0',
-        port: parseInt(document.getElementById('set-server-port').value, 10) || 3260,
-        read_cache_gb: parseInt(document.getElementById('set-server-cache').value, 10) || 4
+        address: serverAddrInput ? serverAddrInput.value.trim() : (configObj.server?.address || '0.0.0.0'),
+        port: serverPortInput ? (parseInt(serverPortInput.value, 10) || 3260) : (configObj.server?.port || 3260),
+        read_cache_gb: serverCacheInput ? (parseInt(serverCacheInput.value, 10) || 4) : (configObj.server?.read_cache_gb || 4)
     };
 
     if (!configObj.gamedisk_target) {
         configObj.gamedisk_target = {
-            target_iqn: document.getElementById('set-gamedisk-iqn').value || "iqn.2024-01.com.tmdebug:gamedisks",
+            target_iqn: gamediskIqnInput ? gamediskIqnInput.value.trim() : "iqn.2024-01.com.tmdebug:gamedisks",
             discovery: true
         };
     } else {
-        configObj.gamedisk_target.target_iqn = document.getElementById('set-gamedisk-iqn').value || configObj.gamedisk_target.target_iqn;
+        configObj.gamedisk_target.target_iqn = gamediskIqnInput ? gamediskIqnInput.value.trim() : configObj.gamedisk_target.target_iqn;
     }
 
-    const tftpDirVal = document.getElementById('set-tftp-dir').value || 'pxe';
-    const pxeDefaultVal = document.getElementById('set-pxe-default').value || 'sb-custom';
+    const tftpDirVal = document.getElementById('set-tftp-dir')?.value?.trim() || 'pxe';
+    const pxeDefaultVal = document.getElementById('set-pxe-default')?.value?.trim() || 'sb-custom';
+    const dhcpEnabled = document.getElementById('set-dhcp-enabled')?.checked ?? true;
+    const nextServerVal = document.getElementById('set-dhcp-next')?.value?.trim() || '';
+    const startIpVal = document.getElementById('set-dhcp-start-ip')?.value?.trim() || '';
+    const endIpVal = document.getElementById('set-dhcp-end-ip')?.value?.trim() || '';
+    const routerVal = document.getElementById('set-dhcp-gateway')?.value?.trim() || '';
+    const dnsVal = document.getElementById('set-dhcp-dns')?.value?.trim() || '8.8.8.8';
+    const subnetMaskVal = document.getElementById('set-dhcp-mask')?.value?.trim() || '255.255.255.0';
 
     configObj.dhcp = {
-        enabled: document.getElementById('set-dhcp-enabled').checked,
-        next_server: document.getElementById('set-dhcp-next').value,
-        start_ip: document.getElementById('set-dhcp-start-ip').value,
-        end_ip: document.getElementById('set-dhcp-end-ip').value,
-        router: document.getElementById('set-dhcp-gateway').value,
-        dns: document.getElementById('set-dhcp-dns').value,
-        subnet_mask: document.getElementById('set-dhcp-mask').value || '255.255.255.0',
+        enabled: dhcpEnabled,
+        next_server: nextServerVal,
+        start_ip: startIpVal,
+        end_ip: endIpVal,
+        router: routerVal,
+        dns: dnsVal,
+        subnet_mask: subnetMaskVal,
         tftp_dir: tftpDirVal,
         pxe_default: pxeDefaultVal,
         nic_ips: (configObj.dhcp && configObj.dhcp.nic_ips) ? configObj.dhcp.nic_ips : []
@@ -1294,6 +1300,7 @@ async function saveConfigJson(e) {
     const success = await saveConfigJsonFull();
     if (success) {
         showToast('Konfigurasi sentral berhasil disimpan', 'success');
+        await loadConfigJson();
     } else {
         showToast('Gagal menyimpan konfigurasi sentral', 'error');
     }
