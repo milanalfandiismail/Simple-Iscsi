@@ -31,8 +31,7 @@ max_cache_per_client_gb = 10
 max_write_speed_mbps = 100000
 
 [image_manager]
-tes = 'I:\VHD\LANNN_25H2_26200_9168_VMDK - Test.VHD'
-tessss = 'I:\VHD\W11-23H2-5335.vhd'
+w11 = 'I:\VHD\W11-23H2-5335.vhd'
 
 [dhcp]
 enabled = true

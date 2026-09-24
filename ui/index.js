@@ -225,13 +225,18 @@ function populateNetworkDropdowns() {
     const clientNextSelect = document.getElementById('client-next-server');
     const datalist = document.getElementById('network-ips-datalist');
 
-    if (serverSelect) serverSelect.innerHTML = '';
+    if (serverSelect) {
+        serverSelect.innerHTML = '';
+        serverSelect.add(new Option('0.0.0.0 (Semua Interface)', '0.0.0.0'));
+    }
     if (dhcpSelect) dhcpSelect.innerHTML = '';
     if (clientNextSelect) clientNextSelect.innerHTML = '';
     if (datalist) datalist.innerHTML = '';
 
     availableNetworkIps.forEach(ip => {
-        if (serverSelect) serverSelect.add(new Option(ip, ip));
+        if (ip !== '0.0.0.0') {
+            if (serverSelect) serverSelect.add(new Option(ip, ip));
+        }
         if (dhcpSelect) dhcpSelect.add(new Option(ip, ip));
         if (clientNextSelect) clientNextSelect.add(new Option(ip, ip));
         if (datalist) {
@@ -240,6 +245,11 @@ function populateNetworkDropdowns() {
             datalist.appendChild(opt);
         }
     });
+
+    if (configObj && configObj.server && configObj.server.address && serverSelect) {
+        const addr = Array.isArray(configObj.server.address) ? configObj.server.address[0] : configObj.server.address;
+        serverSelect.value = addr || '0.0.0.0';
+    }
 }
 
 // Live Stats Polling Loop
@@ -446,34 +456,34 @@ function renderDashboardClientsTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="flex items-center gap-1.5 flex-wrap">
                     ${statusSpan}
                     <span class="font-bold text-stone-900 text-xs sm:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || c.ip}</span>
                     ${superBadge}${dynamicBadge}
                 </div>
-                <div class="text-[11px] text-stone-500 font-mono mt-1">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
-                <div class="text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-1">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next Svr:</span> ${c.next_server || '-'}</div>
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
+                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
                     <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] text-stone-900 truncate max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[100px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
                 </div>
-                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="client-read-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_read)}</div>
                 <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-1">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="client-write-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_written)}</div>
                 <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-1">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
             </td>
         `;
@@ -520,34 +530,34 @@ function renderClientsManagerTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="flex items-center gap-1.5 flex-wrap">
                     ${statusSpan}
                     <span class="font-bold text-stone-900 text-xs sm:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || 'PC'}</span>
                     ${superBadge}
                 </div>
-                <div class="text-[11px] text-stone-500 font-mono mt-1">${c.ip} • ${c.mac}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1">${c.ip} • ${c.mac}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
-                <div class="text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-1">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next Svr:</span> ${c.next_server || '-'}</div>
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
+                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
                     <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] text-stone-900 truncate max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[100px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
                 </div>
-                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="client-read-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_read)}</div>
                 <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-1">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="client-write-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_written)}</div>
                 <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-1">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
                 <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
             </td>
         `;
@@ -879,10 +889,16 @@ function renderDiskGrid(drives) {
         card.className = "bg-white border border-stone-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-xs card-hover";
 
         let currentRole = 'none';
-        if (configObj && configObj.disk_storage) {
-            if (configObj.disk_storage.boot_dir && configObj.disk_storage.boot_dir.startsWith(drive.letter)) currentRole = 'boot';
-            else if (configObj.disk_storage.writeback_dir && configObj.disk_storage.writeback_dir.startsWith(drive.letter)) currentRole = 'writeback';
-            else if (configObj.disk_storage.gamedisk_dir && configObj.disk_storage.gamedisk_dir.startsWith(drive.letter)) currentRole = 'gamedisk';
+        const letter = (drive.letter || '').toUpperCase();
+
+        if (configObj) {
+            if (configObj.windows && configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
+                currentRole = 'boot';
+            } else if (configObj.writeback && configObj.writeback.writeback_dirs && configObj.writeback.writeback_dirs.some(dir => dir.toUpperCase().startsWith(letter))) {
+                currentRole = 'writeback';
+            } else if (configObj.gamedisk && configObj.gamedisk.some(gd => gd.physical_disk && drive.physical_disk && gd.physical_disk.toLowerCase() === drive.physical_disk.toLowerCase())) {
+                currentRole = 'gamedisk';
+            }
         }
 
         const roleBadge = currentRole !== 'none' ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">${currentRole.toUpperCase()}</span>` : '';
@@ -896,7 +912,7 @@ function renderDiskGrid(drives) {
                         <p class="text-[10px] text-stone-400 font-mono">${drive.physical_disk || 'Logical Volume'}</p>
                     </div>
                 </div>
-                <div class="p-2.5 rounded-lg border border-stone-200 hover:border-indigo-400 bg-stone-50/50 cursor-pointer flex items-center justify-between transition-all" onclick="openPartitionModal('${drive.letter}:\\\\', '${currentRole}')">
+                <div class="p-2.5 rounded-lg border border-stone-200 hover:border-indigo-400 bg-stone-50/50 cursor-pointer flex items-center justify-between transition-all" onclick="openPartitionModal('${drive.letter}', '${drive.physical_disk || ''}', '${currentRole}')">
                     <div>
                         <span class="font-bold text-xs font-mono text-stone-900">${drive.letter}:\\</span>
                         <span class="text-[11px] text-stone-500 ml-1.5">Klik untuk alokasi</span>
@@ -909,11 +925,13 @@ function renderDiskGrid(drives) {
     });
 }
 
-function openPartitionModal(mountPoint, currentRole) {
+function openPartitionModal(letter, physicalDisk, currentRole) {
     const modal = document.getElementById('partition-modal');
     modal.style.display = 'flex';
-    document.getElementById('partition-modal-desc').textContent = `Partisi: ${mountPoint}`;
-    document.getElementById('partition-mount-point').value = mountPoint;
+    document.getElementById('partition-modal-desc').textContent = `Partisi: Drive ${letter}:\\ (${physicalDisk || 'Logical Volume'})`;
+    const mountInput = document.getElementById('partition-mount-point');
+    mountInput.value = letter;
+    mountInput.dataset.physicalDisk = physicalDisk || '';
 
     const radios = document.querySelectorAll('input[name="partition-role"]');
     radios.forEach(r => {
@@ -926,35 +944,92 @@ function closePartitionModal() {
 }
 
 async function savePartitionRoleAction() {
-    const mountPoint = document.getElementById('partition-mount-point').value;
+    const letter = (document.getElementById('partition-mount-point').value || '').toUpperCase();
+    const physicalDisk = document.getElementById('partition-mount-point').dataset.physicalDisk || '';
     const selectedRadio = document.querySelector('input[name="partition-role"]:checked');
     const role = selectedRadio ? selectedRadio.value : 'none';
 
     if (!configObj) configObj = {};
-    if (!configObj.disk_storage) configObj.disk_storage = {};
+    if (!configObj.windows) configObj.windows = {
+        target_iqn_prefix: "iqn.2024-01.com.tmdebug:vhd-",
+        vhd_dir: "C:\\vhd",
+        block_size: 512,
+        vendor_id: "RUSTISCS",
+        product_id: "WindowsBoot",
+        product_revision: "1.00",
+        discovery: false,
+        super_client_ip: "",
+        super_client_action: "none"
+    };
+    if (!configObj.writeback) configObj.writeback = {
+        writeback_dirs: ["C:\\writeback"],
+        max_cache_per_client_gb: 10,
+        max_write_speed_mbps: 100000
+    };
+    if (!configObj.gamedisk) configObj.gamedisk = [];
 
-    if (role === 'boot') configObj.disk_storage.boot_dir = mountPoint;
-    else if (role === 'writeback') configObj.disk_storage.writeback_dir = mountPoint;
-    else if (role === 'gamedisk') configObj.disk_storage.gamedisk_dir = mountPoint;
+    // Remove previous associations for this drive letter
+    if (configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
+        if (role !== 'boot') configObj.windows.vhd_dir = 'C:\\vhd';
+    }
+    if (configObj.writeback.writeback_dirs) {
+        configObj.writeback.writeback_dirs = configObj.writeback.writeback_dirs.filter(dir => !dir.toUpperCase().startsWith(letter));
+        if (configObj.writeback.writeback_dirs.length === 0 && role !== 'writeback') {
+            configObj.writeback.writeback_dirs = ['C:\\writeback'];
+        }
+    }
+    if (physicalDisk) {
+        configObj.gamedisk = configObj.gamedisk.filter(gd => gd.physical_disk && gd.physical_disk.toLowerCase() !== physicalDisk.toLowerCase());
+    }
 
-    await saveConfigJsonFull();
-    closePartitionModal();
-    loadDiskPartitions();
-    showToast(`Peran partisi ${mountPoint} berhasil diubah ke ${role}`, 'success');
+    // Apply new role
+    if (role === 'boot') {
+        configObj.windows.vhd_dir = `${letter}:\\vhd`;
+    } else if (role === 'writeback') {
+        if (!configObj.writeback.writeback_dirs) configObj.writeback.writeback_dirs = [];
+        configObj.writeback.writeback_dirs.push(`${letter}:\\writeback`);
+    } else if (role === 'gamedisk') {
+        if (physicalDisk) {
+            configObj.gamedisk.push({
+                physical_disk: physicalDisk,
+                block_size: 512,
+                vendor_id: "RUSTISCS",
+                product_id: `GameDisk-${configObj.gamedisk.length}`,
+                product_revision: "1.00"
+            });
+        }
+    }
+
+    const saved = await saveConfigJsonFull();
+    if (saved) {
+        closePartitionModal();
+        loadDiskPartitions();
+        showToast(`Peran partisi Drive ${letter}: berhasil diubah ke ${role.toUpperCase()}`, 'success');
+    } else {
+        showToast(`Gagal menyimpan alokasi partisi Drive ${letter}:`, 'error');
+    }
 }
 
 async function saveGlobalStorageParams() {
-    const maxCacheGb = parseInt(document.getElementById('disk-max-cache-gb').value, 10);
-    const throttleMb = parseInt(document.getElementById('disk-throttle-mb').value, 10);
+    const maxCacheGb = parseInt(document.getElementById('disk-max-cache-gb').value, 10) || 10;
+    const throttleMb = parseInt(document.getElementById('disk-throttle-mb').value, 10) || 100000;
 
     if (!configObj) configObj = {};
-    if (!configObj.writeback) configObj.writeback = {};
+    if (!configObj.writeback) configObj.writeback = {
+        writeback_dirs: ["C:\\writeback"],
+        max_cache_per_client_gb: 10,
+        max_write_speed_mbps: 100000
+    };
 
-    configObj.writeback.max_cache_size_gb = maxCacheGb;
-    configObj.writeback.max_write_speed_mb_per_sec = throttleMb;
+    configObj.writeback.max_cache_per_client_gb = maxCacheGb;
+    configObj.writeback.max_write_speed_mbps = throttleMb;
 
-    await saveConfigJsonFull();
-    showToast('Parameter storage berhasil disimpan', 'success');
+    const saved = await saveConfigJsonFull();
+    if (saved) {
+        showToast('Parameter storage berhasil disimpan', 'success');
+    } else {
+        showToast('Gagal menyimpan parameter storage', 'error');
+    }
 }
 
 async function loadWritebackFiles() {
@@ -1000,7 +1075,10 @@ async function loadConfigJson() {
     // Server
     if (data.server) {
         const addrEl = document.getElementById('set-server-address');
-        if (addrEl) addrEl.value = data.server.address || '0.0.0.0';
+        if (addrEl) {
+            const addr = Array.isArray(data.server.address) ? data.server.address[0] : data.server.address;
+            addrEl.value = addr || '0.0.0.0';
+        }
         const portEl = document.getElementById('set-server-port');
         if (portEl) portEl.value = data.server.port || 3260;
         const cacheEl = document.getElementById('set-server-cache');
@@ -1009,7 +1087,13 @@ async function loadConfigJson() {
 
     // Target IQN Prefix
     const iqnEl = document.getElementById('set-gamedisk-iqn');
-    if (iqnEl && data.target) iqnEl.value = data.target.name_prefix || '';
+    if (iqnEl) {
+        if (data.gamedisk_target && data.gamedisk_target.target_iqn) {
+            iqnEl.value = data.gamedisk_target.target_iqn;
+        } else if (data.windows && data.windows.target_iqn_prefix) {
+            iqnEl.value = data.windows.target_iqn_prefix;
+        }
+    }
 
     // DHCP
     if (data.dhcp) {
@@ -1022,34 +1106,36 @@ async function loadConfigJson() {
         const endIpEl = document.getElementById('set-dhcp-end-ip');
         if (endIpEl) endIpEl.value = data.dhcp.end_ip || '';
         const maskEl = document.getElementById('set-dhcp-mask');
-        if (maskEl) maskEl.value = data.dhcp.netmask || '';
+        if (maskEl) maskEl.value = data.dhcp.subnet_mask || data.dhcp.netmask || '255.255.255.0';
         const gwEl = document.getElementById('set-dhcp-gateway');
-        if (gwEl) gwEl.value = data.dhcp.gateway || '';
+        if (gwEl) gwEl.value = data.dhcp.router || data.dhcp.gateway || '';
         const dnsEl = document.getElementById('set-dhcp-dns');
-        if (dnsEl) dnsEl.value = data.dhcp.dns || '';
+        if (dnsEl) dnsEl.value = data.dhcp.dns || '8.8.8.8';
 
         renderNicIpsList(data.dhcp.nic_ips || []);
     }
 
     // TFTP
-    if (data.tftp) {
-        const dirEl = document.getElementById('set-tftp-dir');
-        if (dirEl) dirEl.value = data.tftp.tftp_dir || 'pxe';
-        const pxeEl = document.getElementById('set-pxe-default');
-        if (pxeEl) pxeEl.value = data.tftp.pxe_default || 'sb-custom';
-    }
+    const dirEl = document.getElementById('set-tftp-dir');
+    const pxeEl = document.getElementById('set-pxe-default');
+    if (data.dhcp && data.dhcp.tftp_dir && dirEl) dirEl.value = data.dhcp.tftp_dir;
+    else if (data.tftp && data.tftp.tftp_dir && dirEl) dirEl.value = data.tftp.tftp_dir;
+
+    if (data.dhcp && data.dhcp.pxe_default && pxeEl) pxeEl.value = data.dhcp.pxe_default;
+    else if (data.tftp && data.tftp.pxe_default && pxeEl) pxeEl.value = data.tftp.pxe_default;
 
     // Storage Parameters
     if (data.writeback) {
         const maxCacheEl = document.getElementById('disk-max-cache-gb');
-        if (maxCacheEl) maxCacheEl.value = data.writeback.max_cache_size_gb || 8;
+        if (maxCacheEl) maxCacheEl.value = data.writeback.max_cache_per_client_gb || 10;
         const throttleEl = document.getElementById('disk-throttle-mb');
-        if (throttleEl) throttleEl.value = data.writeback.max_write_speed_mb_per_sec || 50;
+        if (throttleEl) throttleEl.value = data.writeback.max_write_speed_mbps || 100000;
     }
 
     renderVhdTable();
     loadDiskPartitions();
     loadTftpFolders();
+    populateNetworkDropdowns();
 }
 
 function renderNicIpsList(nicIps) {
@@ -1101,33 +1187,41 @@ async function saveConfigJson(e) {
     if (!configObj) configObj = {};
 
     configObj.server = {
-        address: document.getElementById('set-server-address').value,
-        port: parseInt(document.getElementById('set-server-port').value, 10),
-        read_cache_gb: parseInt(document.getElementById('set-server-cache').value, 10)
+        address: document.getElementById('set-server-address').value || '0.0.0.0',
+        port: parseInt(document.getElementById('set-server-port').value, 10) || 3260,
+        read_cache_gb: parseInt(document.getElementById('set-server-cache').value, 10) || 4
     };
 
-    if (!configObj.target) configObj.target = {};
-    configObj.target.name_prefix = document.getElementById('set-gamedisk-iqn').value;
+    if (!configObj.gamedisk_target) {
+        configObj.gamedisk_target = {
+            target_iqn: document.getElementById('set-gamedisk-iqn').value || "iqn.2024-01.com.tmdebug:gamedisks",
+            discovery: true
+        };
+    } else {
+        configObj.gamedisk_target.target_iqn = document.getElementById('set-gamedisk-iqn').value || configObj.gamedisk_target.target_iqn;
+    }
+
+    const tftpDirVal = document.getElementById('set-tftp-dir').value || 'pxe';
+    const pxeDefaultVal = document.getElementById('set-pxe-default').value || 'sb-custom';
 
     configObj.dhcp = {
         enabled: document.getElementById('set-dhcp-enabled').checked,
         next_server: document.getElementById('set-dhcp-next').value,
         start_ip: document.getElementById('set-dhcp-start-ip').value,
         end_ip: document.getElementById('set-dhcp-end-ip').value,
-        netmask: document.getElementById('set-dhcp-mask').value,
-        gateway: document.getElementById('set-dhcp-gateway').value,
+        router: document.getElementById('set-dhcp-gateway').value,
         dns: document.getElementById('set-dhcp-dns').value,
-        nic_ips: configObj.dhcp ? (configObj.dhcp.nic_ips || []) : []
-    };
-
-    configObj.tftp = {
-        tftp_dir: document.getElementById('set-tftp-dir').value,
-        pxe_default: document.getElementById('set-pxe-default').value
+        subnet_mask: document.getElementById('set-dhcp-mask').value || '255.255.255.0',
+        tftp_dir: tftpDirVal,
+        pxe_default: pxeDefaultVal,
+        nic_ips: (configObj.dhcp && configObj.dhcp.nic_ips) ? configObj.dhcp.nic_ips : []
     };
 
     const success = await saveConfigJsonFull();
     if (success) {
         showToast('Konfigurasi sentral berhasil disimpan', 'success');
+    } else {
+        showToast('Gagal menyimpan konfigurasi sentral', 'error');
     }
 }
 
