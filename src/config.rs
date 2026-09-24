@@ -360,3 +360,103 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
         client.hostname.as_deref().unwrap_or("?"), client.mac, path);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_json_toml_roundtrip() {
+        let json_data = r#"{
+            "server": {
+                "address": "0.0.0.0",
+                "port": 3300,
+                "read_cache_gb": 4
+            },
+            "gamedisk_target": {
+                "target_iqn": "iqn.2024-01.com.tmdebug:gamedisks",
+                "discovery": true
+            },
+            "gamedisk": [
+                {
+                    "physical_disk": "\\\\.\\PhysicalDrive0",
+                    "block_size": 512,
+                    "vendor_id": "RUSTISCS",
+                    "product_id": "GameDisk-0",
+                    "product_revision": "1.00"
+                }
+            ],
+            "windows": {
+                "target_iqn_prefix": "iqn.2024-01.com.tmdebug:vhd-",
+                "vhd_dir": "",
+                "block_size": 512,
+                "vendor_id": "RUSTISCS",
+                "product_id": "WindowsBoot",
+                "product_revision": "1.00",
+                "discovery": false,
+                "super_client_ip": "",
+                "super_client_action": "none"
+            },
+            "writeback": {
+                "writeback_dirs": ["I:\\writeback", "E:\\writeback"],
+                "max_cache_per_client_gb": 10,
+                "max_write_speed_mbps": 100000
+            },
+            "dhcp": {
+                "enabled": true,
+                "start_ip": "192.168.180.2",
+                "end_ip": "192.168.180.200",
+                "router": "192.168.180.1",
+                "dns": "8.8.8.8",
+                "next_server": "192.168.180.1",
+                "subnet_mask": "255.255.255.0",
+                "tftp_dir": "pxe",
+                "pxe_default": "sb-custom",
+                "nic_ips": []
+            }
+        }"#;
+
+        let cfg: Config = serde_json::from_str(json_data).expect("Failed to parse JSON");
+        assert_eq!(cfg.gamedisk.len(), 1);
+        assert_eq!(cfg.gamedisk[0].physical_disk, r"\\.\PhysicalDrive0");
+
+        let toml_str = toml::to_string(&cfg).expect("Failed to serialize to TOML");
+        println!("Generated TOML:\n{}", toml_str);
+
+        let parsed_cfg: Config = toml::from_str(&toml_str).expect("Failed to parse generated TOML");
+        assert_eq!(parsed_cfg.gamedisk.len(), 1);
+        assert_eq!(parsed_cfg.gamedisk[0].physical_disk, r"\\.\PhysicalDrive0");
+    }
+
+    #[test]
+    fn test_config_json_toml_empty_gamedisk() {
+        let json_data = r#"{
+            "server": {
+                "address": "0.0.0.0",
+                "port": 3300,
+                "read_cache_gb": 4
+            },
+            "gamedisk_target": {
+                "target_iqn": "iqn.2024-01.com.tmdebug:gamedisks",
+                "discovery": true
+            },
+            "gamedisk": [],
+            "windows": null,
+            "writeback": {
+                "writeback_dirs": ["I:\\writeback"],
+                "max_cache_per_client_gb": 10,
+                "max_write_speed_mbps": 100000
+            },
+            "dhcp": null
+        }"#;
+
+        let cfg: Config = serde_json::from_str(json_data).expect("Failed to parse JSON");
+        assert_eq!(cfg.gamedisk.len(), 0);
+
+        let toml_str = toml::to_string(&cfg).expect("Failed to serialize to TOML");
+        println!("Generated TOML empty:\n{}", toml_str);
+
+        let parsed_cfg: Config = toml::from_str(&toml_str).expect("Failed to parse generated TOML");
+        assert_eq!(parsed_cfg.gamedisk.len(), 0);
+    }
+}
