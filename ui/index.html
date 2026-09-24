@@ -3,138 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple iSCSI Server Dashboard</title>
+    <title>Simple iSCSI - Server Dashboard</title>
     <link rel="stylesheet" href="/tailwind.css">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <!-- Google Fonts Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="bg-[#f7f4ed] text-[#1c1c1c] font-sans antialiased h-screen overflow-hidden">
 
-    <div class="layout flex-col md:flex-row">
+    <div class="flex flex-col md:flex-row h-screen w-screen overflow-hidden">
         <!-- Sidebar Kiri -->
-        <aside class="sidebar fixed inset-y-0 left-0 z-50 w-[260px] transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-[var(--color-bg)] border-r border-[var(--color-border)] h-full">
-            <div class="brand">
-                <span class="brand-logo">⚡</span>
-                <span class="brand-name">Lovable iSCSI</span>
+        <aside class="sidebar fixed inset-y-0 left-0 z-50 w-64 transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-[#f7f4ed] border-r border-[#eceae4] flex flex-col justify-between p-6 h-full select-none">
+            <div>
+                <!-- Brand Header -->
+                <div class="flex items-center gap-3 px-2 py-1 mb-8">
+                    <span class="text-2xl">⚡</span>
+                    <span class="font-['Outfit'] font-bold text-xl tracking-tight text-[#1c1c1c]">Simple iSCSI</span>
+                </div>
+                
+                <!-- Navigation Menu -->
+                <nav class="nav-menu space-y-1.5">
+                    <a href="#" class="nav-item active flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] [&.active]:bg-[#1c1c1c] [&.active]:text-[#fcfbf8] [&.active]:shadow-sm transition-all" data-tab="dashboard">
+                        <span class="text-base">📊</span> <span>Dashboard</span>
+                    </a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] [&.active]:bg-[#1c1c1c] [&.active]:text-[#fcfbf8] [&.active]:shadow-sm transition-all" data-tab="clients">
+                        <span class="text-base">🖥️</span> <span>Klien Manager</span>
+                    </a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] [&.active]:bg-[#1c1c1c] [&.active]:text-[#fcfbf8] [&.active]:shadow-sm transition-all" data-tab="vhd">
+                        <span class="text-base">💾</span> <span>Image Manager</span>
+                    </a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] [&.active]:bg-[#1c1c1c] [&.active]:text-[#fcfbf8] [&.active]:shadow-sm transition-all" data-tab="disk-mgmt">
+                        <span class="text-base">💽</span> <span>Disk Management</span>
+                    </a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] [&.active]:bg-[#1c1c1c] [&.active]:text-[#fcfbf8] [&.active]:shadow-sm transition-all" data-tab="writeback">
+                        <span class="text-base">📦</span> <span>Writeback Cache</span>
+                    </a>
+                    <a href="#" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium text-[#5f5f5d] hover:text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] [&.active]:bg-[#1c1c1c] [&.active]:text-[#fcfbf8] [&.active]:shadow-sm transition-all" data-tab="settings">
+                        <span class="text-base">⚙️</span> <span>Pengaturan Sentral</span>
+                    </a>
+                </nav>
             </div>
-            
-            <nav class="nav-menu">
-                <a href="#" class="nav-item active" data-tab="dashboard">
-                    <span class="nav-icon">📊</span> Dashboard
-                </a>
-                <a href="#" class="nav-item" data-tab="clients">
-                    <span class="nav-icon">🖥️</span> Klien
-                </a>
-                <a href="#" class="nav-item" data-tab="vhd">
-                    <span class="nav-icon">💾</span> Image Manager
-                </a>
-                <a href="#" class="nav-item" data-tab="disk-mgmt">
-                    <span class="nav-icon">💽</span> Disk Management
-                </a>
-                <a href="#" class="nav-item" data-tab="writeback">
-                    <span class="nav-icon">📦</span> Writeback
-                </a>
-                <a href="#" class="nav-item" data-tab="settings">
-                    <span class="nav-icon">⚙️</span> Pengaturan
-                </a>
-            </nav>
 
-            <div class="sidebar-footer">
-                <button class="btn btn-ghost btn-small" id="theme-toggle-btn" style="width: 100%; margin-bottom: 12px; font-size: 13px;">
-                    🌙 Mode Gelap
+            <!-- Sidebar Footer -->
+            <div class="pt-6 border-t border-[#eceae4]">
+                <button class="w-full py-2.5 px-3.5 text-xs font-medium rounded-md border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] text-[#1c1c1c] transition-all flex items-center justify-center gap-2 mb-4" id="theme-toggle-btn">
+                    <span>🌙</span> <span>Mode Gelap</span>
                 </button>
-                <div class="system-status">
-                    <span class="status-indicator online"></span>
-                    <span class="status-text" id="global-status-text">Server: Online</span>
+                <div class="flex items-center gap-2.5 text-xs font-medium text-[#5f5f5d] px-1">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                    <span id="global-status-text">Server: Online</span>
                 </div>
             </div>
         </aside>
 
-        <!-- Mobile Header (Visible only on small screens) -->
-        <header class="mobile-header md:hidden flex items-center justify-between p-4 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
-            <div class="brand" style="margin-bottom: 0; padding: 0;">
-                <span class="brand-logo">⚡</span>
-                <span class="brand-name" style="font-size: 18px;">Lovable iSCSI</span>
+        <!-- Mobile Top Header -->
+        <header class="mobile-header md:hidden flex items-center justify-between px-6 py-4 bg-[#f7f4ed] border-b border-[#eceae4]">
+            <div class="flex items-center gap-2.5">
+                <span class="text-xl">⚡</span>
+                <span class="font-['Outfit'] font-bold text-lg text-[#1c1c1c]">Simple iSCSI</span>
             </div>
-            <button id="mobile-menu-btn" class="p-2 text-[var(--color-text)] focus:outline-none">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <button id="mobile-menu-btn" class="p-2 text-[#1c1c1c] hover:bg-[#1c1c1c]/[0.04] rounded-md focus:outline-none">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
         </header>
 
         <!-- Overlay Sidebar Mobile -->
-        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden transition-opacity"></div>
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 hidden md:hidden transition-opacity"></div>
 
-        <!-- Konten Utama -->
-        <main class="main-content flex-1">
+        <!-- Main Content Canvas -->
+        <main class="main-content flex-1 min-w-0 h-screen overflow-y-auto bg-[#f7f4ed] p-6 sm:p-8 lg:p-10 xl:p-12 2xl:p-14">
             <!-- TAB: DASHBOARD -->
             <section id="tab-dashboard" class="tab-panel active">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-6">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[#eceae4] mb-8">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Dashboard Overview</h1>
-                        <p class="subtitle text-sm sm:text-base mb-0">Metrik keaktifan server iSCSI, DHCP, dan TFTP secara dinamis.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']">Dashboard Overview</h1>
+                        <p class="subtitle text-sm sm:text-base text-[#5f5f5d] mt-1.5 leading-relaxed">Metrik keaktifan server iSCSI, DHCP, dan TFTP secara dinamis.</p>
                     </div>
                 </header>
 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 xl:gap-6 mb-6" id="dashboard-services-container">
-                    <div class="service-card p-5 sm:p-6 rounded-xl flex items-center justify-between shadow-sm">
-                        <div class="service-info">
-                            <h3 class="font-semibold text-base mb-1">iSCSI Target Daemon</h3>
-                            <p id="iscsi-port-info" class="text-sm text-[var(--color-muted)]">Port: ...</p>
+                <!-- Service Status Cards Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 mb-8" id="dashboard-services-container">
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 flex items-center justify-between hover:border-[#1c1c1c]/20 transition-all">
+                        <div>
+                            <h3 class="font-semibold text-base text-[#1c1c1c] mb-1">iSCSI Target Daemon</h3>
+                            <p id="iscsi-port-info" class="text-xs text-[#5f5f5d]">Port: ...</p>
                         </div>
-                        <span class="pill-status" id="iscsi-status-pill">🔴 Offline</span>
+                        <span class="pill-status text-xs font-medium px-3 py-1 rounded-full bg-[#1c1c1c]/[0.04] text-[#1c1c1c] border border-[#eceae4]" id="iscsi-status-pill">🔴 Offline</span>
                     </div>
-                    <div class="service-card p-5 sm:p-6 rounded-xl flex items-center justify-between shadow-sm">
-                        <div class="service-info">
-                            <h3 class="font-semibold text-base mb-1">DHCP Server</h3>
-                            <p id="dhcp-port-info" class="text-sm text-[var(--color-muted)]">Port: ...</p>
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 flex items-center justify-between hover:border-[#1c1c1c]/20 transition-all">
+                        <div>
+                            <h3 class="font-semibold text-base text-[#1c1c1c] mb-1">DHCP Server</h3>
+                            <p id="dhcp-port-info" class="text-xs text-[#5f5f5d]">Port: ...</p>
                         </div>
-                        <span class="pill-status" id="dhcp-status-pill">🔴 Offline</span>
+                        <span class="pill-status text-xs font-medium px-3 py-1 rounded-full bg-[#1c1c1c]/[0.04] text-[#1c1c1c] border border-[#eceae4]" id="dhcp-status-pill">🔴 Offline</span>
                     </div>
-                    <div class="service-card p-5 sm:p-6 rounded-xl flex items-center justify-between shadow-sm">
-                        <div class="service-info">
-                            <h3 class="font-semibold text-base mb-1">TFTP Server</h3>
-                            <p id="tftp-port-info" class="text-sm text-[var(--color-muted)]">Port: ...</p>
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 flex items-center justify-between hover:border-[#1c1c1c]/20 transition-all">
+                        <div>
+                            <h3 class="font-semibold text-base text-[#1c1c1c] mb-1">TFTP Server</h3>
+                            <p id="tftp-port-info" class="text-xs text-[#5f5f5d]">Port: ...</p>
                         </div>
-                        <span class="pill-status" id="tftp-status-pill">🔴 Offline</span>
+                        <span class="pill-status text-xs font-medium px-3 py-1 rounded-full bg-[#1c1c1c]/[0.04] text-[#1c1c1c] border border-[#eceae4]" id="tftp-status-pill">🔴 Offline</span>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 xl:gap-6 mb-6">
-                    <div class="stat-card p-5 sm:p-6 rounded-xl flex flex-col gap-2 shadow-sm">
-                        <span class="stat-label text-sm text-[var(--color-muted)] font-medium">Total Active Connections</span>
-                        <span class="stat-value text-3xl sm:text-4xl font-bold" id="stat-conns">0</span>
+                <!-- Stats Counters Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 lg:gap-8 mb-8">
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 flex flex-col gap-2">
+                        <span class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-[#5f5f5d]">Total Active Connections</span>
+                        <span class="text-3xl sm:text-4xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']" id="stat-conns">0</span>
                     </div>
-                    <div class="stat-card p-5 sm:p-6 rounded-xl flex flex-col gap-2 shadow-sm">
-                        <span class="stat-label text-sm text-[var(--color-muted)] font-medium">Total Configured PCs</span>
-                        <span class="stat-value text-3xl sm:text-4xl font-bold" id="stat-total-pcs">0</span>
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 flex flex-col gap-2">
+                        <span class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-[#5f5f5d]">Total Configured PCs</span>
+                        <span class="text-3xl sm:text-4xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']" id="stat-total-pcs">0</span>
                     </div>
                 </div>
 
-                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
-                    <h2 class="text-lg sm:text-xl font-bold font-['Outfit'] mb-4">Daftar Penggunaan I/O Klien</h2>
-                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
-                        <table class="data-table">
+                <!-- Real-time IO Clients Table Card -->
+                <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 xl:p-8 mb-8">
+                    <h2 class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-4 border-b border-[#eceae4] mb-6">Daftar Penggunaan I/O Klien</h2>
+                    <div class="overflow-x-auto rounded-lg border border-[#eceae4] bg-[#fcfbf8]">
+                        <table class="w-full text-left text-sm border-collapse">
                             <thead>
-                                <tr>
-                                    <th>Status</th>
-                                    <th>IP Address</th>
-                                    <th>DNS</th>
-                                    <th>Gateway</th>
-                                    <th>Boot Image</th>
-                                    <th>Next Server</th>
-                                    <th>Read</th>
-                                    <th>Read Speed</th>
-                                    <th>Write</th>
-                                    <th>Write Speed</th>
-                                    <th>Uptime</th>
+                                <tr class="bg-[#1c1c1c]/[0.02] border-b border-[#eceae4]">
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Status</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">IP Address</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">DNS</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Gateway</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Boot Image</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Next Server</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Read</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Read Speed</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Write</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Write Speed</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Uptime</th>
                                 </tr>
                             </thead>
-                            <tbody id="dashboard-clients-tbody">
+                            <tbody id="dashboard-clients-tbody" class="divide-y divide-[#eceae4]">
                                 <tr>
-                                    <td colspan="11" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat data klien...</td>
+                                    <td colspan="11" class="py-8 px-5 text-center text-[#5f5f5d]">Memuat data klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -144,40 +152,40 @@
 
             <!-- TAB: KLIEN -->
             <section id="tab-clients" class="tab-panel">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-[var(--color-border)] mb-6">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[#eceae4] mb-8">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Klien Manager</h1>
-                        <p class="subtitle text-sm sm:text-base mb-0">Kelola klien static clients.toml (Klik baris klien untuk edit/hapus).</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']">Klien Manager</h1>
+                        <p class="subtitle text-sm sm:text-base text-[#5f5f5d] mt-1.5 leading-relaxed">Kelola klien static clients.toml (Klik baris klien untuk edit/hapus).</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
-                        <button class="btn btn-ghost text-sm px-4 py-2" style="border-color: #3b82f6; color: #3b82f6;" onclick="autoAllocateNextServerIpsAction()">⚡ Auto-Allocate Next Server IPs</button>
-                        <button class="btn btn-primary text-sm px-4 py-2" onclick="openClientCrudModal(null)">➕ Tambah Klien Baru</button>
+                        <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-transparent text-blue-600 border border-blue-600/40 hover:bg-blue-50/50 active:scale-[0.98] transition-all" onclick="autoAllocateNextServerIpsAction()">⚡ Auto-Allocate Next Server IPs</button>
+                        <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]" onclick="openClientCrudModal(null)">➕ Tambah Klien Baru</button>
                     </div>
                 </header>
 
-                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
-                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
-                        <table class="data-table">
+                <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 xl:p-8 mb-8">
+                    <div class="overflow-x-auto rounded-lg border border-[#eceae4] bg-[#fcfbf8]">
+                        <table class="w-full text-left text-sm border-collapse">
                             <thead>
-                                <tr>
-                                    <th>Status</th>
-                                    <th>Hostname</th>
-                                    <th>IP Address</th>
-                                    <th>MAC Address</th>
-                                    <th>DNS</th>
-                                    <th>Gateway</th>
-                                    <th>Boot Image</th>
-                                    <th>Next Server</th>
-                                    <th>Read</th>
-                                    <th>Read Speed</th>
-                                    <th>Write</th>
-                                    <th>Write Speed</th>
-                                    <th>Uptime</th>
+                                <tr class="bg-[#1c1c1c]/[0.02] border-b border-[#eceae4]">
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Status</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Hostname</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">IP Address</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">MAC Address</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">DNS</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Gateway</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Boot Image</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Next Server</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Read</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Read Speed</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Write</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Write Speed</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Uptime</th>
                                 </tr>
                             </thead>
-                            <tbody id="clients-tbody">
+                            <tbody id="clients-tbody" class="divide-y divide-[#eceae4]">
                                 <tr>
-                                    <td colspan="13" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat daftar klien...</td>
+                                    <td colspan="13" class="py-8 px-5 text-center text-[#5f5f5d]">Memuat daftar klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -187,28 +195,28 @@
 
             <!-- TAB: IMAGE MANAGER -->
             <section id="tab-vhd" class="tab-panel">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-[var(--color-border)] mb-6">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[#eceae4] mb-8">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Image Manager</h1>
-                        <p class="subtitle text-sm sm:text-base mb-0">Konfigurasi boot image VHD yang terdaftar di config.toml.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']">Image Manager</h1>
+                        <p class="subtitle text-sm sm:text-base text-[#5f5f5d] mt-1.5 leading-relaxed">Konfigurasi boot image VHD yang terdaftar di config.toml.</p>
                     </div>
-                    <button class="btn btn-primary text-sm px-4 py-2" onclick="openVhdCrudModal(null)">➕ Tambah VHD Mapping</button>
+                    <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]" onclick="openVhdCrudModal(null)">➕ Tambah VHD Mapping</button>
                 </header>
 
-                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
-                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
-                        <table class="data-table">
+                <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 xl:p-8 mb-8">
+                    <div class="overflow-x-auto rounded-lg border border-[#eceae4] bg-[#fcfbf8]">
+                        <table class="w-full text-left text-sm border-collapse">
                             <thead>
-                                <tr>
-                                    <th>Image Key (Alias)</th>
-                                    <th>Full VHD Path</th>
-                                    <th>Snapshot Backups</th>
-                                    <th>Aksi</th>
+                                <tr class="bg-[#1c1c1c]/[0.02] border-b border-[#eceae4]">
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Image Key (Alias)</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Full VHD Path</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Snapshot Backups</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]" style="text-align: right;">Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody id="vhds-tbody">
+                            <tbody id="vhds-tbody" class="divide-y divide-[#eceae4]">
                                 <tr>
-                                    <td colspan="4" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat konfigurasi VHD...</td>
+                                    <td colspan="4" class="py-8 px-5 text-center text-[#5f5f5d]">Memuat konfigurasi VHD...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -218,58 +226,60 @@
 
             <!-- TAB: DISK MANAGEMENT -->
             <section id="tab-disk-mgmt" class="tab-panel">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-6">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[#eceae4] mb-8">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Disk Management</h1>
-                        <p class="subtitle text-sm sm:text-base mb-0">Klik kiri pada salah satu partisi disk untuk mengalokasikan fungsi booting, writeback, atau gamedisk.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']">Disk Management</h1>
+                        <p class="subtitle text-sm sm:text-base text-[#5f5f5d] mt-1.5 leading-relaxed">Klik kiri pada salah satu partisi disk untuk mengalokasikan fungsi booting, writeback, atau gamedisk.</p>
                     </div>
                 </header>
 
-                <div class="disk-list-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 xl:gap-6 mb-6" id="disk-grid-container">
+                <!-- Dynamic Disk Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 lg:gap-8 mb-8" id="disk-grid-container">
                     <!-- Disk cards loaded dynamically here -->
                 </div>
 
-                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
-                    <h2 class="text-lg sm:text-xl font-bold font-['Outfit'] mb-4">Global Storage Parameters</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
-                        <div class="input-group mb-0">
-                            <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Max Cache Size Per Client (GB)</label>
-                            <input type="number" id="disk-max-cache-gb" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                <!-- Global Storage Parameters Card -->
+                <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 xl:p-8 mb-8">
+                    <h2 class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-4 border-b border-[#eceae4] mb-6">Global Storage Parameters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Max Cache Size Per Client (GB)</label>
+                            <input type="number" id="disk-max-cache-gb" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                         </div>
-                        <div class="input-group mb-0">
-                            <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Max Write Speed throttle (MB/s)</label>
-                            <input type="number" id="disk-max-speed-mbps" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Max Write Speed Throttle (MB/s)</label>
+                            <input type="number" id="disk-max-speed-mbps" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                         </div>
                     </div>
-                    <div class="editor-actions mt-5 flex justify-end">
-                        <button type="button" class="btn btn-primary text-sm px-5 py-2.5" onclick="saveDiskMgmtGlobals()">💾 Simpan Parameter Global</button>
+                    <div class="flex justify-end pt-4 border-t border-[#eceae4]">
+                        <button type="button" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]" onclick="saveDiskMgmtGlobals()">💾 Simpan Parameter Global</button>
                     </div>
                 </div>
             </section>
 
             <!-- TAB: WRITEBACK -->
             <section id="tab-writeback" class="tab-panel">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-6">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[#eceae4] mb-8">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Writeback Cache Monitor</h1>
-                        <p class="subtitle text-sm sm:text-base mb-0">Pantau alokasi space cache klien secara dinamis berdasarkan konfigurasi writeback.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']">Writeback Cache Monitor</h1>
+                        <p class="subtitle text-sm sm:text-base text-[#5f5f5d] mt-1.5 leading-relaxed">Pantau alokasi space cache klien secara dinamis berdasarkan konfigurasi writeback.</p>
                     </div>
                 </header>
 
-                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
-                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
-                        <table class="data-table">
+                <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 xl:p-8 mb-8">
+                    <div class="overflow-x-auto rounded-lg border border-[#eceae4] bg-[#fcfbf8]">
+                        <table class="w-full text-left text-sm border-collapse">
                             <thead>
-                                <tr>
-                                    <th>Nama File Cache</th>
-                                    <th>Ukuran File</th>
-                                    <th>Path Lengkap</th>
-                                    <th>Aksi</th>
+                                <tr class="bg-[#1c1c1c]/[0.02] border-b border-[#eceae4]">
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Nama File Cache</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Ukuran File</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Path Lengkap</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]" style="text-align: right;">Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody id="writeback-tbody">
+                            <tbody id="writeback-tbody" class="divide-y divide-[#eceae4]">
                                 <tr>
-                                    <td colspan="4" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat file cache writeback...</td>
+                                    <td colspan="4" class="py-8 px-5 text-center text-[#5f5f5d]">Memuat file cache writeback...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -279,99 +289,99 @@
 
             <!-- TAB: SETTINGS -->
             <section id="tab-settings" class="tab-panel">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[var(--color-border)] mb-6">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[#eceae4] mb-8">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Pengaturan Sentral (config.toml)</h1>
-                        <p class="subtitle text-sm sm:text-base mb-0">Kelola konfigurasi Server iSCSI, DHCP Server, dan TFTP Bootloader secara terpadu.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[#1c1c1c] font-['Outfit']">Pengaturan Sentral (config.toml)</h1>
+                        <p class="subtitle text-sm sm:text-base text-[#5f5f5d] mt-1.5 leading-relaxed">Kelola konfigurasi Server iSCSI, DHCP Server, dan TFTP Bootloader secara terpadu.</p>
                     </div>
                     <div class="flex items-center gap-3 shrink-0">
-                        <button type="button" class="btn btn-ghost text-sm px-4 py-2" onclick="loadConfigJson()">🔄 Reset</button>
-                        <button type="submit" form="settings-form" class="btn btn-primary text-sm sm:text-base px-5 py-2.5 font-semibold shadow-sm flex items-center gap-2" id="btn-save-all-settings">💾 Simpan Semua Pengaturan</button>
+                        <button type="button" class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] active:scale-[0.98] transition-all" onclick="loadConfigJson()">🔄 Reset</button>
+                        <button type="submit" form="settings-form" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]" id="btn-save-all-settings">💾 Simpan Semua Pengaturan</button>
                     </div>
                 </header>
 
-                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8 mb-6">
+                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-8">
                     <!-- CARD 1: Server & iSCSI Daemon -->
-                    <div class="card p-5 sm:p-6 lg:p-7 mb-0 flex flex-col justify-between shadow-sm">
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 flex flex-col justify-between">
                         <div>
-                            <div class="flex items-center gap-2.5 border-b border-[var(--color-border)] pb-3 mb-5">
+                            <div class="flex items-center gap-3 pb-4 border-b border-[#eceae4] mb-6">
                                 <span class="text-xl">⚙️</span>
-                                <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">Server & iSCSI Daemon</h2>
+                                <h2 class="text-base sm:text-lg font-bold text-[#1c1c1c] font-['Outfit'] m-0">Server & iSCSI Daemon</h2>
                             </div>
-                            <div class="space-y-4 text-sm">
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Listen IP Address</label>
-                                    <select id="set-server-address" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
+                            <div class="space-y-5 text-sm">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Listen IP Address</label>
+                                    <select id="set-server-address" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all"></select>
                                 </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Port Server</label>
-                                        <input type="number" id="set-server-port" placeholder="3260 / 3300" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Port Server</label>
+                                        <input type="number" id="set-server-port" placeholder="3260 / 3300" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                     </div>
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Read Cache (GB)</label>
-                                        <input type="number" id="set-server-cache" placeholder="4" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    <div>
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Read Cache (GB)</label>
+                                        <input type="number" id="set-server-cache" placeholder="4" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                     </div>
                                 </div>
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">iSCSI Target IQN Prefix</label>
-                                    <input type="text" id="set-gamedisk-iqn" placeholder="iqn.2024-01.com.tmdebug:gamedisks" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">iSCSI Target IQN Prefix</label>
+                                    <input type="text" id="set-gamedisk-iqn" placeholder="iqn.2024-01.com.tmdebug:gamedisks" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- CARD 2: DHCP Server Configuration -->
-                    <div class="card p-5 sm:p-6 lg:p-7 mb-0 flex flex-col justify-between shadow-sm">
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 flex flex-col justify-between">
                         <div>
-                            <div class="flex items-center justify-between border-b border-[var(--color-border)] pb-3 mb-5">
-                                <div class="flex items-center gap-2.5">
+                            <div class="flex items-center justify-between pb-4 border-b border-[#eceae4] mb-6">
+                                <div class="flex items-center gap-3">
                                     <span class="text-xl">🔌</span>
-                                    <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">DHCP Server Configuration</h2>
+                                    <h2 class="text-base sm:text-lg font-bold text-[#1c1c1c] font-['Outfit'] m-0">DHCP Server Configuration</h2>
                                 </div>
-                                <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer m-0 bg-[var(--color-white)] px-3 py-1 rounded-full border border-[var(--color-border)]">
-                                    <input type="checkbox" id="set-dhcp-enabled" class="w-auto m-0">
+                                <label class="flex items-center gap-2 text-xs font-semibold cursor-pointer m-0 bg-[#fcfbf8] px-3 py-1.5 rounded-full border border-[#eceae4]">
+                                    <input type="checkbox" id="set-dhcp-enabled" class="w-auto m-0 rounded text-[#1c1c1c]">
                                     <span>Aktif</span>
                                 </label>
                             </div>
-                            <div class="space-y-4 text-sm">
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">IP Server DHCP (Next Server)</label>
-                                    <select id="set-dhcp-next" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
-                                    <p class="text-[11px] text-[var(--color-muted)] mt-1">Alamat IP Server yang merespons DHCP dan PXE Bootloader klien.</p>
+                            <div class="space-y-5 text-sm">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">IP Server DHCP (Next Server)</label>
+                                    <select id="set-dhcp-next" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all"></select>
+                                    <p class="text-xs text-[#5f5f5d] mt-1.5 leading-relaxed">Alamat IP Server yang merespons DHCP dan PXE Bootloader klien.</p>
                                 </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Start IP Pool</label>
-                                        <input type="text" id="set-dhcp-start-ip" placeholder="10.10.10.100" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Start IP Pool</label>
+                                        <input type="text" id="set-dhcp-start-ip" placeholder="10.10.10.100" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                     </div>
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">End IP Pool</label>
-                                        <input type="text" id="set-dhcp-end-ip" placeholder="10.10.10.250" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Subnet Mask</label>
-                                        <input type="text" id="set-dhcp-mask" placeholder="255.255.255.0" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
-                                    </div>
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Gateway (Router)</label>
-                                        <input type="text" id="set-dhcp-gateway" list="network-ips-datalist" placeholder="10.10.10.1" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    <div>
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">End IP Pool</label>
+                                        <input type="text" id="set-dhcp-end-ip" placeholder="10.10.10.250" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                     </div>
                                 </div>
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">DNS Server</label>
-                                    <input type="text" id="set-dhcp-dns" placeholder="8.8.8.8" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
-                                </div>
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Load Balancing NIC IPs</label>
-                                    <div class="flex gap-2 mb-2">
-                                        <input type="text" id="add-nic-ip-input" list="network-ips-datalist" placeholder="Tambah IP NIC..." class="flex-1 text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
-                                        <button type="button" class="btn btn-primary text-xs sm:text-sm px-3.5 py-2 whitespace-nowrap" onclick="addNicIpAction()">➕ Add</button>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Subnet Mask</label>
+                                        <input type="text" id="set-dhcp-mask" placeholder="255.255.255.0" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                     </div>
-                                    <div id="nic-ips-list-container" class="border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-light)] p-2.5 max-h-24 overflow-y-auto flex flex-col gap-1.5 text-xs">
-                                        <span class="text-[var(--color-muted)] text-center text-xs">Belum ada IP ditambahkan.</span>
+                                    <div>
+                                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Gateway (Router)</label>
+                                        <input type="text" id="set-dhcp-gateway" list="network-ips-datalist" placeholder="10.10.10.1" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">DNS Server</label>
+                                    <input type="text" id="set-dhcp-dns" placeholder="8.8.8.8" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Load Balancing NIC IPs</label>
+                                    <div class="flex gap-2.5 mb-2.5">
+                                        <input type="text" id="add-nic-ip-input" list="network-ips-datalist" placeholder="Tambah IP NIC..." class="flex-1 px-4 py-2 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
+                                        <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-xs font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-xs" onclick="addNicIpAction()">➕ Add</button>
+                                    </div>
+                                    <div id="nic-ips-list-container" class="border border-[#eceae4] rounded-md bg-[#fcfbf8] p-3 max-h-28 overflow-y-auto flex flex-col gap-2 text-xs">
+                                        <span class="text-[#5f5f5d] text-center text-xs py-1">Belum ada IP ditambahkan.</span>
                                     </div>
                                 </div>
                             </div>
@@ -379,20 +389,20 @@
                     </div>
 
                     <!-- CARD 3: TFTP Service & Boot Files -->
-                    <div class="card p-5 sm:p-6 lg:p-7 mb-0 flex flex-col justify-between shadow-sm">
+                    <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 flex flex-col justify-between">
                         <div>
-                            <div class="flex items-center gap-2.5 border-b border-[var(--color-border)] pb-3 mb-5">
+                            <div class="flex items-center gap-3 pb-4 border-b border-[#eceae4] mb-6">
                                 <span class="text-xl">📂</span>
-                                <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">TFTP Service & Bootloader</h2>
+                                <h2 class="text-base sm:text-lg font-bold text-[#1c1c1c] font-['Outfit'] m-0">TFTP Service & Bootloader</h2>
                             </div>
-                            <div class="space-y-4 text-sm">
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">TFTP Root Directory</label>
-                                    <input type="text" id="set-tftp-dir" placeholder="pxe" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                            <div class="space-y-5 text-sm">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">TFTP Root Directory</label>
+                                    <input type="text" id="set-tftp-dir" placeholder="pxe" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                 </div>
-                                <div class="input-group mb-0">
-                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Default PXE Bootloader</label>
-                                    <input type="text" id="set-pxe-default" list="tftp-folders-list" placeholder="sb-custom" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                <div>
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Default PXE Bootloader</label>
+                                    <input type="text" id="set-pxe-default" list="tftp-folders-list" placeholder="sb-custom" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                                 </div>
                             </div>
                         </div>
@@ -402,26 +412,28 @@
                 <datalist id="network-ips-datalist"></datalist>
 
                 <!-- TFTP FOLDERS CRUD CARD -->
-                <div class="card p-5 sm:p-6 lg:p-7 mb-6 shadow-sm">
-                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                        <div class="flex items-center gap-2.5">
+                <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-7 xl:p-8 mb-8">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 pb-4 border-b border-[#eceae4] mb-6">
+                        <div class="flex items-center gap-3">
                             <span class="text-xl">📁</span>
-                            <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">TFTP Bootloader Folders Manager</h2>
+                            <div>
+                                <h2 class="text-base sm:text-lg font-bold text-[#1c1c1c] font-['Outfit'] m-0">TFTP Bootloader Folders Manager</h2>
+                                <p class="text-xs sm:text-sm text-[#5f5f5d] mt-1">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
+                            </div>
                         </div>
-                        <button class="btn btn-primary text-xs sm:text-sm px-4 py-2" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
+                        <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px] whitespace-nowrap" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
                     </div>
-                    <p class="subtitle text-xs sm:text-sm mb-4">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
-                    <div class="table-container overflow-x-auto max-h-60 overflow-y-auto rounded-lg border border-[var(--color-border)]">
-                        <table class="data-table">
+                    <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-lg border border-[#eceae4] bg-[#fcfbf8]">
+                        <table class="w-full text-left text-sm border-collapse">
                             <thead>
-                                <tr>
-                                    <th>Nama Folder</th>
-                                    <th style="text-align: right;">Aksi</th>
+                                <tr class="bg-[#1c1c1c]/[0.02] border-b border-[#eceae4]">
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Nama Folder</th>
+                                    <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]" style="text-align: right;">Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody id="tftp-folders-tbody">
+                            <tbody id="tftp-folders-tbody" class="divide-y divide-[#eceae4]">
                                 <tr>
-                                    <td colspan="2" style="text-align: center; color: var(--color-muted);" class="py-6">Memuat folder TFTP...</td>
+                                    <td colspan="2" class="py-6 px-5 text-center text-[#5f5f5d]">Memuat folder TFTP...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -432,84 +444,88 @@
     </div>
 
     <!-- MODAL CRUD KLIEN -->
-    <div id="client-crud-modal" class="modal-backdrop">
-        <div class="modal" style="max-width: 600px;">
-            <h2 id="client-modal-title">Form Data Klien</h2>
-            <form id="client-crud-form" onsubmit="saveClientAction(event)">
+    <div id="client-crud-modal" class="modal-backdrop p-4">
+        <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-8 max-w-xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 id="client-modal-title" class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-4 border-b border-[#eceae4] mb-6">Form Data Klien</h2>
+            <form id="client-crud-form" onsubmit="saveClientAction(event)" class="space-y-5">
                 <input type="hidden" id="client-old-mac">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="input-group">
-                        <label>Hostname / PC Name</label>
-                        <input type="text" id="client-hostname" placeholder="e.g. PC-01" required>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Hostname / PC Name</label>
+                        <input type="text" id="client-hostname" placeholder="e.g. PC-01" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                     </div>
-                    <div class="input-group">
-                        <label>MAC Address</label>
-                        <input type="text" id="client-mac" placeholder="e.g. 00:0C:29:A4:BC:F2" required>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="input-group">
-                        <label>IP Address</label>
-                        <input type="text" id="client-ip" placeholder="e.g. 192.168.137.101" required>
-                    </div>
-                    <div class="input-group">
-                        <label>Gateway (Router IP)</label>
-                        <input type="text" id="client-gateway" placeholder="e.g. 192.168.137.1">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">MAC Address</label>
+                        <input type="text" id="client-mac" placeholder="e.g. 00:0C:29:A4:BC:F2" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                     </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="input-group">
-                        <label>DNS Server</label>
-                        <input type="text" id="client-dns" placeholder="e.g. 8.8.8.8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">IP Address</label>
+                        <input type="text" id="client-ip" placeholder="e.g. 192.168.137.101" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                     </div>
-                    <div class="input-group">
-                        <label>Next Server (Server IP)</label>
-                        <input type="text" id="client-next-server" placeholder="e.g. 192.168.137.1">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Gateway (Router IP)</label>
+                        <input type="text" id="client-gateway" placeholder="e.g. 192.168.137.1" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                     </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="input-group">
-                        <label>PXE Bootloader Folder</label>
-                        <input type="text" id="client-pxe" list="tftp-folders-list" placeholder="e.g. sb-custom">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">DNS Server</label>
+                        <input type="text" id="client-dns" placeholder="e.g. 8.8.8.8" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Next Server (Server IP)</label>
+                        <input type="text" id="client-next-server" placeholder="e.g. 192.168.137.1" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">PXE Bootloader Folder</label>
+                        <input type="text" id="client-pxe" list="tftp-folders-list" placeholder="e.g. sb-custom" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                         <datalist id="tftp-folders-list"></datalist>
                     </div>
-                    <div class="input-group">
-                        <label>Boot Image (Image Manager Key)</label>
-                        <select id="client-image-manager">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Boot Image (Image Manager Key)</label>
+                        <select id="client-image-manager" class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                             <option value="">-- Tanpa Image (Gamedisk Only) --</option>
                         </select>
                     </div>
                 </div>
-                <div class="modal-buttons" style="margin-top: 24px;">
-                    <button type="button" class="btn btn-ghost" style="border-color: #ef4444; color: #ef4444; margin-right: auto;" id="btn-client-delete" onclick="deleteClientAction()">Hapus Klien</button>
-                    <button type="button" class="btn btn-ghost" onclick="closeClientCrudModal()">Batal</button>
-                    <button type="submit" class="btn btn-primary">Simpan Klien</button>
+                <div class="flex items-center justify-between pt-6 border-t border-[#eceae4] mt-6">
+                    <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 active:scale-[0.98] transition-all" id="btn-client-delete" onclick="deleteClientAction()">Hapus Klien</button>
+                    <div class="flex items-center gap-3 ml-auto">
+                        <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] active:scale-[0.98] transition-all" onclick="closeClientCrudModal()">Batal</button>
+                        <button type="submit" class="inline-flex items-center justify-center px-5 py-2 text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]">Simpan Klien</button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- MODAL CRUD VHD MAPPING -->
-    <div id="vhd-crud-modal" class="modal-backdrop">
-        <div class="modal">
-            <h2 id="vhd-modal-title">Form VHD Mapping</h2>
-            <form id="vhd-crud-form" onsubmit="saveVhdAction(event)">
+    <div id="vhd-crud-modal" class="modal-backdrop p-4">
+        <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-8 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 id="vhd-modal-title" class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-4 border-b border-[#eceae4] mb-6">Form VHD Mapping</h2>
+            <form id="vhd-crud-form" onsubmit="saveVhdAction(event)" class="space-y-5">
                 <input type="hidden" id="vhd-old-key">
-                <div class="input-group">
-                    <label>Image Key (Alias)</label>
-                    <input type="text" id="vhd-image-key" placeholder="e.g. windows_11" required>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">Image Key (Alias)</label>
+                    <input type="text" id="vhd-image-key" placeholder="e.g. windows_11" required class="w-full px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
                 </div>
-                <div class="input-group">
-                    <label>File VHD Disk</label>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="text" id="vhd-path" readonly placeholder="Klik 'Pilih File' untuk memilih..." required style="flex: 1;">
-                        <button type="button" class="btn btn-ghost" onclick="selectVhdFileViaExplorer()" style="white-space: nowrap;">📂 Pilih File</button>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-[#5f5f5d] mb-2">File VHD Disk</label>
+                    <div class="flex gap-2.5">
+                        <input type="text" id="vhd-path" readonly placeholder="Klik 'Pilih File' untuk memilih..." required class="flex-1 px-4 py-2.5 text-sm rounded-md border border-[#eceae4] bg-[#f7f4ed] text-[#1c1c1c] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:bg-[#fcfbf8] transition-all">
+                        <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] whitespace-nowrap transition-all" onclick="selectVhdFileViaExplorer()">📂 Pilih File</button>
                     </div>
                 </div>
-                <div class="modal-buttons" style="margin-top: 24px;">
-                    <button type="button" class="btn btn-ghost" style="border-color: #ef4444; color: #ef4444; margin-right: auto;" id="btn-vhd-delete" onclick="deleteVhdAction()">Hapus Mapping</button>
-                    <button type="button" class="btn btn-ghost" onclick="closeVhdCrudModal()">Batal</button>
-                    <button type="submit" class="btn btn-primary">Simpan Mapping</button>
+                <div class="flex items-center justify-between pt-6 border-t border-[#eceae4] mt-6">
+                    <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 active:scale-[0.98] transition-all" id="btn-vhd-delete" onclick="deleteVhdAction()">Hapus Mapping</button>
+                    <div class="flex items-center gap-3 ml-auto">
+                        <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] active:scale-[0.98] transition-all" onclick="closeVhdCrudModal()">Batal</button>
+                        <button type="submit" class="inline-flex items-center justify-center px-5 py-2 text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 active:scale-[0.98] transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]">Simpan Mapping</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -522,79 +538,82 @@
     </div>
 
     <!-- Dialog Konfirmasi Super Client (Commit / Discard) -->
-    <div id="confirm-modal" class="modal-backdrop">
-        <div class="modal" style="max-width: 500px;">
-            <h2 class="text-base sm:text-lg font-bold font-['Outfit'] mb-2">⚡ Konfirmasi Super Client</h2>
-            <p class="text-xs sm:text-sm text-[var(--color-muted)] mb-3">PC Super Client telah terputus (Offline). Tentukan tindakan untuk modifikasi disk yang dibuat:</p>
+    <div id="confirm-modal" class="modal-backdrop p-4">
+        <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-8 max-w-lg w-full shadow-2xl">
+            <h2 class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-3 border-b border-[#eceae4] mb-4">⚡ Konfirmasi Super Client</h2>
+            <p class="text-xs sm:text-sm text-[#5f5f5d] leading-relaxed mb-5">PC Super Client telah terputus (Offline). Tentukan tindakan untuk modifikasi disk yang dibuat:</p>
             
-            <div style="background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 20px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500;">
-                    <input type="checkbox" id="chk-create-backup" checked style="width: auto; margin: 0;">
+            <div class="bg-[#fcfbf8] border border-[#eceae4] rounded-lg p-4 mb-6">
+                <label class="flex items-center gap-3 cursor-pointer text-sm font-semibold text-[#1c1c1c]">
+                    <input type="checkbox" id="chk-create-backup" checked class="w-4 h-4 rounded text-[#1c1c1c]">
                     <span>📸 Buat Snapshot Backup (<code>.meta</code>) sebelum Commit</span>
                 </label>
-                <p style="font-size: 11px; color: var(--color-muted); margin-top: 4px; margin-left: 22px; margin-bottom: 0;">
+                <p class="text-xs text-[#5f5f5d] mt-2 ml-7 leading-relaxed">
                     Menyimpan titik pemulihan (hanya sebesar perubahan) agar VHD dapat di-restore sewaktu-waktu.
                 </p>
             </div>
 
-            <div class="modal-buttons flex-wrap gap-2">
-                <button class="btn btn-primary text-xs sm:text-sm" onclick="modalAction('commit')">Simpan Perubahan (Commit)</button>
-                <button class="btn btn-ghost text-xs sm:text-sm" style="border-color: #ef4444; color: #ef4444;" onclick="modalAction('discard')">Buang Perubahan (Discard)</button>
-                <button class="btn btn-ghost text-xs sm:text-sm" onclick="closeModal()">Batal</button>
+            <div class="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-[#eceae4]">
+                <button class="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="modalAction('discard')">Buang Perubahan (Discard)</button>
+                <button class="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] transition-all" onclick="closeModal()">Batal</button>
+                <button class="inline-flex items-center justify-center px-5 py-2 text-xs sm:text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]" onclick="modalAction('commit')">Simpan Perubahan (Commit)</button>
             </div>
         </div>
     </div>
 
     <!-- MODAL SNAPSHOT MANAGER -->
-    <div id="vhd-snapshots-modal" class="modal-backdrop">
-        <div class="modal" style="max-width: 600px;">
-            <h2>📸 Snapshot Backups for <span id="snapshot-modal-title-key">Image</span></h2>
-            <p class="subtitle" style="margin-bottom: 16px;">Daftar snapshot otomatis yang dibuat sebelum proses commit super client. Anda dapat merestore salah satu snapshot di bawah ini.</p>
-            <div class="table-container overflow-x-auto" style="max-height: 250px; overflow-y: auto;">
-                <table class="data-table">
+    <div id="vhd-snapshots-modal" class="modal-backdrop p-4">
+        <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-8 max-w-xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-3 border-b border-[#eceae4] mb-3">📸 Snapshot Backups for <span id="snapshot-modal-title-key">Image</span></h2>
+            <p class="text-xs sm:text-sm text-[#5f5f5d] leading-relaxed mb-6">Daftar snapshot otomatis yang dibuat sebelum proses commit super client. Anda dapat merestore salah satu snapshot di bawah ini.</p>
+            <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-lg border border-[#eceae4] bg-[#fcfbf8] mb-6">
+                <table class="w-full text-left text-sm border-collapse">
                     <thead>
-                        <tr>
-                            <th>Snapshot Index</th>
-                            <th>Path Berkas</th>
-                            <th>Aksi</th>
+                        <tr class="bg-[#1c1c1c]/[0.02] border-b border-[#eceae4]">
+                            <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Snapshot Index</th>
+                            <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]">Path Berkas</th>
+                            <th class="py-3.5 px-5 text-xs font-semibold uppercase tracking-wider text-[#5f5f5d]" style="text-align: right;">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody id="vhd-snapshots-tbody">
+                    <tbody id="vhd-snapshots-tbody" class="divide-y divide-[#eceae4]">
                         <tr>
-                            <td colspan="3" style="text-align: center; color: var(--color-muted);">Tidak ada snapshot untuk image ini.</td>
+                            <td colspan="3" class="py-6 px-5 text-center text-[#5f5f5d]">Tidak ada snapshot untuk image ini.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div class="modal-buttons" style="margin-top: 16px; justify-content: flex-end;">
-                <button type="button" class="btn btn-ghost" onclick="closeVhdSnapshotsModal()">Tutup</button>
+            <div class="flex justify-end pt-4 border-t border-[#eceae4]">
+                <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] transition-all" onclick="closeVhdSnapshotsModal()">Tutup</button>
             </div>
         </div>
     </div>
 
     <!-- MODAL CONFIG DISK SETTINGS -->
-    <div id="disk-config-modal" class="modal-backdrop">
-        <div class="modal" style="max-width: 450px;">
-            <h2 id="disk-config-title">Konfigurasi Disk</h2>
-            <p class="subtitle" id="disk-config-subtitle">Atur fungsi alokasi untuk drive ini.</p>
-            <form id="disk-config-form" onsubmit="applyDiskConfigAction(event)">
+    <div id="disk-config-modal" class="modal-backdrop p-4">
+        <div class="bg-[#f7f4ed] border border-[#eceae4] rounded-xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+            <h2 id="disk-config-title" class="text-lg sm:text-xl font-bold text-[#1c1c1c] font-['Outfit'] pb-2 mb-1">Konfigurasi Disk</h2>
+            <p class="text-xs sm:text-sm text-[#5f5f5d] pb-4 border-b border-[#eceae4] mb-6" id="disk-config-subtitle">Atur fungsi alokasi untuk drive ini.</p>
+            <form id="disk-config-form" onsubmit="applyDiskConfigAction(event)" class="space-y-6">
                 <input type="hidden" id="disk-config-letter">
                 
-                <div style="display: flex; flex-direction: column; gap: 16px; margin: 24px 0;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--color-text);">
-                        <input type="checkbox" id="disk-cfg-vhd" style="width: auto;"> 💾 Windows VHD Boot Directory (DRIVE:\vhd)
+                <div class="space-y-4">
+                    <label class="flex items-center gap-3 p-3 rounded-lg border border-[#eceae4] bg-[#fcfbf8] hover:border-[#1c1c1c]/30 cursor-pointer transition-all">
+                        <input type="checkbox" id="disk-cfg-vhd" class="w-4 h-4 rounded text-[#1c1c1c]">
+                        <span class="text-sm font-medium text-[#1c1c1c]">💾 Windows VHD Boot Directory (<code class="text-xs">DRIVE:\vhd</code>)</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--color-text);">
-                        <input type="checkbox" id="disk-cfg-wb" style="width: auto;"> 📦 Writeback Cache Storage (DRIVE:\writeback)
+                    <label class="flex items-center gap-3 p-3 rounded-lg border border-[#eceae4] bg-[#fcfbf8] hover:border-[#1c1c1c]/30 cursor-pointer transition-all">
+                        <input type="checkbox" id="disk-cfg-wb" class="w-4 h-4 rounded text-[#1c1c1c]">
+                        <span class="text-sm font-medium text-[#1c1c1c]">📦 Writeback Cache Storage (<code class="text-xs">DRIVE:\writeback</code>)</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--color-text);">
-                        <input type="checkbox" id="disk-cfg-gd" style="width: auto;"> 🎮 Gamedisk iSCSI Target
+                    <label class="flex items-center gap-3 p-3 rounded-lg border border-[#eceae4] bg-[#fcfbf8] hover:border-[#1c1c1c]/30 cursor-pointer transition-all">
+                        <input type="checkbox" id="disk-cfg-gd" class="w-4 h-4 rounded text-[#1c1c1c]">
+                        <span class="text-sm font-medium text-[#1c1c1c]">🎮 Gamedisk iSCSI Target</span>
                     </label>
                 </div>
                 
-                <div class="modal-buttons">
-                    <button type="button" class="btn btn-ghost" onclick="closeDiskConfigModal()">Batal</button>
-                    <button type="submit" class="btn btn-primary">Terapkan Alokasi</button>
+                <div class="flex items-center justify-end gap-3 pt-6 border-t border-[#eceae4]">
+                    <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] transition-all" onclick="closeDiskConfigModal()">Batal</button>
+                    <button type="submit" class="inline-flex items-center justify-center px-5 py-2 text-sm font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-[rgba(255,255,255,0.2)_0px_0.5px_0px_0px_inset,rgba(0,0,0,0.2)_0px_0px_0px_0.5px_inset,rgba(0,0,0,0.05)_0px_1px_2px_0px]">Terapkan Alokasi</button>
                 </div>
             </form>
         </div>
@@ -606,9 +625,3 @@
     <script src="/index.js"></script>
 </body>
 </html>
-
-
-
-
-
-

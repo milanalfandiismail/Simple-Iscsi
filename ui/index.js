@@ -351,10 +351,10 @@ function updateServiceCard(name, service) {
         portEl.textContent = `Port: ${service.port}`;
         if (service.enabled) {
             pillEl.textContent = '🟢 Enabled';
-            pillEl.className = 'pill-status active';
+            pillEl.className = 'pill-status text-xs font-medium px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20';
         } else {
             pillEl.textContent = '🔴 Disabled';
-            pillEl.className = 'pill-status';
+            pillEl.className = 'pill-status text-xs font-medium px-3 py-1 rounded-full bg-[#1c1c1c]/[0.04] text-[#1c1c1c] border border-[#eceae4]';
         }
     }
 }
@@ -368,11 +368,11 @@ function renderDashboardClientsTable() {
     renderedDashboardIps = mergedClients.map(c => c.ip);
 
     if (mergedClients.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="p-8">
+        tbody.innerHTML = `<tr><td colspan="11" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">🔌</div>
-                <h3 class="font-medium text-lg">Belum Ada Klien Aktif</h3>
-                <p class="text-[var(--color-muted)] text-sm max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
+                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Belum Ada Klien Aktif</h3>
+                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
             </div>
         </td></tr>`;
         const totalPcsEl = document.getElementById('stat-total-pcs');
@@ -392,27 +392,28 @@ function renderDashboardClientsTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span style="color: #22c55e;">🟢 Online</span>`
-            : `<span style="color: #ef4444;">🔴 Offline</span>`;
+            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">🟢 Online</span>`
+            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-800 border border-rose-500/20">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="pill-status" style="background-color: #fef08a; color: #854d0e; font-size: 11px; padding: 2px 6px;">⚡ Super Client</span>` : '';
-        const dynamicBadge = c.isDynamic ? ` <span class="pill-status" style="background-color: #e0e7ff; color: #3730a3; font-size: 10px; padding: 1px 5px;">DHCP Auto</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1.5">⚡ Super Client</span>` : '';
+        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 ml-1.5">DHCP Auto</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
+        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
         row.innerHTML = `
-            <td>${statusSpan}</td>
-            <td><strong>${c.ip}${superBadge}${dynamicBadge}</strong></td>
-            <td>${c.dns || '-'}</td>
-            <td>${c.gateway || '-'}</td>
-            <td><code>${c.image_manager || 'None (Gamedisk)'}</code></td>
-            <td>${c.next_server || '-'}</td>
-            <td>${formatBytes(statsInfo.bytes_read)}</td>
-            <td>${formatSpeed(speedInfo.readSpeed)}</td>
-            <td>${formatBytes(statsInfo.bytes_written)}</td>
-            <td>${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td>${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-4 px-5">${statusSpan}</td>
+            <td class="py-4 px-5 font-semibold text-[#1c1c1c]">${c.ip}${superBadge}${dynamicBadge}</td>
+            <td class="py-4 px-5 text-[#5f5f5d]">${c.dns || '-'}</td>
+            <td class="py-4 px-5 text-[#5f5f5d]">${c.gateway || '-'}</td>
+            <td class="py-4 px-5 font-mono text-xs text-[#1c1c1c] bg-[#1c1c1c]/[0.02] rounded px-1.5 py-0.5">${c.image_manager || 'None (Gamedisk)'}</td>
+            <td class="py-4 px-5 text-[#5f5f5d]">${c.next_server || '-'}</td>
+            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-4 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-4 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-4 px-5 text-xs text-[#5f5f5d]">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
         tbody.appendChild(row);
     });
@@ -425,11 +426,11 @@ function renderDashboardClientsTable() {
 function renderClientsManagerTable() {
     const tbody = document.getElementById('clients-tbody');
     if (!clientsObj.client || clientsObj.client.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="13" class="p-8">
+        tbody.innerHTML = `<tr><td colspan="13" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">💻</div>
-                <h3 class="font-medium text-lg">Daftar Klien Kosong</h3>
-                <p class="text-[var(--color-muted)] text-sm max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
+                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Daftar Klien Kosong</h3>
+                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
             </div>
         </td></tr>`;
         return;
@@ -447,28 +448,29 @@ function renderClientsManagerTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span style="color: #22c55e;">🟢 Online</span>`
-            : `<span style="color: #ef4444;">🔴 Offline</span>`;
+            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">🟢 Online</span>`
+            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-800 border border-rose-500/20">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="pill-status" style="background-color: #fef08a; color: #854d0e; font-size: 11px; padding: 2px 6px;">⚡ Super Client</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1.5">⚡ Super Client</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
+        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors cursor-pointer";
         row.innerHTML = `
-            <td>${statusSpan}</td>
-            <td><strong>${c.hostname || 'PC'}${superBadge}</strong></td>
-            <td>${c.ip}</td>
-            <td><code>${c.mac}</code></td>
-            <td>${c.dns || '-'}</td>
-            <td>${c.gateway || '-'}</td>
-            <td><code>${c.image_manager || 'Gamedisk'}</code></td>
-            <td>${c.next_server || '-'}</td>
-            <td>${formatBytes(statsInfo.bytes_read)}</td>
-            <td>${formatSpeed(speedInfo.readSpeed)}</td>
-            <td>${formatBytes(statsInfo.bytes_written)}</td>
-            <td>${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td>${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-4 px-5">${statusSpan}</td>
+            <td class="py-4 px-5 font-semibold text-[#1c1c1c]">${c.hostname || 'PC'}${superBadge}</td>
+            <td class="py-4 px-5 font-mono text-xs">${c.ip}</td>
+            <td class="py-4 px-5 font-mono text-xs text-[#5f5f5d]">${c.mac}</td>
+            <td class="py-4 px-5 text-[#5f5f5d]">${c.dns || '-'}</td>
+            <td class="py-4 px-5 text-[#5f5f5d]">${c.gateway || '-'}</td>
+            <td class="py-4 px-5 font-mono text-xs text-[#1c1c1c]">${c.image_manager || 'Gamedisk'}</td>
+            <td class="py-4 px-5 text-[#5f5f5d]">${c.next_server || '-'}</td>
+            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-4 px-5 font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-4 px-5 font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-4 px-5 font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-4 px-5 text-xs text-[#5f5f5d]">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
 
         // Double click or click to edit client configuration
@@ -612,11 +614,11 @@ async function saveClientsJson() {
 function renderVhdTable() {
     const tbody = document.getElementById('vhds-tbody');
     if (!configObj || !configObj.image_manager || Object.keys(configObj.image_manager).length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="p-8">
+        tbody.innerHTML = `<tr><td colspan="4" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">💿</div>
-                <h3 class="font-medium text-lg">Belum Ada VHD</h3>
-                <p class="text-[var(--color-muted)] text-sm max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
+                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Belum Ada VHD</h3>
+                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
             </div>
         </td></tr>`;
         return;
@@ -625,13 +627,14 @@ function renderVhdTable() {
     tbody.innerHTML = '';
     Object.entries(configObj.image_manager).forEach(([key, path]) => {
         const row = document.createElement('tr');
+        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
         row.innerHTML = `
-            <td><strong><code>${key}</code></strong></td>
-            <td>${path}</td>
-            <td id="snapshots-count-${key}">Loading...</td>
-            <td>
-                <button class="btn btn-small btn-ghost" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
-                <button class="btn btn-small btn-ghost" onclick="showVhdSnapshots('${key}')">Snapshots</button>
+            <td class="py-4 px-5 font-mono text-xs font-semibold text-[#1c1c1c]">${key}</td>
+            <td class="py-4 px-5 font-mono text-xs text-[#5f5f5d]">${path}</td>
+            <td class="py-4 px-5 text-xs text-[#5f5f5d]" id="snapshots-count-${key}">Loading...</td>
+            <td class="py-4 px-5" style="text-align: right;">
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-transparent text-[#1c1c1c] border border-[#1c1c1c]/30 hover:bg-[#1c1c1c]/[0.04] transition-all mr-2" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-xs" onclick="showVhdSnapshots('${key}')">Snapshots</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -736,11 +739,11 @@ async function loadWritebackFiles() {
     const data = await apiGet('/api/writeback/files');
     const tbody = document.getElementById('writeback-tbody');
     if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="p-8">
+        tbody.innerHTML = `<tr><td colspan="4" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">✨</div>
-                <h3 class="font-medium text-lg">Writeback Bersih</h3>
-                <p class="text-[var(--color-muted)] text-sm max-w-sm">Belum ada file cache writeback aktif. Cache akan terbuat otomatis saat klien menyala.</p>
+                <h3 class="font-bold text-base text-[#1c1c1c] font-['Outfit']">Writeback Bersih</h3>
+                <p class="text-[#5f5f5d] text-xs sm:text-sm max-w-sm">Belum ada file cache writeback aktif. Cache akan terbuat otomatis saat klien menyala.</p>
             </div>
         </td></tr>`;
         return;
@@ -749,12 +752,13 @@ async function loadWritebackFiles() {
     tbody.innerHTML = '';
     data.forEach(f => {
         const row = document.createElement('tr');
+        row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
         row.innerHTML = `
-            <td><code>${f.name}</code></td>
-            <td>${formatBytes(f.size)}</td>
-            <td style="font-size:12px; color:var(--color-muted);">${f.path}</td>
-            <td>
-                <button class="btn btn-small btn-ghost" style="color:#ef4444; border-color:#ef4444;" onclick="clearWritebackCache('${f.path}')">Hapus</button>
+            <td class="py-4 px-5 font-mono text-xs font-semibold text-[#1c1c1c]">${f.name}</td>
+            <td class="py-4 px-5 font-mono text-xs">${formatBytes(f.size)}</td>
+            <td class="py-4 px-5 text-xs text-[#5f5f5d] font-mono">${f.path}</td>
+            <td class="py-4 px-5" style="text-align: right;">
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="clearWritebackCache('${f.path}')">Hapus</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -859,7 +863,7 @@ async function populateSystemDrives() {
     if (!container) return;
 
     if (systemDrivesList.length === 0) {
-        container.innerHTML = '<span style="color: var(--color-muted);">Memuat disk...</span>';
+        container.innerHTML = '<span class="text-[#5f5f5d] text-sm py-4">Memuat disk...</span>';
         const detailList = await apiGet('/api/system/logical_drives_detail');
         if (detailList && Array.isArray(detailList)) {
             systemDrivesList = detailList;
@@ -867,7 +871,7 @@ async function populateSystemDrives() {
     }
 
     if (systemDrivesList.length === 0) {
-        container.innerHTML = '<span style="color: var(--color-muted);">Gagal mendeteksi drive sistem.</span>';
+        container.innerHTML = '<span class="text-[#5f5f5d] text-sm py-4">Gagal mendeteksi drive sistem.</span>';
         return;
     }
 
@@ -883,36 +887,26 @@ async function populateSystemDrives() {
             }
 
             const card = document.createElement('div');
-            card.className = 'card disk-card';
-            card.style.cssText = 'cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease; border: 1px solid var(--color-border); padding: 20px; border-radius: 8px; background-color: var(--color-white); text-align: center;';
-            
-            card.addEventListener('mouseenter', () => {
-                card.style.transform = 'translateY(-2px)';
-                card.style.borderColor = 'var(--color-text)';
-            });
-            card.addEventListener('mouseleave', () => {
-                card.style.transform = 'translateY(0)';
-                card.style.borderColor = 'var(--color-border)';
-            });
+            card.className = 'bg-[#fcfbf8] border border-[#eceae4] hover:border-[#1c1c1c]/40 rounded-xl p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
 
             let badgeHTML = '';
             if (isBoot) {
-                badgeHTML += `<span class="pill-status" style="background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; font-size: 11px; padding: 2px 8px; margin: 2px; display: inline-block; border-radius: 4px; font-weight: 500;">💿 Boot VHD Storage</span>`;
+                badgeHTML += `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">💿 Boot VHD</span>`;
             }
             if (isWb) {
-                badgeHTML += `<span class="pill-status" style="background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 11px; padding: 2px 8px; margin: 2px; display: inline-block; border-radius: 4px; font-weight: 500;">💾 Writeback Cache</span>`;
+                badgeHTML += `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">💾 Writeback</span>`;
             }
             if (isGd) {
-                badgeHTML += `<span class="pill-status" style="background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; font-size: 11px; padding: 2px 8px; margin: 2px; display: inline-block; border-radius: 4px; font-weight: 500;">🎮 Raw GameDisk</span>`;
+                badgeHTML += `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200">🎮 Raw GameDisk</span>`;
             }
             if (badgeHTML === '') {
-                badgeHTML = `<span class="pill-status" style="background-color: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; font-size: 11px; padding: 2px 8px; margin: 2px; display: inline-block; border-radius: 4px; font-weight: 500;">Unallocated</span>`;
+                badgeHTML = `<span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 border border-gray-200">Unallocated</span>`;
             }
 
             card.innerHTML = `
-                <div style="font-size: 36px; margin-bottom: 8px;">💽</div>
-                <h3 style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 18px;">Disk ${d.letter}:</h3>
-                <div style="margin-top: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px;">
+                <div class="text-4xl mb-3">💽</div>
+                <h3 class="font-['Outfit'] font-bold text-base text-[#1c1c1c] mb-3">Disk ${d.letter}:</h3>
+                <div class="flex flex-wrap justify-center gap-2">
                     ${badgeHTML}
                 </div>
             `;
@@ -1091,10 +1085,10 @@ async function showVhdSnapshots(key) {
     document.getElementById('snapshot-modal-title-key').textContent = key;
 
     const tbody = document.getElementById('vhd-snapshots-tbody');
-    tbody.innerHTML = `<tr><td colspan="3" class="p-6">
+    tbody.innerHTML = `<tr><td colspan="3" class="py-12 px-6 text-center">
         <div class="animate-pulse flex flex-col gap-3">
-            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-3/4"></div>
-            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-1/2"></div>
+            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-3/4 mx-auto"></div>
+            <div class="h-4 bg-[rgba(28,28,28,0.1)] rounded w-1/2 mx-auto"></div>
         </div>
     </td></tr>`;
 
@@ -1103,18 +1097,19 @@ async function showVhdSnapshots(key) {
         tbody.innerHTML = '';
         data.forEach(snapshot => {
             const row = document.createElement('tr');
+            row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
             const filename = snapshot.path.split(/[/\\]/).pop();
             row.innerHTML = `
-                <td><strong>Snapshot #${snapshot.index}</strong></td>
-                <td style="font-family: monospace; font-size: 12px;" title="${snapshot.path}">${filename}</td>
-                <td>
-                    <button class="btn btn-small btn-primary" onclick="restoreSnapshotAction('${key}', ${snapshot.index})">🔄 Restore</button>
+                <td class="py-4 px-5 font-semibold text-[#1c1c1c]">Snapshot #${snapshot.index}</td>
+                <td class="py-4 px-5 font-mono text-xs text-[#5f5f5d]" title="${snapshot.path}">${filename}</td>
+                <td class="py-4 px-5" style="text-align: right;">
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-[#1c1c1c] text-[#fcfbf8] hover:bg-[#1c1c1c]/90 transition-all shadow-xs" onclick="restoreSnapshotAction('${key}', ${snapshot.index})">🔄 Restore</button>
                 </td>
             `;
             tbody.appendChild(row);
         });
     } else {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--color-muted);">Tidak ada snapshot (backup) untuk image ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="py-8 px-5 text-center text-[#5f5f5d]">Tidak ada snapshot (backup) untuk image ini.</td></tr>';
     }
 }
 
@@ -1270,22 +1265,23 @@ async function loadTftpFolders() {
     
     if (folders && Array.isArray(folders)) {
         if (folders.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--color-muted);">Tidak ada folder boot loader terdaftar.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-[#5f5f5d]">Tidak ada folder boot loader terdaftar.</td></tr>';
             return;
         }
         tbody.innerHTML = '';
         folders.forEach(f => {
             const row = document.createElement('tr');
+            row.className = "hover:bg-[#1c1c1c]/[0.02] transition-colors";
             row.innerHTML = `
-                <td><strong>${f}</strong></td>
-                <td style="text-align: right;">
-                    <button class="btn btn-ghost" style="color: #ef4444; border-color: #ef4444; padding: 4px 8px; font-size: 12px;" onclick="deleteTftpFolderAction('${f}')">🗑️ Hapus</button>
+                <td class="py-4 px-5 font-semibold text-[#1c1c1c]">${f}</td>
+                <td class="py-4 px-5" style="text-align: right;">
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="deleteTftpFolderAction('${f}')">🗑️ Hapus</button>
                 </td>
             `;
             tbody.appendChild(row);
         });
     } else {
-        tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--color-muted);">Gagal memuat folder TFTP (Periksa konfigurasi TFTP root directory).</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-[#5f5f5d]">Gagal memuat folder TFTP (Periksa konfigurasi TFTP root directory).</td></tr>';
     }
 }
 
@@ -1321,17 +1317,17 @@ function renderNicIpsList() {
     if (!container) return;
 
     if (serverNicIps.length === 0) {
-        container.innerHTML = '<span style="color: var(--color-muted); font-size: 13px; text-align: center;">Belum ada IP ditambahkan.</span>';
+        container.innerHTML = '<span class="text-[#5f5f5d] text-center text-xs py-1">Belum ada IP ditambahkan.</span>';
         return;
     }
 
     container.innerHTML = '';
     serverNicIps.forEach((ip, idx) => {
         const row = document.createElement('div');
-        row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: var(--color-white); padding: 6px 12px; border-radius: 4px; border: 1px solid var(--color-border); font-family: monospace; font-size: 13px;';
+        row.className = 'flex justify-between items-center bg-[#f7f4ed] px-3.5 py-2 rounded-md border border-[#eceae4] font-mono text-xs text-[#1c1c1c]';
         row.innerHTML = `
             <span>🌐 ${ip}</span>
-            <button type="button" class="btn btn-small btn-ghost" style="color: #ef4444; border-color: #ef4444; padding: 2px 6px; font-size: 11px; margin: 0;" onclick="removeNicIpAction(${idx})">🗑️ Remove</button>
+            <button type="button" class="inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium rounded-md bg-transparent text-rose-600 border border-rose-600/40 hover:bg-rose-50/50 transition-all" onclick="removeNicIpAction(${idx})">🗑️ Remove</button>
         `;
         container.appendChild(row);
     });
