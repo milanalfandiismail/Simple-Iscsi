@@ -5,6 +5,8 @@ use std::net::{SocketAddrV4, SocketAddr};
 use std::path::Path;
 use bytes::{BytesMut, BufMut, Buf};
 
+use socket2::{Socket, Domain, Type, Protocol};
+
 use crate::config_manager::SharedConfig;
 
 const TFTP_PORT: u16 = 69;
@@ -21,8 +23,11 @@ pub struct TftpServer {
 
 impl TftpServer {
     pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
-        let addr = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, TFTP_PORT);
-        let socket = UdpSocket::bind(addr).await?;
+        let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        sock.set_reuse_address(true)?;
+        let addr: std::net::SocketAddr = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, TFTP_PORT).into();
+        sock.bind(&addr.into())?;
+        let socket = UdpSocket::from_std(sock.into())?;
         
         Ok(Arc::new(TftpServer {
             config,

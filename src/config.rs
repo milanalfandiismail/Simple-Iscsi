@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Default)]
 #[serde(default)]
 pub struct Config {
     pub server: ServerConfig,
@@ -20,7 +20,7 @@ pub struct Config {
     pub dhcp: Option<DhcpConfig>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct DhcpConfig {
     pub enabled: bool,
     pub start_ip: String,
@@ -36,7 +36,7 @@ pub struct DhcpConfig {
     pub nic_ips: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum AddressConfig {
     Single(String),
@@ -58,7 +58,7 @@ impl Default for AddressConfig {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ServerConfig {
     pub address: AddressConfig,
     pub port: u16,
@@ -76,7 +76,7 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct GamediskTargetConfig {
     pub target_iqn: String,
@@ -92,7 +92,7 @@ impl Default for GamediskTargetConfig {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GamediskConfig {
     pub physical_disk: String,
     pub block_size: u64,
@@ -101,7 +101,7 @@ pub struct GamediskConfig {
     pub product_revision: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct WindowsConfig {
     pub target_iqn_prefix: String,
@@ -115,7 +115,7 @@ pub struct WindowsConfig {
     pub super_client_action: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct WritebackConfig {
     pub writeback_dirs: Vec<String>,
     pub max_cache_per_client_gb: u64,

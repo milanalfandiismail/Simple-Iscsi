@@ -157,6 +157,10 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
             if let Err(e) = fs::write("config.toml", &body) {
                 build_response(500, "Internal Server Error", "text/plain", &e.to_string())
             } else {
+                if let Ok(cfg) = toml::from_str::<crate::config::Config>(&body) {
+                    config.update(cfg);
+                    info!("Berhasil me-reload config di memory dari POST /api/config.");
+                }
                 build_response(200, "OK", "text/plain", "Config saved successfully")
             }
         }
@@ -193,7 +197,8 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
                                 error!("Gagal menulis file config.toml: {}", e);
                                 build_response(500, "Internal Server Error", "text/plain", &e.to_string())
                             } else {
-                                info!("Berhasil memperbarui file config.toml di disk.");
+                                info!("Berhasil memperbarui file config.toml di disk & memori.");
+                                config.update(cfg);
                                 build_response(200, "OK", "text/plain", "Config saved successfully")
                             }
                         }
