@@ -71,49 +71,51 @@
         <main class="main-content flex-1">
             <!-- TAB: DASHBOARD -->
             <section id="tab-dashboard" class="tab-panel active">
-                <header class="content-header">
-                    <h1>Dashboard Overview</h1>
-                    <p class="subtitle">Metrik keaktifan server iSCSI, DHCP, dan TFTP secara dinamis.</p>
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-6">
+                    <div>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Dashboard Overview</h1>
+                        <p class="subtitle text-sm sm:text-base mb-0">Metrik keaktifan server iSCSI, DHCP, dan TFTP secara dinamis.</p>
+                    </div>
                 </header>
 
-                <div class="services-row flex-col md:flex-row" id="dashboard-services-container">
-                    <div class="service-card">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 xl:gap-6 mb-6" id="dashboard-services-container">
+                    <div class="service-card p-5 sm:p-6 rounded-xl flex items-center justify-between shadow-sm">
                         <div class="service-info">
-                            <h3>iSCSI Target Daemon</h3>
-                            <p id="iscsi-port-info">Port: ...</p>
+                            <h3 class="font-semibold text-base mb-1">iSCSI Target Daemon</h3>
+                            <p id="iscsi-port-info" class="text-sm text-[var(--color-muted)]">Port: ...</p>
                         </div>
                         <span class="pill-status" id="iscsi-status-pill">🔴 Offline</span>
                     </div>
-                    <div class="service-card">
+                    <div class="service-card p-5 sm:p-6 rounded-xl flex items-center justify-between shadow-sm">
                         <div class="service-info">
-                            <h3>DHCP Server</h3>
-                            <p id="dhcp-port-info">Port: ...</p>
+                            <h3 class="font-semibold text-base mb-1">DHCP Server</h3>
+                            <p id="dhcp-port-info" class="text-sm text-[var(--color-muted)]">Port: ...</p>
                         </div>
                         <span class="pill-status" id="dhcp-status-pill">🔴 Offline</span>
                     </div>
-                    <div class="service-card">
+                    <div class="service-card p-5 sm:p-6 rounded-xl flex items-center justify-between shadow-sm">
                         <div class="service-info">
-                            <h3>TFTP Server</h3>
-                            <p id="tftp-port-info">Port: ...</p>
+                            <h3 class="font-semibold text-base mb-1">TFTP Server</h3>
+                            <p id="tftp-port-info" class="text-sm text-[var(--color-muted)]">Port: ...</p>
                         </div>
                         <span class="pill-status" id="tftp-status-pill">🔴 Offline</span>
                     </div>
                 </div>
 
-                <div class="stats-grid flex-col md:flex-row">
-                    <div class="stat-card">
-                        <span class="stat-label">Total Active Connections</span>
-                        <span class="stat-value" id="stat-conns">0</span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 xl:gap-6 mb-6">
+                    <div class="stat-card p-5 sm:p-6 rounded-xl flex flex-col gap-2 shadow-sm">
+                        <span class="stat-label text-sm text-[var(--color-muted)] font-medium">Total Active Connections</span>
+                        <span class="stat-value text-3xl sm:text-4xl font-bold" id="stat-conns">0</span>
                     </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Total Configured PCs</span>
-                        <span class="stat-value" id="stat-total-pcs">0</span>
+                    <div class="stat-card p-5 sm:p-6 rounded-xl flex flex-col gap-2 shadow-sm">
+                        <span class="stat-label text-sm text-[var(--color-muted)] font-medium">Total Configured PCs</span>
+                        <span class="stat-value text-3xl sm:text-4xl font-bold" id="stat-total-pcs">0</span>
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2>Daftar Penggunaan I/O Klien</h2>
-                    <div class="table-container overflow-x-auto">
+                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
+                    <h2 class="text-lg sm:text-xl font-bold font-['Outfit'] mb-4">Daftar Penggunaan I/O Klien</h2>
+                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -132,7 +134,7 @@
                             </thead>
                             <tbody id="dashboard-clients-tbody">
                                 <tr>
-                                    <td colspan="11" style="text-align: center; color: var(--color-muted);">Memuat data klien...</td>
+                                    <td colspan="11" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat data klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -142,19 +144,19 @@
 
             <!-- TAB: KLIEN -->
             <section id="tab-clients" class="tab-panel">
-                <header class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-[var(--color-border)] mb-6">
                     <div>
-                        <h1>Klien Manager</h1>
-                        <p class="subtitle">Kelola klien static clients.toml (Klik klien untuk edit/hapus).</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Klien Manager</h1>
+                        <p class="subtitle text-sm sm:text-base mb-0">Kelola klien static clients.toml (Klik baris klien untuk edit/hapus).</p>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-ghost" style="border-color: #3b82f6; color: #3b82f6;" onclick="autoAllocateNextServerIpsAction()">⚡ Auto-Allocate Next Server IPs</button>
-                        <button class="btn btn-primary" onclick="openClientCrudModal(null)">➕ Tambah Klien Baru</button>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button class="btn btn-ghost text-sm px-4 py-2" style="border-color: #3b82f6; color: #3b82f6;" onclick="autoAllocateNextServerIpsAction()">⚡ Auto-Allocate Next Server IPs</button>
+                        <button class="btn btn-primary text-sm px-4 py-2" onclick="openClientCrudModal(null)">➕ Tambah Klien Baru</button>
                     </div>
                 </header>
 
-                <div class="card">
-                    <div class="table-container overflow-x-auto">
+                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
+                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -175,7 +177,7 @@
                             </thead>
                             <tbody id="clients-tbody">
                                 <tr>
-                                    <td colspan="13" style="text-align: center; color: var(--color-muted);">Memuat daftar klien...</td>
+                                    <td colspan="13" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat daftar klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -185,16 +187,16 @@
 
             <!-- TAB: IMAGE MANAGER -->
             <section id="tab-vhd" class="tab-panel">
-                <header class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-[var(--color-border)] mb-6">
                     <div>
-                        <h1>Image Manager</h1>
-                        <p class="subtitle">Konfigurasi boot image VHD yang terdaftar di config.toml.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Image Manager</h1>
+                        <p class="subtitle text-sm sm:text-base mb-0">Konfigurasi boot image VHD yang terdaftar di config.toml.</p>
                     </div>
-                    <button class="btn btn-primary" onclick="openVhdCrudModal(null)">➕ Tambah VHD Mapping</button>
+                    <button class="btn btn-primary text-sm px-4 py-2" onclick="openVhdCrudModal(null)">➕ Tambah VHD Mapping</button>
                 </header>
 
-                <div class="card">
-                    <div class="table-container overflow-x-auto">
+                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
+                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -206,7 +208,7 @@
                             </thead>
                             <tbody id="vhds-tbody">
                                 <tr>
-                                    <td colspan="4" style="text-align: center; color: var(--color-muted);">Memuat konfigurasi VHD...</td>
+                                    <td colspan="4" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat konfigurasi VHD...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -216,42 +218,46 @@
 
             <!-- TAB: DISK MANAGEMENT -->
             <section id="tab-disk-mgmt" class="tab-panel">
-                <header class="content-header">
-                    <h1>Disk Management</h1>
-                    <p class="subtitle">Klik kiri pada salah satu partisi disk untuk mengalokasikan fungsi booting, writeback, atau gamedisk.</p>
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-6">
+                    <div>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Disk Management</h1>
+                        <p class="subtitle text-sm sm:text-base mb-0">Klik kiri pada salah satu partisi disk untuk mengalokasikan fungsi booting, writeback, atau gamedisk.</p>
+                    </div>
                 </header>
 
-                <div class="disk-list-grid" id="disk-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="disk-list-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 xl:gap-6 mb-6" id="disk-grid-container">
                     <!-- Disk cards loaded dynamically here -->
                 </div>
 
-                <div class="card">
-                    <h2>Global Storage Parameters</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div class="input-group">
-                            <label>Max Cache Size Per Client (GB)</label>
-                            <input type="number" id="disk-max-cache-gb" required>
+                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
+                    <h2 class="text-lg sm:text-xl font-bold font-['Outfit'] mb-4">Global Storage Parameters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+                        <div class="input-group mb-0">
+                            <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Max Cache Size Per Client (GB)</label>
+                            <input type="number" id="disk-max-cache-gb" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                         </div>
-                        <div class="input-group">
-                            <label>Max Write Speed throttle (MB/s)</label>
-                            <input type="number" id="disk-max-speed-mbps" required>
+                        <div class="input-group mb-0">
+                            <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Max Write Speed throttle (MB/s)</label>
+                            <input type="number" id="disk-max-speed-mbps" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                         </div>
                     </div>
-                    <div class="editor-actions">
-                        <button type="button" class="btn btn-primary" onclick="saveDiskMgmtGlobals()">Simpan Parameter Global</button>
+                    <div class="editor-actions mt-5 flex justify-end">
+                        <button type="button" class="btn btn-primary text-sm px-5 py-2.5" onclick="saveDiskMgmtGlobals()">💾 Simpan Parameter Global</button>
                     </div>
                 </div>
             </section>
 
             <!-- TAB: WRITEBACK -->
             <section id="tab-writeback" class="tab-panel">
-                <header class="content-header">
-                    <h1>Writeback Cache Monitor</h1>
-                    <p class="subtitle">Pantau alokasi space cache klien secara dinamis berdasarkan konfigurasi writeback.</p>
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-6">
+                    <div>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Writeback Cache Monitor</h1>
+                        <p class="subtitle text-sm sm:text-base mb-0">Pantau alokasi space cache klien secara dinamis berdasarkan konfigurasi writeback.</p>
+                    </div>
                 </header>
 
-                <div class="card">
-                    <div class="table-container overflow-x-auto">
+                <div class="card p-5 sm:p-6 lg:p-7 rounded-xl mb-6 shadow-sm">
+                    <div class="table-container overflow-x-auto rounded-lg border border-[var(--color-border)]">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -263,7 +269,7 @@
                             </thead>
                             <tbody id="writeback-tbody">
                                 <tr>
-                                    <td colspan="4" style="text-align: center; color: var(--color-muted);">Memuat file cache writeback...</td>
+                                    <td colspan="4" style="text-align: center; color: var(--color-muted);" class="py-8">Memuat file cache writeback...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -273,100 +279,99 @@
 
             <!-- TAB: SETTINGS -->
             <section id="tab-settings" class="tab-panel">
-                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-4">
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[var(--color-border)] mb-6">
                     <div>
-                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Pengaturan Sentral (config.toml)</h1>
-                        <p class="subtitle text-xs sm:text-sm mb-0">Kelola konfigurasi Server iSCSI, DHCP Server, dan TFTP Bootloader secara terpadu.</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Pengaturan Sentral (config.toml)</h1>
+                        <p class="subtitle text-sm sm:text-base mb-0">Kelola konfigurasi Server iSCSI, DHCP Server, dan TFTP Bootloader secara terpadu.</p>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        <button type="button" class="btn btn-ghost text-xs px-3 py-1.5" onclick="loadConfigJson()">🔄 Reset</button>
-                        <button type="submit" form="settings-form" class="btn btn-primary text-xs sm:text-sm px-4 py-2 font-medium shadow-sm flex items-center gap-1.5" id="btn-save-all-settings">💾 Simpan Semua Pengaturan</button>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <button type="button" class="btn btn-ghost text-sm px-4 py-2" onclick="loadConfigJson()">🔄 Reset</button>
+                        <button type="submit" form="settings-form" class="btn btn-primary text-sm sm:text-base px-5 py-2.5 font-semibold shadow-sm flex items-center gap-2" id="btn-save-all-settings">💾 Simpan Semua Pengaturan</button>
                     </div>
                 </header>
 
-                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-3 gap-3 xl:gap-4 mb-4">
+                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8 mb-6">
                     <!-- CARD 1: Server & iSCSI Daemon -->
-                    <div class="card p-3 sm:p-4 mb-0 flex flex-col justify-between">
+                    <div class="card p-5 sm:p-6 lg:p-7 mb-0 flex flex-col justify-between shadow-sm">
                         <div>
-                            <div class="flex items-center gap-2 border-b border-[var(--color-border)] pb-2 mb-3">
-                                <span class="text-lg">⚙️</span>
-                                <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">Server & iSCSI Daemon</h2>
+                            <div class="flex items-center gap-2.5 border-b border-[var(--color-border)] pb-3 mb-5">
+                                <span class="text-xl">⚙️</span>
+                                <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">Server & iSCSI Daemon</h2>
                             </div>
-                            <div class="space-y-2.5 text-xs sm:text-sm">
+                            <div class="space-y-4 text-sm">
                                 <div class="input-group mb-0">
-                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Listen IP Address</label>
-                                    <select id="set-server-address" class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Listen IP Address</label>
+                                    <select id="set-server-address" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
                                 </div>
-                                <div class="grid grid-cols-2 gap-2">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                     <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Port</label>
-                                        <input type="number" id="set-server-port" placeholder="3260 / 3300" required class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Port Server</label>
+                                        <input type="number" id="set-server-port" placeholder="3260 / 3300" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                     </div>
                                     <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Read Cache (GB)</label>
-                                        <input type="number" id="set-server-cache" placeholder="4" required class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Read Cache (GB)</label>
+                                        <input type="number" id="set-server-cache" placeholder="4" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                     </div>
                                 </div>
                                 <div class="input-group mb-0">
-                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">iSCSI Target IQN Prefix</label>
-                                    <input type="text" id="set-gamedisk-iqn" placeholder="iqn.2024-01.com.tmdebug:gamedisks" required class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">iSCSI Target IQN Prefix</label>
+                                    <input type="text" id="set-gamedisk-iqn" placeholder="iqn.2024-01.com.tmdebug:gamedisks" required class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- CARD 2: DHCP Server Configuration -->
-                    <div class="card p-3 sm:p-4 mb-0 flex flex-col justify-between">
+                    <div class="card p-5 sm:p-6 lg:p-7 mb-0 flex flex-col justify-between shadow-sm">
                         <div>
-                            <div class="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-3">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-lg">🔌</span>
-                                    <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">DHCP Server Configuration</h2>
+                            <div class="flex items-center justify-between border-b border-[var(--color-border)] pb-3 mb-5">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="text-xl">🔌</span>
+                                    <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">DHCP Server Configuration</h2>
                                 </div>
-                                <label class="flex items-center gap-1.5 text-xs font-semibold cursor-pointer m-0">
+                                <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer m-0 bg-[var(--color-white)] px-3 py-1 rounded-full border border-[var(--color-border)]">
                                     <input type="checkbox" id="set-dhcp-enabled" class="w-auto m-0">
                                     <span>Aktif</span>
                                 </label>
                             </div>
-                            <div class="space-y-2 text-xs sm:text-sm">
-                                <div class="grid grid-cols-2 gap-2">
+                            <div class="space-y-4 text-sm">
+                                <div class="input-group mb-0">
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">IP Server DHCP (Next Server)</label>
+                                    <select id="set-dhcp-next" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
+                                    <p class="text-[11px] text-[var(--color-muted)] mt-1">Alamat IP Server yang merespons DHCP dan PXE Bootloader klien.</p>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                     <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Start IP Pool</label>
-                                        <input type="text" id="set-dhcp-start-ip" placeholder="10.10.10.100" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Start IP Pool</label>
+                                        <input type="text" id="set-dhcp-start-ip" placeholder="10.10.10.100" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                     </div>
                                     <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">End IP Pool</label>
-                                        <input type="text" id="set-dhcp-end-ip" placeholder="10.10.10.250" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">End IP Pool</label>
+                                        <input type="text" id="set-dhcp-end-ip" placeholder="10.10.10.250" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-2">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                     <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Subnet Mask</label>
-                                        <input type="text" id="set-dhcp-mask" placeholder="255.255.255.0" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Subnet Mask</label>
+                                        <input type="text" id="set-dhcp-mask" placeholder="255.255.255.0" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                     </div>
                                     <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Gateway (Router)</label>
-                                        <input type="text" id="set-dhcp-gateway" list="network-ips-datalist" placeholder="10.10.10.1" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-2 gap-2">
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">DNS Server</label>
-                                        <input type="text" id="set-dhcp-dns" placeholder="8.8.8.8" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
-                                    </div>
-                                    <div class="input-group mb-0">
-                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Next Server (TFTP/Server IP)</label>
-                                        <select id="set-dhcp-next" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
+                                        <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Gateway (Router)</label>
+                                        <input type="text" id="set-dhcp-gateway" list="network-ips-datalist" placeholder="10.10.10.1" class="text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                     </div>
                                 </div>
                                 <div class="input-group mb-0">
-                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Load Balancing NIC IPs</label>
-                                    <div class="flex gap-1.5 mb-1.5">
-                                        <input type="text" id="add-nic-ip-input" list="network-ips-datalist" placeholder="Tambah IP NIC..." class="flex-1 text-xs py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)]">
-                                        <button type="button" class="btn btn-primary text-xs px-2.5 py-1 whitespace-nowrap" onclick="addNicIpAction()">➕ Add</button>
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">DNS Server</label>
+                                    <input type="text" id="set-dhcp-dns" placeholder="8.8.8.8" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                </div>
+                                <div class="input-group mb-0">
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Load Balancing NIC IPs</label>
+                                    <div class="flex gap-2 mb-2">
+                                        <input type="text" id="add-nic-ip-input" list="network-ips-datalist" placeholder="Tambah IP NIC..." class="flex-1 text-sm py-2 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+                                        <button type="button" class="btn btn-primary text-xs sm:text-sm px-3.5 py-2 whitespace-nowrap" onclick="addNicIpAction()">➕ Add</button>
                                     </div>
-                                    <div id="nic-ips-list-container" class="border border-[var(--color-border)] rounded bg-[var(--color-bg-light)] p-1.5 max-h-16 overflow-y-auto flex flex-col gap-1 text-xs">
-                                        <span class="text-[var(--color-muted)] text-center text-[11px]">Belum ada IP ditambahkan.</span>
+                                    <div id="nic-ips-list-container" class="border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-light)] p-2.5 max-h-24 overflow-y-auto flex flex-col gap-1.5 text-xs">
+                                        <span class="text-[var(--color-muted)] text-center text-xs">Belum ada IP ditambahkan.</span>
                                     </div>
                                 </div>
                             </div>
@@ -374,20 +379,20 @@
                     </div>
 
                     <!-- CARD 3: TFTP Service & Boot Files -->
-                    <div class="card p-3 sm:p-4 mb-0 flex flex-col justify-between">
+                    <div class="card p-5 sm:p-6 lg:p-7 mb-0 flex flex-col justify-between shadow-sm">
                         <div>
-                            <div class="flex items-center gap-2 border-b border-[var(--color-border)] pb-2 mb-3">
-                                <span class="text-lg">📂</span>
-                                <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">TFTP Service & Bootloader</h2>
+                            <div class="flex items-center gap-2.5 border-b border-[var(--color-border)] pb-3 mb-5">
+                                <span class="text-xl">📂</span>
+                                <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">TFTP Service & Bootloader</h2>
                             </div>
-                            <div class="space-y-2.5 text-xs sm:text-sm">
+                            <div class="space-y-4 text-sm">
                                 <div class="input-group mb-0">
-                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">TFTP Root Directory</label>
-                                    <input type="text" id="set-tftp-dir" placeholder="pxe" class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">TFTP Root Directory</label>
+                                    <input type="text" id="set-tftp-dir" placeholder="pxe" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                 </div>
                                 <div class="input-group mb-0">
-                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Default PXE Bootloader</label>
-                                    <input type="text" id="set-pxe-default" list="tftp-folders-list" placeholder="sb-custom" class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    <label class="text-xs sm:text-sm font-semibold text-[var(--color-muted)] mb-1.5 block">Default PXE Bootloader</label>
+                                    <input type="text" id="set-pxe-default" list="tftp-folders-list" placeholder="sb-custom" class="text-sm py-2.5 px-3.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
                                 </div>
                             </div>
                         </div>
@@ -397,26 +402,26 @@
                 <datalist id="network-ips-datalist"></datalist>
 
                 <!-- TFTP FOLDERS CRUD CARD -->
-                <div class="card p-3 sm:p-4">
-                    <div class="flex justify-between items-center mb-3">
-                        <div class="flex items-center gap-2">
-                            <span class="text-lg">📁</span>
-                            <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">TFTP Bootloader Folders Manager</h2>
+                <div class="card p-5 sm:p-6 lg:p-7 mb-6 shadow-sm">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-xl">📁</span>
+                            <h2 class="text-base sm:text-lg font-bold font-['Outfit'] m-0">TFTP Bootloader Folders Manager</h2>
                         </div>
-                        <button class="btn btn-primary text-xs px-3 py-1.5" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
+                        <button class="btn btn-primary text-xs sm:text-sm px-4 py-2" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
                     </div>
-                    <p class="subtitle text-xs mb-3">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
-                    <div class="table-container overflow-x-auto max-h-48 overflow-y-auto">
+                    <p class="subtitle text-xs sm:text-sm mb-4">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
+                    <div class="table-container overflow-x-auto max-h-60 overflow-y-auto rounded-lg border border-[var(--color-border)]">
                         <table class="data-table">
                             <thead>
                                 <tr>
                                     <th>Nama Folder</th>
-                                    <th>Aksi</th>
+                                    <th style="text-align: right;">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody id="tftp-folders-tbody">
                                 <tr>
-                                    <td colspan="2" style="text-align: center; color: var(--color-muted);">Memuat folder TFTP...</td>
+                                    <td colspan="2" style="text-align: center; color: var(--color-muted);" class="py-6">Memuat folder TFTP...</td>
                                 </tr>
                             </tbody>
                         </table>

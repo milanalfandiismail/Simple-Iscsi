@@ -1,0 +1,26 @@
+
+[[client]]
+  hostname        = "PC-01"
+  mac             = "F4:B5:20:67:D0:E8"
+  ip              = "192.168.180.2"
+  gateway         = "192.168.180.1"
+  dns             = "8.8.8.8"
+  pxe             = "sb-custom"
+  bootfile_uefi   = ""
+  bootfile_legacy = ""
+  bootfile_ipxe   = ""
+  next_server     = "192.168.180.1"
+  image_manager   = ""
+
+[[client]]
+  hostname        = "PC-02"
+  mac             = "04:7C:16:CF:FC:9C"
+  ip              = "192.168.180.3"
+  gateway         = "192.168.180.1"
+  dns             = "8.8.8.8"
+  pxe             = "sb-custom"
+  bootfile_uefi   = ""
+  bootfile_legacy = ""
+  bootfile_ipxe   = ""
+  next_server     = "192.168.180.1"
+  image_manager   = ""

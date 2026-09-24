@@ -36,11 +36,11 @@ tessss = 'I:\VHD\W11-23H2-5335.vhd'
 
 [dhcp]
 enabled = true
-start_ip = "10.10.10.244"
-end_ip = "10.10.10.254"
-router = "10.10.10.1"
+start_ip = "192.168.180.2"
+end_ip = "192.168.180.200"
+router = "192.168.180.1"
 dns = "8.8.8.8"
-next_server = "10.10.10.253"
+next_server = "192.168.180.1"
 subnet_mask = "255.255.255.0"
 tftp_dir = "pxe"
 pxe_default = "sb-custom"

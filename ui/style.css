@@ -144,24 +144,36 @@ h2 {
 /* Main Content Area */
 .main-content {
     flex: 1;
-    padding: 16px;
+    padding: 20px 16px;
     overflow-y: auto;
 }
 
 @media (min-width: 768px) {
     .main-content {
-        padding: 24px;
+        padding: 28px 24px;
     }
 }
 
 @media (min-width: 1024px) {
     .main-content {
-        padding: 24px 32px;
+        padding: 32px 36px;
+    }
+}
+
+@media (min-width: 1280px) {
+    .main-content {
+        padding: 36px 48px;
+    }
+}
+
+@media (min-width: 1536px) {
+    .main-content {
+        padding: 40px 60px;
     }
 }
 
 .content-header {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 
 /* Tab Panels */
@@ -177,16 +189,29 @@ h2 {
 .card {
     background-color: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 16px;
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+@media (min-width: 1024px) {
+    .card {
+        padding: 24px 28px;
+    }
+}
+
+@media (min-width: 1280px) {
+    .card {
+        padding: 28px 32px;
+    }
 }
 
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
 }
 
 .card h2 {
@@ -196,29 +221,37 @@ h2 {
 /* Metrik Grid */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    margin-bottom: 28px;
+}
+
+@media (min-width: 1280px) {
+    .stats-grid {
+        gap: 24px;
+    }
 }
 
 .stat-card {
     background-color: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 14px;
+    padding: 22px 26px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .stat-label {
     color: var(--color-muted);
     font-size: 14px;
+    font-weight: 500;
 }
 
 .stat-value {
     font-family: 'Outfit', sans-serif;
-    font-size: 28px;
+    font-size: 30px;
     font-weight: 600;
     letter-spacing: -0.5px;
 }
@@ -227,23 +260,30 @@ h2 {
 .services-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 20px;
+    margin-bottom: 28px;
+}
+
+@media (min-width: 1280px) {
+    .services-row {
+        gap: 24px;
+    }
 }
 
 .service-card {
     background-color: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 12px;
-    padding: 16px 20px;
+    border-radius: 14px;
+    padding: 18px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .service-info h3 {
     font-size: 16px;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
 .service-info p {
@@ -252,7 +292,7 @@ h2 {
 }
 
 .pill-status {
-    padding: 4px 10px;
+    padding: 5px 12px;
     font-size: 12px;
     font-weight: 500;
     border-radius: 9999px;
@@ -260,13 +300,14 @@ h2 {
 }
 
 .pill-status.active {
-    background-color: rgba(34, 197, 94, 0.1);
+    background-color: rgba(34, 197, 94, 0.12);
     color: #166534;
 }
 
 /* Table Design */
 .table-container {
     overflow-x: auto;
+    border-radius: 10px;
 }
 
 .data-table {
@@ -276,18 +317,20 @@ h2 {
 }
 
 .data-table th, .data-table td {
-    padding: 12px 16px;
+    padding: 14px 18px;
     border-bottom: 1px solid var(--color-border);
 }
 
 .data-table th {
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     color: var(--color-muted);
 }
 
 .data-table td {
-    font-size: 15px;
+    font-size: 14px;
 }
 
 .data-table tbody tr {
