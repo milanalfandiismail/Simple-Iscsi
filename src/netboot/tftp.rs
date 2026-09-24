@@ -131,11 +131,17 @@ impl TftpServer {
         let base_dir = Path::new(&base_dir_str);
         let full_path = base_dir.join(clean_filename);
 
-        let file_data = match std::fs::read(&full_path) {
-            Ok(data) => data,
-            Err(e) => {
+        let full_path_clone = full_path.clone();
+        let file_data = match tokio::task::spawn_blocking(move || std::fs::read(&full_path_clone)).await {
+            Ok(Ok(data)) => data,
+            Ok(Err(e)) => {
                 warn!("TFTP File tidak ditemukan: {:?} ({})", full_path, e);
                 self.send_error(addr, 1, "File not found.").await;
+                return;
+            }
+            Err(e) => {
+                error!("TFTP spawn_blocking gagal: {}", e);
+                self.send_error(addr, 5, "Server error.").await;
                 return;
             }
         };

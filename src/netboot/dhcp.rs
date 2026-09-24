@@ -300,13 +300,17 @@ impl DhcpServer {
             if let Some(ref conf) = client_conf {
                 let auto_add = self.config.read().dhcp.as_ref().map(|d| d.auto_add_client).unwrap_or(true);
                 if auto_add {
-                    if let Err(e) = crate::config::append_client("clients.toml", conf) {
-                        error!("Gagal auto-add klien baru ke clients.toml: {}", e);
-                    } else {
-                        info!("Berhasil Auto-Add Klien Baru: {} ({}) -> IP: {}", conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
-                    }
+                    let conf_clone = conf.clone();
+                    tokio::task::spawn_blocking(move || {
+                        match crate::config::append_client("clients.toml", &conf_clone) {
+                            Ok(_) => info!("Berhasil Auto-Add Klien Baru: {} ({}) -> IP: {}",
+                                conf_clone.hostname.as_deref().unwrap_or(""), conf_clone.mac, conf_clone.ip),
+                            Err(e) => error!("Gagal auto-add klien baru ke clients.toml: {}", e),
+                        }
+                    }).await.ok();
                 } else {
-                    info!("Auto-Add dinonaktifkan. Klien {} ({}) dilayani sementara dengan IP: {}", conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
+                    info!("Auto-Add dinonaktifkan. Klien {} ({}) dilayani sementara dengan IP: {}",
+                        conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
                 }
             }
         }

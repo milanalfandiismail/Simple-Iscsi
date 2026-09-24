@@ -130,38 +130,44 @@ function initAutoSyncIntervals() {
 
 // HTTP API Fetch Helpers
 async function apiGet(url, timeoutMs = 3500) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        const data = await res.json(); // AbortController still active here
+        clearTimeout(timeoutId);
+        return data;
     } catch (err) {
-        console.error(`GET ${url} failed:`, err);
+        clearTimeout(timeoutId);
+        if (err.name !== 'AbortError') console.error(`GET ${url} failed:`, err);
         return null;
     }
 }
 
 async function apiPost(url, body = {}, timeoutMs = 4500) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: typeof body === 'string' ? body : JSON.stringify(body),
             signal: controller.signal
         });
-        clearTimeout(timeoutId);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const contentType = res.headers.get('content-type');
+        let result;
         if (contentType && contentType.includes('application/json')) {
-            return await res.json();
+            result = await res.json(); // AbortController still active here
+        } else {
+            const text = await res.text();
+            result = { status: 'ok', message: text };
         }
-        const text = await res.text();
-        return { status: 'ok', message: text };
+        clearTimeout(timeoutId);
+        return result;
     } catch (err) {
+        clearTimeout(timeoutId);
         console.error(`POST ${url} failed:`, err);
         return null;
     }
