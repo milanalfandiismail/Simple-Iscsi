@@ -129,9 +129,12 @@ function initAutoSyncIntervals() {
 }
 
 // HTTP API Fetch Helpers
-async function apiGet(url) {
+async function apiGet(url, timeoutMs = 3500) {
     try {
-        const res = await fetch(url);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
     } catch (err) {
@@ -140,13 +143,17 @@ async function apiGet(url) {
     }
 }
 
-async function apiPost(url, body = {}) {
+async function apiPost(url, body = {}, timeoutMs = 4500) {
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: typeof body === 'string' ? body : JSON.stringify(body)
+            body: typeof body === 'string' ? body : JSON.stringify(body),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
