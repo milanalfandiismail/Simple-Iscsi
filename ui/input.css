@@ -10,6 +10,34 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@layer base {
+  /* Default Mobile & Tablet (<1024px): 100% (16px) */
+  html {
+    font-size: 100%;
+  }
+
+  /* Breakpoint LG (1024px - 1279px): Skala 87.5% (14px) agar lega & proporsional mirip 2XL */
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    html {
+      font-size: 87.5%;
+    }
+  }
+
+  /* Breakpoint XL (1280px - 1535px): Skala 93.75% (15px) transisi halus */
+  @media (min-width: 1280px) and (max-width: 1535px) {
+    html {
+      font-size: 93.75%;
+    }
+  }
+
+  /* Breakpoint 2XL+ (>=1536px): 100% (16px) native */
+  @media (min-width: 1536px) {
+    html {
+      font-size: 100%;
+    }
+  }
+}
+
 @layer utilities {
   /* Tab Navigation Visibility */
   .tab-panel {
