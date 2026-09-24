@@ -5,8 +5,6 @@ use std::net::{SocketAddrV4, SocketAddr};
 use std::path::Path;
 use bytes::{BytesMut, BufMut, Buf};
 
-use socket2::{Socket, Domain, Type, Protocol};
-
 use crate::config_manager::SharedConfig;
 
 const TFTP_PORT: u16 = 69;
@@ -23,11 +21,8 @@ pub struct TftpServer {
 
 impl TftpServer {
     pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
-        let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-        sock.set_reuse_address(true)?;
-        let addr: std::net::SocketAddr = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, TFTP_PORT).into();
-        sock.bind(&addr.into())?;
-        let socket = UdpSocket::from_std(sock.into())?;
+        let addr = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, TFTP_PORT);
+        let socket = UdpSocket::bind(addr).await?;
         
         Ok(Arc::new(TftpServer {
             config,
@@ -50,14 +45,7 @@ impl TftpServer {
                     });
                 }
                 Err(e) => {
-                    // Error 10054 (WSAECONNRESET) on Windows: ICMP Port Unreachable received
-                    // after sending to a host that has no listener. This is benign — just
-                    // continue. Add a small yield to prevent a tight spin if errors keep coming.
-                    let is_conn_reset = e.raw_os_error().map_or(false, |c| c == 10054);
-                    if !is_conn_reset {
-                        error!("Error menerima TFTP packet: {}", e);
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    error!("Error menerima TFTP packet: {}", e);
                 }
             }
         }
@@ -131,17 +119,11 @@ impl TftpServer {
         let base_dir = Path::new(&base_dir_str);
         let full_path = base_dir.join(clean_filename);
 
-        let full_path_clone = full_path.clone();
-        let file_data = match tokio::task::spawn_blocking(move || std::fs::read(&full_path_clone)).await {
-            Ok(Ok(data)) => data,
-            Ok(Err(e)) => {
+        let file_data = match std::fs::read(&full_path) {
+            Ok(data) => data,
+            Err(e) => {
                 warn!("TFTP File tidak ditemukan: {:?} ({})", full_path, e);
                 self.send_error(addr, 1, "File not found.").await;
-                return;
-            }
-            Err(e) => {
-                error!("TFTP spawn_blocking gagal: {}", e);
-                self.send_error(addr, 5, "Server error.").await;
                 return;
             }
         };
@@ -213,11 +195,7 @@ impl TftpServer {
                             }
                         }
                     }
-                    Ok(Err(e)) => {
-                        // Socket error (e.g. 10054 WSAECONNRESET) — client gone, abort transfer
-                        error!("TFTP Socket error saat tunggu OACK ACK: {}", e);
-                        return;
-                    }
+                    Ok(Err(e)) => error!("TFTP Socket error: {}", e),
                     Err(_) => {
                         warn!("TFTP OACK timeout, retry...");
                         retries += 1;
@@ -268,11 +246,7 @@ impl TftpServer {
                             }
                         }
                     }
-                    Ok(Err(e)) => {
-                        // Socket error (e.g. 10054 WSAECONNRESET) — client gone, abort transfer
-                        error!("TFTP Socket error saat tunggu ACK blok {}: {}", block_num, e);
-                        return;
-                    }
+                    Ok(Err(e)) => error!("TFTP Socket error: {}", e),
                     Err(_) => {
                         warn!("TFTP ACK timeout untuk blok {}, retry...", block_num);
                         retries += 1;

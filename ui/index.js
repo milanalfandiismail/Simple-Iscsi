@@ -281,19 +281,30 @@ function populateNetworkDropdowns() {
 // Live Stats Polling Loop & Realtime Client Sync
 function initStatsStream() {
     let clientsSyncCounter = 0;
+    let pollFailures = 0;
 
     const fetchStats = async () => {
         try {
             const data = await apiGet('/api/stats');
             if (data) {
+                pollFailures = 0;
                 handleStatsData(data);
             } else {
+                pollFailures++;
+                if (pollFailures >= 3) {
+                    updateServiceCard('iscsi', { enabled: false, port: 0 });
+                    updateServiceCard('dhcp', { enabled: false, port: 0 });
+                    updateServiceCard('tftp', { enabled: false, port: 0 });
+                }
+            }
+        } catch (e) {
+            console.error('Stats poll error:', e);
+            pollFailures++;
+            if (pollFailures >= 3) {
                 updateServiceCard('iscsi', { enabled: false, port: 0 });
                 updateServiceCard('dhcp', { enabled: false, port: 0 });
                 updateServiceCard('tftp', { enabled: false, port: 0 });
             }
-        } catch (e) {
-            console.error('Stats poll error:', e);
         }
 
         // Realtime sync clients.toml every 2 seconds to instantly capture auto-added clients

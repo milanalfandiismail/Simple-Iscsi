@@ -51,22 +51,34 @@ pub fn start_config_watcher(
     shared_config: SharedConfig, 
     gamedisk_backends: Arc<std::sync::RwLock<std::collections::HashMap<u8, Arc<crate::backend::Backend>>>>,
     config_path: String, 
-    _clients_path: String
+    clients_path: String
 ) {
     use std::time::SystemTime;
     use tracing::{info, error};
     
     tokio::spawn(async move {
         let mut last_config_mtime = std::fs::metadata(&config_path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3));
+        let mut last_clients_mtime = std::fs::metadata(&clients_path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+        
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
         loop {
             interval.tick().await;
             
             let current_config_mtime = std::fs::metadata(&config_path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+            let current_clients_mtime = std::fs::metadata(&clients_path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
             
-            if current_config_mtime != last_config_mtime {
-                last_config_mtime = current_config_mtime;
-                info!("Mendeteksi perubahan pada file konfigurasi {}...", config_path);
+            let config_changed = current_config_mtime != last_config_mtime;
+            let clients_changed = current_clients_mtime != last_clients_mtime;
+            
+            if config_changed || clients_changed {
+                info!("Mendeteksi perubahan pada file konfigurasi...");
+                if let Some(ref dhcp_cfg) = shared_config.read().dhcp {
+                    let dhcp_end = dhcp_cfg.end_ip.clone().unwrap_or_else(|| {
+                        let start_parts: Vec<&str> = dhcp_cfg.start_ip.split('.').collect();
+                        format!("{}.{}.{}.{}", start_parts[0], start_parts[1], start_parts[2], 200)
+                    });
+                    let _ = crate::config::auto_fix_duplicate_ips(&clients_path, &dhcp_cfg.start_ip, &dhcp_end);
+                }
 
                 match crate::config::load_config(&config_path) {
                     Ok(new_config) => {
@@ -113,9 +125,13 @@ pub fn start_config_watcher(
                         *backends_map = new_map;
                         shared_config.update(new_config);
                         info!("✅ Konfigurasi berhasil di-reload!");
+                        last_config_mtime = current_config_mtime;
+                        last_clients_mtime = current_clients_mtime;
                     }
                     Err(e) => {
                         error!("❌ Gagal me-reload konfigurasi: {}", e);
+                        last_config_mtime = current_config_mtime;
+                        last_clients_mtime = current_clients_mtime;
                     }
                 }
             }

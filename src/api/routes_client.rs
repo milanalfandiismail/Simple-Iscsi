@@ -8,13 +8,13 @@ pub fn get_clients_json() -> String {
                 Ok(clients_cfg) => {
                     match serde_json::to_string(&clients_cfg) {
                         Ok(json_str) => crate::server_api::build_response(200, "OK", "application/json", &json_str),
-                        Err(_) => crate::server_api::build_response(200, "OK", "application/json", r#"{"client":[]}"#),
+                        Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
                     }
                 }
-                Err(_) => crate::server_api::build_response(200, "OK", "application/json", r#"{"client":[]}"#),
+                Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
             }
         }
-        Err(_) => crate::server_api::build_response(200, "OK", "application/json", r#"{"client":[]}"#),
+        Err(e) => crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
     }
 }
 
@@ -122,7 +122,6 @@ pub fn post_superclient_commit(config: &crate::config_manager::SharedConfig, bod
     match parsed {
         Ok(json_body) => {
             let hostname = json_body["hostname"].as_str().unwrap_or("");
-            let create_backup = json_body.get("create_backup").and_then(|v| v.as_bool()).unwrap_or(true);
             if let Ok(clients) = crate::config::load_clients("clients.toml") {
                 let client = clients.values().find(|c| c.hostname.as_deref() == Some(hostname) || c.ip == hostname);
                 if let Some(c) = client {
@@ -132,9 +131,7 @@ pub fn post_superclient_commit(config: &crate::config_manager::SharedConfig, bod
                     let super_path = crate::writeback_super::get_super_path(&config_ref, image_key);
                     
                     if crate::writeback_super::super_exists(&super_path) {
-                        if create_backup {
-                            let _ = crate::vhd_merge::backup_before_merge(&base_path, &super_path);
-                        }
+                        let _ = crate::vhd_merge::backup_before_merge(&base_path, &super_path);
                         let config_path = "config.toml".to_string();
                         tokio::spawn(async move {
                             if let Ok(_) = crate::vhd_merge::merge_vhd(super_path.clone(), base_path).await {

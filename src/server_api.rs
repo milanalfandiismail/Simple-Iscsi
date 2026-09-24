@@ -3,11 +3,14 @@ use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json::json;
 use tracing::{info, error};
+use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
 
-use crate::config_manager::SharedConfig;
+use crate::config_manager::{SharedConfig, clear_super_client_config};
 use crate::stats::ServerStats;
+use crate::vhd_merge;
+use crate::writeback_super;
 
 pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
     let addr = "127.0.0.1:8080";
@@ -31,44 +34,42 @@ pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
                     let mut content_length = None;
                     let mut headers_end = None;
 
-                    let read_result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                        loop {
-                            match socket.read(&mut buf).await {
-                                Ok(n) if n > 0 => {
-                                    req_bytes.extend_from_slice(&buf[..n]);
+                    loop {
+                        match socket.read(&mut buf).await {
+                            Ok(n) if n > 0 => {
+                                req_bytes.extend_from_slice(&buf[..n]);
 
-                                    // Cari batas header \r\n\r\n
-                                    if headers_end.is_none() {
-                                        if let Some(pos) = req_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                                            headers_end = Some(pos + 4);
-                                            // Parse Content-Length dari header
-                                            let header_str = String::from_utf8_lossy(&req_bytes[..pos]);
-                                            for line in header_str.lines() {
-                                                if line.to_lowercase().starts_with("content-length:") {
-                                                    if let Some(val_str) = line.split(':').nth(1) {
-                                                        if let Ok(len) = val_str.trim().parse::<usize>() {
-                                                            content_length = Some(len);
-                                                        }
+                                // Cari batas header \r\n\r\n
+                                if headers_end.is_none() {
+                                    if let Some(pos) = req_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                                        headers_end = Some(pos + 4);
+                                        // Parse Content-Length dari header
+                                        let header_str = String::from_utf8_lossy(&req_bytes[..pos]);
+                                        for line in header_str.lines() {
+                                            if line.to_lowercase().starts_with("content-length:") {
+                                                if let Some(val_str) = line.split(':').nth(1) {
+                                                    if let Ok(len) = val_str.trim().parse::<usize>() {
+                                                        content_length = Some(len);
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                }
 
-                                    // Jika header sudah terbaca dan body sudah lengkap
-                                    if let Some(h_end) = headers_end {
-                                        let expected_len = h_end + content_length.unwrap_or(0);
-                                        if req_bytes.len() >= expected_len {
-                                            break;
-                                        }
+                                // Jika header sudah terbaca dan body sudah lengkap
+                                if let Some(h_end) = headers_end {
+                                    let expected_len = h_end + content_length.unwrap_or(0);
+                                    if req_bytes.len() >= expected_len {
+                                        break;
                                     }
                                 }
-                                _ => break,
                             }
+                            _ => break,
                         }
-                    }).await;
+                    }
 
-                    if read_result.is_ok() && !req_bytes.is_empty() {
+                    if !req_bytes.is_empty() {
                         let request = String::from_utf8_lossy(&req_bytes);
                         
                         // Intercept SSE Stream explicitly
@@ -76,11 +77,8 @@ pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
                             crate::api::routes_stats::handle_sse_stream(socket, config_clone, stats_clone).await;
                         } else {
                             let response = handle_request(&request, &config_clone, &stats_clone).await;
-                            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                                let _ = socket.write_all(response.as_bytes()).await;
-                                let _ = socket.flush().await;
-                                let _ = socket.shutdown().await;
-                            }).await;
+                            let _ = socket.write_all(response.as_bytes()).await;
+                            let _ = socket.flush().await;
                         }
                     }
                 });
@@ -159,10 +157,6 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
             if let Err(e) = fs::write("config.toml", &body) {
                 build_response(500, "Internal Server Error", "text/plain", &e.to_string())
             } else {
-                if let Ok(cfg) = toml::from_str::<crate::config::Config>(&body) {
-                    config.update(cfg);
-                    info!("Berhasil me-reload config di memory dari POST /api/config.");
-                }
                 build_response(200, "OK", "text/plain", "Config saved successfully")
             }
         }
@@ -176,9 +170,13 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
         }
 
         ("GET", "/api/config/json") => {
-            let cfg = crate::config::load_config("config.toml").unwrap_or_else(|_| (*config.read()).clone());
-            match serde_json::to_string(&cfg) {
-                Ok(json_str) => build_response(200, "OK", "application/json", &json_str),
+            match crate::config::load_config("config.toml") {
+                Ok(cfg) => {
+                    match serde_json::to_string(&cfg) {
+                        Ok(json_str) => build_response(200, "OK", "application/json", &json_str),
+                        Err(e) => build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+                    }
+                }
                 Err(e) => build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
             }
         }
@@ -195,8 +193,7 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
                                 error!("Gagal menulis file config.toml: {}", e);
                                 build_response(500, "Internal Server Error", "text/plain", &e.to_string())
                             } else {
-                                info!("Berhasil memperbarui file config.toml di disk & memori.");
-                                config.update(cfg);
+                                info!("Berhasil memperbarui file config.toml di disk.");
                                 build_response(200, "OK", "text/plain", "Config saved successfully")
                             }
                         }

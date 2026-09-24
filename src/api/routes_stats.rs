@@ -33,13 +33,6 @@ pub fn get_stats_payload(config: &SharedConfig, stats: &Arc<ServerStats>) -> ser
         })
     }).collect();
 
-    let dhcp_leases: Vec<serde_json::Value> = stats.dhcp_leases.iter().map(|entry| {
-        json!({
-            "mac": entry.key().clone(),
-            "ip": entry.value().clone(),
-        })
-    }).collect();
-
     let config_guard = config.read();
     let dhcp_enabled = config_guard.dhcp.as_ref().map(|d| d.enabled).unwrap_or(false);
     let tftp_enabled = config_guard.dhcp.as_ref().map(|d| d.enabled && !d.tftp_dir.is_empty()).unwrap_or(false);
@@ -53,7 +46,6 @@ pub fn get_stats_payload(config: &SharedConfig, stats: &Arc<ServerStats>) -> ser
         "bytes_read": stats.bytes_read.load(std::sync::atomic::Ordering::Relaxed),
         "bytes_written": stats.bytes_written.load(std::sync::atomic::Ordering::Relaxed),
         "clients": client_list,
-        "dhcp_leases": dhcp_leases,
         "services": {
             "iscsi": { "enabled": true, "port": iscsi_port },
             "dhcp": { "enabled": dhcp_enabled, "port": 67 },
