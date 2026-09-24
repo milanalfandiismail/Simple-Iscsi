@@ -1,0 +1,22 @@
+# clients.toml.example - Contoh Konfigurasi Klien DHCP & iSCSI
+# Salin file ini menjadi clients.toml untuk konfigurasi lokal
+
+[[client]]
+hostname = "PC-01"
+mac = "00:11:22:33:44:55"
+ip = "192.168.1.101"
+gateway = "192.168.1.1"
+dns = "8.8.8.8"
+pxe = "sb-custom"
+next_server = "192.168.1.2"
+image_manager = "win10"
+
+[[client]]
+hostname = "PC-02"
+mac = "00:11:22:33:44:56"
+ip = "192.168.1.102"
+gateway = "192.168.1.1"
+dns = "8.8.8.8"
+pxe = "sb-custom"
+next_server = "192.168.1.2"
+image_manager = "win10"
