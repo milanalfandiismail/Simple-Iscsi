@@ -117,32 +117,24 @@
                     <div class="bg-white border border-stone-200 rounded-xl p-5 sm:p-6 lg:p-7 flex flex-col gap-1.5 shadow-xs hover:border-stone-300 transition-all">
                         <span class="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-500">Total Configured PCs</span>
                         <span class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-stone-900 font-['Outfit']" id="stat-total-pcs">0</span>
-                    </div>
-                </div>
-
-                <!-- Real-time IO Clients Table Card -->
+                              <!-- Real-time IO Clients Table Card -->
                 <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
                     <h2 class="text-base sm:text-lg font-bold text-stone-900 font-['Outfit'] pb-3 sm:pb-4 border-b border-stone-100 mb-4 sm:mb-6">Daftar Penggunaan I/O Klien</h2>
                     <div class="overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-xs xl:text-sm border-collapse min-w-[750px] lg:min-w-full">
+                        <table class="w-full text-left text-xs sm:text-xs xl:text-sm border-collapse min-w-[700px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Status</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">IP Address</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">DNS</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Gateway</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Next Server</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read Speed</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write Speed</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Klien & Status</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Jaringan (Network)</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image & PXE</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read I/O</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write I/O</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="dashboard-clients-tbody" class="divide-y divide-stone-100">
                                 <tr>
-                                    <td colspan="11" class="py-8 px-5 text-center text-stone-500">Memuat data klien...</td>
+                                    <td colspan="6" class="py-8 px-5 text-center text-stone-500">Memuat data klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -165,27 +157,20 @@
 
                 <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
                     <div class="overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-xs xl:text-sm border-collapse min-w-[850px] lg:min-w-full">
+                        <table class="w-full text-left text-xs sm:text-xs xl:text-sm border-collapse min-w-[700px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Status</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Hostname</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">IP Address</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">MAC Address</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">DNS</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Gateway</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Next Server</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read Speed</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write</th>
-                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write Speed</th>
-                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Klien & Status</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Jaringan (Network)</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image & PXE</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read I/O</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write I/O</th>
+                                    <th class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="clients-tbody" class="divide-y divide-stone-100">
                                 <tr>
-                                    <td colspan="13" class="py-8 px-5 text-center text-stone-500">Memuat daftar klien...</td>
+                                    <td colspan="6" class="py-8 px-5 text-center text-stone-500">Memuat daftar klien...</td>
                                 </tr>
                             </tbody>
                         </table>

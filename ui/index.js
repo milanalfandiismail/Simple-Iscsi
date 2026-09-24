@@ -315,31 +315,38 @@ function handleStatsData(data) {
                 }
             }
 
-            const statusText = statsInfo.active
-                ? `<span style="color: #22c55e;">🟢 Online</span>`
-                : `<span style="color: #ef4444;">🔴 Offline</span>`;
+            const statusText = statsInfo.active ? '🟢 Online' : '🔴 Offline';
+            const statusClass = `client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${statsInfo.active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`;
 
-            // Update Dashboard Table Row
-            const dbRow = document.querySelector(`#dashboard-clients-tbody tr[data-ip="${c.ip}"]`);
-            if (dbRow) {
-                setHtmlIfChanged(dbRow.cells[0], statusText);
-                setTextIfChanged(dbRow.cells[6], formatBytes(statsInfo.bytes_read));
-                setTextIfChanged(dbRow.cells[7], formatSpeed(speedInfo.readSpeed));
-                setTextIfChanged(dbRow.cells[8], formatBytes(statsInfo.bytes_written));
-                setTextIfChanged(dbRow.cells[9], formatSpeed(speedInfo.writeSpeed));
-                setTextIfChanged(dbRow.cells[10], statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline');
-            }
+            // Helper to update client row stats in real-time
+            const updateRowStats = (row) => {
+                if (!row) return;
+                const badge = row.querySelector('.client-status-badge');
+                if (badge && badge.textContent !== statusText) {
+                    badge.textContent = statusText;
+                    badge.className = statusClass;
+                }
+                const readTotalEl = row.querySelector('.client-read-total');
+                if (readTotalEl) setTextIfChanged(readTotalEl, formatBytes(statsInfo.bytes_read));
 
-            // Update Clients Manager Table Row
-            const cmRow = document.querySelector(`#clients-tbody tr[data-ip="${c.ip}"]`);
-            if (cmRow) {
-                setHtmlIfChanged(cmRow.cells[0], statusText);
-                setTextIfChanged(cmRow.cells[8], formatBytes(statsInfo.bytes_read));
-                setTextIfChanged(cmRow.cells[9], formatSpeed(speedInfo.readSpeed));
-                setTextIfChanged(cmRow.cells[10], formatBytes(statsInfo.bytes_written));
-                setTextIfChanged(cmRow.cells[11], formatSpeed(speedInfo.writeSpeed));
-                setTextIfChanged(cmRow.cells[12], statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline');
-            }
+                const readSpeedEl = row.querySelector('.client-read-speed');
+                if (readSpeedEl) setTextIfChanged(readSpeedEl, `⚡ ${formatSpeed(speedInfo.readSpeed)}`);
+
+                const writeTotalEl = row.querySelector('.client-write-total');
+                if (writeTotalEl) setTextIfChanged(writeTotalEl, formatBytes(statsInfo.bytes_written));
+
+                const writeSpeedEl = row.querySelector('.client-write-speed');
+                if (writeSpeedEl) setTextIfChanged(writeSpeedEl, `⚡ ${formatSpeed(speedInfo.writeSpeed)}`);
+
+                const uptimeEl = row.querySelector('.client-uptime');
+                if (uptimeEl) {
+                    setTextIfChanged(uptimeEl, statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline');
+                    uptimeEl.className = `client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}`;
+                }
+            };
+
+            updateRowStats(document.querySelector(`#dashboard-clients-tbody tr[data-ip="${c.ip}"]`));
+            updateRowStats(document.querySelector(`#clients-tbody tr[data-ip="${c.ip}"]`));
         });
     });
 }
@@ -368,7 +375,7 @@ function renderDashboardClientsTable() {
     renderedDashboardIps = mergedClients.map(c => c.ip);
 
     if (mergedClients.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="py-12 px-6 text-center">
+        tbody.innerHTML = `<tr><td colspan="6" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">🔌</div>
                 <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Belum Ada Klien Aktif</h3>
@@ -392,28 +399,47 @@ function renderDashboardClientsTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
-            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
+            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
+            : `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1.5">⚡ Super Client</span>` : '';
-        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 ml-1.5">DHCP Auto</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
+        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 ml-1">DHCP</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">${statusSpan}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-semibold text-stone-900">${c.ip}${superBadge}${dynamicBadge}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs text-stone-800"><span class="bg-stone-100 rounded px-1.5 py-0.5">${c.image_manager || 'None (Gamedisk)'}</span></td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    ${statusSpan}
+                    <span class="font-bold text-stone-900 text-xs sm:text-sm font-['Outfit']">${c.hostname || c.ip}</span>
+                    ${superBadge}${dynamicBadge}
+                </div>
+                <div class="text-[11px] text-stone-500 font-mono mt-1">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-1">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next Svr:</span> ${c.next_server || '-'}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+                    <span class="text-stone-400 text-xs">💿</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] text-stone-900 truncate max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
+                </div>
+                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="client-read-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[11px] font-mono font-semibold text-blue-600 mt-1">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="client-write-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-1">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+            </td>
         `;
         tbody.appendChild(row);
     });
@@ -426,7 +452,7 @@ function renderDashboardClientsTable() {
 function renderClientsManagerTable() {
     const tbody = document.getElementById('clients-tbody');
     if (!clientsObj.client || clientsObj.client.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="13" class="py-12 px-6 text-center">
+        tbody.innerHTML = `<tr><td colspan="6" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">💻</div>
                 <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Daftar Klien Kosong</h3>
@@ -448,29 +474,46 @@ function renderClientsManagerTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
-            : `<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
+            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
+            : `<span class="client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1.5">⚡ Super Client</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap">${statusSpan}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-semibold text-stone-900">${c.hostname || 'PC'}${superBadge}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs">${c.ip}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-stone-500">${c.mac}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-stone-800">${c.image_manager || 'Gamedisk'}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    ${statusSpan}
+                    <span class="font-bold text-stone-900 text-xs sm:text-sm font-['Outfit']">${c.hostname || 'PC'}</span>
+                    ${superBadge}
+                </div>
+                <div class="text-[11px] text-stone-500 font-mono mt-1">${c.ip} • ${c.mac}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-1">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next Svr:</span> ${c.next_server || '-'}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+                    <span class="text-stone-400 text-xs">💿</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] text-stone-900 truncate max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
+                </div>
+                <div class="text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="client-read-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[11px] font-mono font-semibold text-blue-600 mt-1">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="client-write-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-1">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            </td>
+            <td class="py-2.5 px-3 lg:py-3 lg:px-3.5 xl:py-3.5 xl:px-4">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+            </td>
         `;
 
         // Double click or click to edit client configuration
