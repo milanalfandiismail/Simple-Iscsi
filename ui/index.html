@@ -72,10 +72,10 @@
         <!-- Overlay Sidebar Mobile -->
         <div id="sidebar-overlay" class="fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-40 hidden md:hidden transition-opacity"></div>
 
-        <!-- Main Content Canvas -->
-        <main class="main-content flex-1 min-w-0 h-screen overflow-y-auto bg-stone-100 p-4 sm:p-6 lg:p-8 xl:p-10">
+        <!-- Main Content Canvas (Full width on LG/XL/2XL without artificial max-w constraints) -->
+        <main class="main-content flex-1 min-w-0 h-screen overflow-y-auto bg-stone-100 p-4 sm:p-6 lg:p-6 xl:p-8">
             <!-- TAB: DASHBOARD -->
-            <section id="tab-dashboard" class="tab-panel active max-w-7xl mx-auto w-full">
+            <section id="tab-dashboard" class="tab-panel active w-full">
                 <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-6 border-b border-stone-200 mb-6 sm:mb-8">
                     <div>
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['Outfit']">Dashboard Overview</h1>
@@ -124,20 +124,20 @@
                 <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
                     <h2 class="text-base sm:text-lg font-bold text-stone-900 font-['Outfit'] pb-3 sm:pb-4 border-b border-stone-100 mb-4 sm:mb-6">Daftar Penggunaan I/O Klien</h2>
                     <div class="overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[850px]">
+                        <table class="w-full text-left text-xs sm:text-xs xl:text-sm border-collapse min-w-[750px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Status</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">IP Address</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">DNS</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Gateway</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Next Server</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read Speed</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write Speed</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Status</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">IP Address</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">DNS</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Gateway</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Next Server</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read Speed</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write Speed</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="dashboard-clients-tbody" class="divide-y divide-stone-100">
@@ -151,7 +151,7 @@
             </section>
 
             <!-- TAB: KLIEN -->
-            <section id="tab-clients" class="tab-panel max-w-7xl mx-auto w-full">
+            <section id="tab-clients" class="tab-panel w-full">
                 <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-6 border-b border-stone-200 mb-6 sm:mb-8">
                     <div>
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['Outfit']">Klien Manager</h1>
@@ -165,22 +165,22 @@
 
                 <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
                     <div class="overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[950px]">
+                        <table class="w-full text-left text-xs sm:text-xs xl:text-sm border-collapse min-w-[850px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Status</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Hostname</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">IP Address</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">MAC Address</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">DNS</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Gateway</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Next Server</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read Speed</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write Speed</th>
-                                    <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Status</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Hostname</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">IP Address</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">MAC Address</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">DNS</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Gateway</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Boot Image</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Next Server</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Read Speed</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write</th>
+                                    <th class="py-2.5 px-2.5 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Write Speed</th>
+                                    <th class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3.5 2xl:px-4 text-[11px] lg:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="clients-tbody" class="divide-y divide-stone-100">
@@ -194,7 +194,7 @@
             </section>
 
             <!-- TAB: IMAGE MANAGER -->
-            <section id="tab-vhd" class="tab-panel max-w-7xl mx-auto w-full">
+            <section id="tab-vhd" class="tab-panel w-full">
                 <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-6 border-b border-stone-200 mb-6 sm:mb-8">
                     <div>
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['Outfit']">Image Manager</h1>
@@ -205,7 +205,7 @@
 
                 <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
                     <div class="overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[650px]">
+                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[550px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
                                     <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Image Key (Alias)</th>
@@ -225,7 +225,7 @@
             </section>
 
             <!-- TAB: DISK MANAGEMENT -->
-            <section id="tab-disk-mgmt" class="tab-panel max-w-7xl mx-auto w-full">
+            <section id="tab-disk-mgmt" class="tab-panel w-full">
                 <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-6 border-b border-stone-200 mb-6 sm:mb-8">
                     <div>
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['Outfit']">Disk Management</h1>
@@ -258,7 +258,7 @@
             </section>
 
             <!-- TAB: WRITEBACK -->
-            <section id="tab-writeback" class="tab-panel max-w-7xl mx-auto w-full">
+            <section id="tab-writeback" class="tab-panel w-full">
                 <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-6 border-b border-stone-200 mb-6 sm:mb-8">
                     <div>
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['Outfit']">Writeback Cache Monitor</h1>
@@ -268,7 +268,7 @@
 
                 <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 shadow-xs">
                     <div class="overflow-x-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[650px]">
+                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[550px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
                                     <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Nama File Cache</th>
@@ -288,7 +288,7 @@
             </section>
 
             <!-- TAB: SETTINGS -->
-            <section id="tab-settings" class="tab-panel max-w-7xl mx-auto w-full">
+            <section id="tab-settings" class="tab-panel w-full">
                 <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-6 border-b border-stone-200 mb-6 sm:mb-8">
                     <div>
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['Outfit']">Pengaturan Sentral (config.toml)</h1>
@@ -424,7 +424,7 @@
                         <button class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 active:scale-[0.98] shadow-sm whitespace-nowrap transition-all shrink-0" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
                     </div>
                     <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-lg border border-stone-200">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
+                        <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px] lg:min-w-full">
                             <thead>
                                 <tr class="bg-stone-50 border-b border-stone-200">
                                     <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Nama Folder</th>
@@ -567,7 +567,7 @@
             <h2 class="text-base sm:text-lg lg:text-xl font-bold text-stone-900 font-['Outfit'] pb-2 sm:pb-3 border-b border-stone-100 mb-2 sm:mb-3">📸 Snapshot Backups for <span id="snapshot-modal-title-key">Image</span></h2>
             <p class="text-xs sm:text-sm text-stone-500 leading-relaxed mb-4 sm:mb-6">Daftar snapshot otomatis yang dibuat sebelum proses commit super client. Anda dapat merestore salah satu snapshot di bawah ini.</p>
             <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-lg border border-stone-200 mb-4 sm:mb-6">
-                <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
+                <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px] lg:min-w-full">
                     <thead>
                         <tr class="bg-stone-50 border-b border-stone-200">
                             <th class="py-3 px-3.5 sm:py-3.5 sm:px-5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-stone-600 whitespace-nowrap">Snapshot Index</th>

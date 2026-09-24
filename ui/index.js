@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initTabs();
     initContextMenus();
     initTheme();
-    
+
     // Initial data loading sequence
     await loadInitialData();
 
@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initTheme() {
     const btn = document.getElementById('theme-toggle-btn');
     const currentTheme = localStorage.getItem('theme') || 'light';
-    
+
     if (currentTheme === 'dark') {
         document.body.classList.add('dark-theme');
         btn.textContent = '🌞 Mode Terang';
@@ -73,7 +73,7 @@ function initTabs() {
         item.addEventListener('click', (e) => {
             e.preventDefault();
             const targetTab = item.getAttribute('data-tab');
-            
+
             navItems.forEach(i => i.classList.remove('active'));
             item.classList.add('active');
 
@@ -82,7 +82,7 @@ function initTabs() {
             });
             document.getElementById(`tab-${targetTab}`).classList.add('active');
             activeTab = targetTab;
-            
+
             // Reload tab specific components dynamically
             if (activeTab === 'settings') { loadNetworkInterfaces(); loadConfigJson(); loadTftpFolders(); }
             if (activeTab === 'clients') loadClientsJson();
@@ -200,7 +200,7 @@ async function apiPostJson(endpoint, body) {
 // Polling and Statistics
 function initStatsStream() {
     const evtSource = new EventSource('/api/stats/stream');
-    
+
     evtSource.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -209,7 +209,7 @@ function initStatsStream() {
             console.error("Error parsing SSE data:", e);
         }
     };
-    
+
     evtSource.onerror = (err) => {
         console.error("EventSource failed:", err);
     };
@@ -403,17 +403,17 @@ function renderDashboardClientsTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap">${statusSpan}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-semibold text-stone-900">${c.ip}${superBadge}${dynamicBadge}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-800"><span class="bg-stone-100 rounded px-1.5 py-0.5">${c.image_manager || 'None (Gamedisk)'}</span></td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">${statusSpan}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-semibold text-stone-900">${c.ip}${superBadge}${dynamicBadge}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs text-stone-800"><span class="bg-stone-100 rounded px-1.5 py-0.5">${c.image_manager || 'None (Gamedisk)'}</span></td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
         tbody.appendChild(row);
     });
@@ -458,19 +458,19 @@ function renderClientsManagerTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap">${statusSpan}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-semibold text-stone-900">${c.hostname || 'PC'}${superBadge}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${c.ip}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-500">${c.mac}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-800">${c.image_manager || 'Gamedisk'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap">${statusSpan}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-semibold text-stone-900">${c.hostname || 'PC'}${superBadge}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs">${c.ip}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-stone-500">${c.mac}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.dns || '-'}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.gateway || '-'}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-stone-800">${c.image_manager || 'Gamedisk'}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-stone-500 font-mono text-xs">${c.next_server || '-'}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_read)}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold">${formatSpeed(speedInfo.readSpeed)}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(statsInfo.bytes_written)}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap font-mono text-xs text-amber-600 font-semibold">${formatSpeed(speedInfo.writeSpeed)}</td>
+            <td class="py-2.5 px-2 lg:py-3 lg:px-2.5 xl:py-3.5 xl:px-3 2xl:px-4 whitespace-nowrap text-xs text-stone-500 font-medium">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</td>
         `;
 
         // Double click or click to edit client configuration
@@ -522,7 +522,7 @@ function closeClientCrudModal() {
 async function populateClientImageDropdown() {
     const select = document.getElementById('client-image-manager');
     select.innerHTML = '<option value="">-- Tanpa Image (Gamedisk Only) --</option>';
-    
+
     // Add VHD manager / Image manager keys
     if (configObj && configObj.image_manager) {
         Object.keys(configObj.image_manager).forEach(key => {
@@ -550,7 +550,7 @@ async function populateClientImageDropdown() {
 async function saveClientAction(e) {
     e.preventDefault();
     const oldMac = document.getElementById('client-old-mac').value;
-    
+
     const clientData = {
         mac: document.getElementById('client-mac').value.trim(),
         ip: document.getElementById('client-ip').value.trim(),
@@ -754,22 +754,21 @@ async function loadWritebackFiles() {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs font-bold text-stone-900">${f.name}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs">${formatBytes(f.size)}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-mono">${f.path}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap" style="text-align: right;">
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs font-bold text-stone-900">${f.name}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap font-mono text-xs">${formatBytes(f.size)}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap text-xs text-stone-500 font-mono">${f.path}</td>
+            <td class="py-2.5 px-2.5 lg:py-3 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap" style="text-align: right;">
                 <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-all" onclick="clearWritebackCache('${f.path}')">Hapus</button>
             </td>
         `;
         tbody.appendChild(row);
     });
-        tbody.appendChild(row);
-    });
 }
+
 
 async function clearWritebackCache(path) {
     if (!confirm('Apakah Anda yakin ingin menghapus file cache writeback ini? PC klien harus offline!')) return;
-    
+
     const res = await apiPost('/api/writeback/clear', { file_path: path });
     if (res) {
         showToast('Cache berhasil dihapus.', 'success');
@@ -785,7 +784,7 @@ async function loadConfigJson() {
     const data = await apiGet('/api/config/json');
     if (data) {
         configObj = data;
-        
+
         // Map elements to centralized form inputs
         let addrVal = '0.0.0.0';
         if (typeof data.server.address === 'string') {
@@ -793,18 +792,18 @@ async function loadConfigJson() {
         } else if (Array.isArray(data.server.address)) {
             addrVal = data.server.address[0] || '0.0.0.0';
         }
-        
+
         populateIpDropdowns();
 
         const serverAddrEl = document.getElementById('set-server-address');
         if (serverAddrEl) serverAddrEl.value = addrVal;
-        
+
         const serverPortEl = document.getElementById('set-server-port');
         if (serverPortEl) serverPortEl.value = data.server.port;
-        
+
         const serverCacheEl = document.getElementById('set-server-cache');
         if (serverCacheEl) serverCacheEl.value = data.server.read_cache_gb;
-        
+
         const gdIqnEl = document.getElementById('set-gamedisk-iqn');
         if (gdIqnEl) gdIqnEl.value = data.gamedisk_target.target_iqn;
 
@@ -812,31 +811,31 @@ async function loadConfigJson() {
         if (data.dhcp) {
             const dhcpEnabledEl = document.getElementById('set-dhcp-enabled');
             if (dhcpEnabledEl) dhcpEnabledEl.checked = data.dhcp.enabled;
-            
+
             const startIpEl = document.getElementById('set-dhcp-start-ip');
             if (startIpEl) startIpEl.value = data.dhcp.start_ip || '';
-            
+
             const endIpEl = document.getElementById('set-dhcp-end-ip');
             if (endIpEl) endIpEl.value = data.dhcp.end_ip || '';
-            
+
             const maskEl = document.getElementById('set-dhcp-mask');
             if (maskEl) maskEl.value = data.dhcp.subnet_mask || '';
-            
+
             const gwEl = document.getElementById('set-dhcp-gateway');
             if (gwEl) gwEl.value = data.dhcp.router || '';
-            
+
             const dnsEl = document.getElementById('set-dhcp-dns');
             if (dnsEl) dnsEl.value = data.dhcp.dns || '';
-            
+
             const nextEl = document.getElementById('set-dhcp-next');
             if (nextEl) nextEl.value = data.dhcp.next_server || '';
-            
+
             const tftpDirEl = document.getElementById('set-tftp-dir');
             if (tftpDirEl) tftpDirEl.value = data.dhcp.tftp_dir || '';
-            
+
             const pxeDefEl = document.getElementById('set-pxe-default');
             if (pxeDefEl) pxeDefEl.value = data.dhcp.pxe_default || '';
-            
+
             serverNicIps = data.dhcp.nic_ips || [];
             renderNicIpsList();
         }
@@ -844,7 +843,7 @@ async function loadConfigJson() {
         if (data.writeback) {
             const maxCacheEl = document.getElementById('disk-max-cache-gb');
             if (maxCacheEl) maxCacheEl.value = data.writeback.max_cache_per_client_gb;
-            
+
             const maxSpeedEl = document.getElementById('disk-max-speed-mbps');
             if (maxSpeedEl) maxSpeedEl.value = data.writeback.max_write_speed_mbps;
         }
@@ -879,33 +878,33 @@ async function populateSystemDrives() {
 
     container.innerHTML = '';
     systemDrivesList.forEach(d => {
-            // Check active flags in configObj
-            const isBoot = configObj.windows?.vhd_dir?.substring(0, 1).toUpperCase() === d.letter;
-            const isWb = configObj.writeback?.writeback_dirs?.some(dir => dir.substring(0, 1).toUpperCase() === d.letter) || false;
-            
-            let isGd = false;
-            if (d.physical_disk && configObj.gamedisk) {
-                isGd = configObj.gamedisk.some(gd => gd.physical_disk === d.physical_disk);
-            }
+        // Check active flags in configObj
+        const isBoot = configObj.windows?.vhd_dir?.substring(0, 1).toUpperCase() === d.letter;
+        const isWb = configObj.writeback?.writeback_dirs?.some(dir => dir.substring(0, 1).toUpperCase() === d.letter) || false;
 
-            const card = document.createElement('div');
-            card.className = 'bg-white border border-stone-200 hover:border-stone-400 rounded-xl p-4 sm:p-5 lg:p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
+        let isGd = false;
+        if (d.physical_disk && configObj.gamedisk) {
+            isGd = configObj.gamedisk.some(gd => gd.physical_disk === d.physical_disk);
+        }
 
-            let badgeHTML = '';
-            if (isBoot) {
-                badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">💿 Boot VHD</span>`;
-            }
-            if (isWb) {
-                badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">💾 Writeback</span>`;
-            }
-            if (isGd) {
-                badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200">🎮 Raw GameDisk</span>`;
-            }
-            if (badgeHTML === '') {
-                badgeHTML = `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-stone-100 text-stone-700 border border-stone-200">Unallocated</span>`;
-            }
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-stone-200 hover:border-stone-400 rounded-xl p-4 sm:p-5 lg:p-6 text-center cursor-pointer transition-all hover:-translate-y-0.5 shadow-xs flex flex-col items-center justify-between';
 
-            card.innerHTML = `
+        let badgeHTML = '';
+        if (isBoot) {
+            badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">💿 Boot VHD</span>`;
+        }
+        if (isWb) {
+            badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">💾 Writeback</span>`;
+        }
+        if (isGd) {
+            badgeHTML += `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 border border-purple-200">🎮 Raw GameDisk</span>`;
+        }
+        if (badgeHTML === '') {
+            badgeHTML = `<span class="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-stone-100 text-stone-700 border border-stone-200">Unallocated</span>`;
+        }
+
+        card.innerHTML = `
                 <div class="text-4xl mb-3">💽</div>
                 <h3 class="font-['Outfit'] font-bold text-base text-stone-900 mb-3">Disk ${d.letter}:</h3>
                 <div class="flex flex-wrap justify-center gap-2">
@@ -913,9 +912,9 @@ async function populateSystemDrives() {
                 </div>
             `;
 
-            card.addEventListener('click', () => openDiskConfigModal(d.letter, isBoot, isWb, isGd, d.physical_disk));
-            container.appendChild(card);
-        });
+        card.addEventListener('click', () => openDiskConfigModal(d.letter, isBoot, isWb, isGd, d.physical_disk));
+        container.appendChild(card);
+    });
 }
 
 function openDiskConfigModal(letter, isBoot, isWb, isGd, physicalDisk) {
@@ -946,7 +945,7 @@ function closeDiskConfigModal() {
 async function applyDiskConfigAction(e) {
     e.preventDefault();
     const letter = document.getElementById('disk-config-letter').value;
-    
+
     // 1. Boot VHD allocation
     const isBootChecked = document.getElementById('disk-cfg-vhd').checked;
     if (isBootChecked) {
@@ -1059,7 +1058,7 @@ async function saveConfigJson(e) {
     configObj.dhcp.tftp_dir = document.getElementById('set-tftp-dir').value.trim();
     const pxeDef = document.getElementById('set-pxe-default').value.trim();
     configObj.dhcp.pxe_default = pxeDef.length > 0 ? pxeDef : null;
-    
+
     configObj.dhcp.nic_ips = serverNicIps;
 
     const success = await apiPost('/api/config/json', configObj);
@@ -1208,9 +1207,9 @@ async function modalAction(action) {
     const createBackup = createBackupCheckbox ? createBackupCheckbox.checked : true;
     closeModal();
     if (!selectedClientForCtx) return;
-    
+
     const endpoint = isCommit ? '/api/superclient/commit' : '/api/superclient/discard';
-    const payload = isCommit 
+    const payload = isCommit
         ? { hostname: selectedClientForCtx.ip, create_backup: createBackup }
         : { hostname: selectedClientForCtx.ip };
     const res = await apiPost(endpoint, payload);
@@ -1251,7 +1250,7 @@ async function loadTftpFolders() {
     const folders = await apiGet('/api/system/tftp_folders');
     const tbody = document.getElementById('tftp-folders-tbody');
     const datalist = document.getElementById('tftp-folders-list');
-    
+
     if (datalist) {
         datalist.innerHTML = '';
         if (folders && Array.isArray(folders)) {
@@ -1262,9 +1261,9 @@ async function loadTftpFolders() {
             });
         }
     }
-    
+
     if (!tbody) return;
-    
+
     if (folders && Array.isArray(folders)) {
         if (folders.length === 0) {
             tbody.innerHTML = '<tr><td colspan="2" class="py-6 px-5 text-center text-stone-500">Tidak ada folder boot loader terdaftar.</td></tr>';
@@ -1290,7 +1289,7 @@ async function loadTftpFolders() {
 async function createNewTftpFolderPrompt() {
     const name = prompt('Nama folder boot loader baru (TFTP):');
     if (!name || name.trim() === '') return;
-    
+
     const success = await apiPost('/api/system/tftp_folders/create', { name: name.trim() });
     if (success) {
         await loadTftpFolders();
@@ -1302,7 +1301,7 @@ async function createNewTftpFolderPrompt() {
 
 async function deleteTftpFolderAction(name) {
     if (!confirm(`Apakah Anda yakin ingin menghapus folder boot loader "${name}" beserta seluruh file di dalamnya?`)) return;
-    
+
     const success = await apiPost('/api/system/tftp_folders/delete', { name });
     if (success) {
         await loadTftpFolders();
@@ -1340,7 +1339,7 @@ function addNicIpAction() {
     if (!input) return;
     const ip = input.value.trim();
     if (!ip) return;
-    
+
     const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
     if (!ipRegex.test(ip)) {
         showToast('Format alamat IP tidak valid!', 'error');
@@ -1428,7 +1427,7 @@ function showToast(message, type = 'info') {
     if (!container) return;
 
     const toast = document.createElement('div');
-    
+
     let colorClasses = 'bg-stone-900 text-white border-stone-800 shadow-xl';
     let icon = 'ℹ️';
 
