@@ -175,7 +175,7 @@
                             </thead>
                             <tbody id="clients-tbody">
                                 <tr>
-                                    <td colspan="11" style="text-align: center; color: var(--color-muted);">Memuat daftar klien...</td>
+                                    <td colspan="13" style="text-align: center; color: var(--color-muted);">Memuat daftar klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -273,120 +273,140 @@
 
             <!-- TAB: SETTINGS -->
             <section id="tab-settings" class="tab-panel">
-                <header class="content-header">
-                    <h1>Pengaturan Sentral (config.toml)</h1>
-                    <p class="subtitle">Kelola konfigurasi DHCP, TFTP, dan iSCSI Daemon secara instan.</p>
+                <header class="content-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[var(--color-border)] mb-4">
+                    <div>
+                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Pengaturan Sentral (config.toml)</h1>
+                        <p class="subtitle text-xs sm:text-sm mb-0">Kelola konfigurasi Server iSCSI, DHCP Server, dan TFTP Bootloader secara terpadu.</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button type="button" class="btn btn-ghost text-xs px-3 py-1.5" onclick="loadConfigJson()">🔄 Reset</button>
+                        <button type="submit" form="settings-form" class="btn btn-primary text-xs sm:text-sm px-4 py-2 font-medium shadow-sm flex items-center gap-1.5" id="btn-save-all-settings">💾 Simpan Semua Pengaturan</button>
+                    </div>
                 </header>
 
+                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-3 gap-3 xl:gap-4 mb-4">
                     <!-- CARD 1: Server & iSCSI Daemon -->
-                    <form class="card" style="margin-bottom: 24px;" onsubmit="saveConfigJson(event)">
-                        <h2 style="margin-top: 0; font-family: 'Outfit', sans-serif;">⚙️ Server & iSCSI Daemon</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <div class="input-group">
-                                <label>Listen IP Address</label>
-                                <input type="text" id="set-server-address" placeholder="e.g. 0.0.0.0" required>
+                    <div class="card p-3 sm:p-4 mb-0 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center gap-2 border-b border-[var(--color-border)] pb-2 mb-3">
+                                <span class="text-lg">⚙️</span>
+                                <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">Server & iSCSI Daemon</h2>
                             </div>
-                            <div class="input-group">
-                                <label>Port</label>
-                                <input type="number" id="set-server-port" placeholder="e.g. 3300" required>
+                            <div class="space-y-2.5 text-xs sm:text-sm">
+                                <div class="input-group mb-0">
+                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Listen IP Address</label>
+                                    <select id="set-server-address" class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Port</label>
+                                        <input type="number" id="set-server-port" placeholder="3260 / 3300" required class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Read Cache (GB)</label>
+                                        <input type="number" id="set-server-cache" placeholder="4" required class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                </div>
+                                <div class="input-group mb-0">
+                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">iSCSI Target IQN Prefix</label>
+                                    <input type="text" id="set-gamedisk-iqn" placeholder="iqn.2024-01.com.tmdebug:gamedisks" required class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                </div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <div class="input-group">
-                                <label>Global Read Cache Size (GB)</label>
-                                <input type="number" id="set-server-cache" placeholder="e.g. 2" required>
-                            </div>
-                            <div class="input-group">
-                                <label>iSCSI Target IQN Prefix</label>
-                                <input type="text" id="set-gamedisk-iqn" placeholder="e.g. iqn.2024-01.com.tmdebug:gamedisks" required>
-                            </div>
-                        </div>
-                        <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 16px; gap: 12px;">
-                            <button type="button" class="btn btn-ghost" onclick="loadConfigJson()" style="margin: 0;">Batal</button>
-                            <button type="submit" class="btn btn-primary" style="margin: 0;">💾 Simpan Pengaturan Server</button>
-                        </div>
-                    </form>
+                    </div>
 
                     <!-- CARD 2: DHCP Server Configuration -->
-                    <form class="card" style="margin-bottom: 24px;" onsubmit="saveConfigJson(event)">
-                        <h2 style="margin-top: 0; font-family: 'Outfit', sans-serif;">🔌 DHCP Server Configuration</h2>
-                        <div class="input-group" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 16px; margin-bottom: 16px;">
-                            <input type="checkbox" id="set-dhcp-enabled" style="width: auto; margin: 0;">
-                            <label for="set-dhcp-enabled" style="font-weight: 600; margin: 0; cursor: pointer;">Aktifkan DHCP Server</label>
+                    <div class="card p-3 sm:p-4 mb-0 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-lg">🔌</span>
+                                    <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">DHCP Server Configuration</h2>
+                                </div>
+                                <label class="flex items-center gap-1.5 text-xs font-semibold cursor-pointer m-0">
+                                    <input type="checkbox" id="set-dhcp-enabled" class="w-auto m-0">
+                                    <span>Aktif</span>
+                                </label>
+                            </div>
+                            <div class="space-y-2 text-xs sm:text-sm">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Start IP Pool</label>
+                                        <input type="text" id="set-dhcp-start-ip" placeholder="10.10.10.100" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">End IP Pool</label>
+                                        <input type="text" id="set-dhcp-end-ip" placeholder="10.10.10.250" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Subnet Mask</label>
+                                        <input type="text" id="set-dhcp-mask" placeholder="255.255.255.0" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Gateway (Router)</label>
+                                        <input type="text" id="set-dhcp-gateway" list="network-ips-datalist" placeholder="10.10.10.1" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">DNS Server</label>
+                                        <input type="text" id="set-dhcp-dns" placeholder="8.8.8.8" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                    </div>
+                                    <div class="input-group mb-0">
+                                        <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Next Server (TFTP/Server IP)</label>
+                                        <select id="set-dhcp-next" class="text-xs sm:text-sm py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full"></select>
+                                    </div>
+                                </div>
+                                <div class="input-group mb-0">
+                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-0.5">Load Balancing NIC IPs</label>
+                                    <div class="flex gap-1.5 mb-1.5">
+                                        <input type="text" id="add-nic-ip-input" list="network-ips-datalist" placeholder="Tambah IP NIC..." class="flex-1 text-xs py-1 px-2 rounded border border-[var(--color-border)] bg-[var(--color-bg)]">
+                                        <button type="button" class="btn btn-primary text-xs px-2.5 py-1 whitespace-nowrap" onclick="addNicIpAction()">➕ Add</button>
+                                    </div>
+                                    <div id="nic-ips-list-container" class="border border-[var(--color-border)] rounded bg-[var(--color-bg-light)] p-1.5 max-h-16 overflow-y-auto flex flex-col gap-1 text-xs">
+                                        <span class="text-[var(--color-muted)] text-center text-[11px]">Belum ada IP ditambahkan.</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="input-group">
-                                <label>DHCP Start IP Pool</label>
-                                <input type="text" id="set-dhcp-start-ip" placeholder="e.g. 192.168.137.100">
-                            </div>
-                            <div class="input-group">
-                                <label>DHCP End IP Pool</label>
-                                <input type="text" id="set-dhcp-end-ip" placeholder="e.g. 192.168.137.200">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <div class="input-group">
-                                <label>Subnet Mask</label>
-                                <input type="text" id="set-dhcp-mask" placeholder="e.g. 255.255.255.0">
-                            </div>
-                            <div class="input-group">
-                                <label>Gateway (Router IP)</label>
-                                <input type="text" id="set-dhcp-gateway" placeholder="e.g. 192.168.137.1">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <div class="input-group">
-                                <label>DNS Server</label>
-                                <input type="text" id="set-dhcp-dns" placeholder="e.g. 8.8.8.8">
-                            </div>
-                            <div class="input-group">
-                                <label>Next Server (TFTP IP)</label>
-                                <input type="text" id="set-dhcp-next" placeholder="e.g. 192.168.137.1">
-                            </div>
-                        </div>
-                        <div class="input-group" style="margin-top: 16px;">
-                            <label>Load Balancing NIC IPs</label>
-                            <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: stretch;">
-                                <input type="text" id="add-nic-ip-input" placeholder="e.g. 192.168.137.1" style="flex: 1; margin: 0; height: 42px; box-sizing: border-box;">
-                                <button type="button" class="btn btn-primary" onclick="addNicIpAction()" style="white-space: nowrap; font-size: 13px; padding: 0 16px; height: 42px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; margin: 0;">➕ Add IP</button>
-                            </div>
-                            <div id="nic-ips-list-container" style="border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-light); padding: 8px; display: flex; flex-direction: column; gap: 6px;">
-                                <span style="color: var(--color-muted); font-size: 13px; text-align: center;">Belum ada IP ditambahkan.</span>
-                            </div>
-                        </div>
-                        <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 16px; gap: 12px;">
-                            <button type="button" class="btn btn-ghost" onclick="loadConfigJson()" style="margin: 0;">Batal</button>
-                            <button type="submit" class="btn btn-primary" style="margin: 0;">💾 Simpan Pengaturan DHCP</button>
-                        </div>
-                    </form>
+                    </div>
 
                     <!-- CARD 3: TFTP Service & Boot Files -->
-                    <form class="card" style="margin-bottom: 24px;" onsubmit="saveConfigJson(event)">
-                        <h2 style="margin-top: 0; font-family: 'Outfit', sans-serif;">📂 TFTP Service & Boot Files</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <div class="input-group">
-                                <label>TFTP Root Directory Path</label>
-                                <input type="text" id="set-tftp-dir" placeholder="e.g. pxe">
+                    <div class="card p-3 sm:p-4 mb-0 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center gap-2 border-b border-[var(--color-border)] pb-2 mb-3">
+                                <span class="text-lg">📂</span>
+                                <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">TFTP Service & Bootloader</h2>
                             </div>
-                            <div class="input-group">
-                                <label>Default PXE Boot Loader (iPXE)</label>
-                                <input type="text" id="set-pxe-default" placeholder="e.g. sb-custom">
+                            <div class="space-y-2.5 text-xs sm:text-sm">
+                                <div class="input-group mb-0">
+                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">TFTP Root Directory</label>
+                                    <input type="text" id="set-tftp-dir" placeholder="pxe" class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                </div>
+                                <div class="input-group mb-0">
+                                    <label class="text-xs font-medium text-[var(--color-muted)] mb-1">Default PXE Bootloader</label>
+                                    <input type="text" id="set-pxe-default" list="tftp-folders-list" placeholder="sb-custom" class="text-xs sm:text-sm py-1.5 px-2.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] w-full">
+                                </div>
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 16px; gap: 12px;">
-                            <button type="button" class="btn btn-ghost" onclick="loadConfigJson()" style="margin: 0;">Batal</button>
-                            <button type="submit" class="btn btn-primary" style="margin: 0;">💾 Simpan Pengaturan TFTP</button>
-                        </div>
-                    </form>
+                    </div>
+                </form>
+
+                <datalist id="network-ips-datalist"></datalist>
 
                 <!-- TFTP FOLDERS CRUD CARD -->
-                <div class="card" style="margin-top: 24px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <h2 style="margin: 0; font-family: 'Outfit', sans-serif;">📂 TFTP Bootloader Folders Manager</h2>
-                        <button class="btn btn-primary" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
+                <div class="card p-3 sm:p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">📁</span>
+                            <h2 class="text-sm sm:text-base font-semibold font-['Outfit'] m-0">TFTP Bootloader Folders Manager</h2>
+                        </div>
+                        <button class="btn btn-primary text-xs px-3 py-1.5" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
                     </div>
-                    <p class="subtitle" style="margin-bottom: 16px;">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
-                    <div class="table-container overflow-x-auto">
+                    <p class="subtitle text-xs mb-3">Folder di dalam root directory TFTP Anda (digunakan untuk memilah konfigurasi boot loader klien).</p>
+                    <div class="table-container overflow-x-auto max-h-48 overflow-y-auto">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -496,15 +516,26 @@
         <div class="context-item disabled" id="ctx-disable-super" onclick="ctxDisableSuperClientPrompt()">❌ Nonaktifkan Super Client</div>
     </div>
 
-    <!-- Dialog Konfirmasi Lovable (Commit / Discard) -->
+    <!-- Dialog Konfirmasi Super Client (Commit / Discard) -->
     <div id="confirm-modal" class="modal-backdrop">
-        <div class="modal">
-            <h2>Konfirmasi Super Client</h2>
-            <p>PC Super Client telah terputus (Offline). Tentukan tindakan untuk modifikasi disk yang dibuat:</p>
-            <div class="modal-buttons">
-                <button class="btn btn-primary" onclick="modalAction('commit')">Simpan Perubahan (Commit)</button>
-                <button class="btn btn-ghost" style="border-color: #ef4444; color: #ef4444;" onclick="modalAction('discard')">Buang Perubahan (Discard)</button>
-                <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
+        <div class="modal" style="max-width: 500px;">
+            <h2 class="text-base sm:text-lg font-bold font-['Outfit'] mb-2">⚡ Konfirmasi Super Client</h2>
+            <p class="text-xs sm:text-sm text-[var(--color-muted)] mb-3">PC Super Client telah terputus (Offline). Tentukan tindakan untuk modifikasi disk yang dibuat:</p>
+            
+            <div style="background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                    <input type="checkbox" id="chk-create-backup" checked style="width: auto; margin: 0;">
+                    <span>📸 Buat Snapshot Backup (<code>.meta</code>) sebelum Commit</span>
+                </label>
+                <p style="font-size: 11px; color: var(--color-muted); margin-top: 4px; margin-left: 22px; margin-bottom: 0;">
+                    Menyimpan titik pemulihan (hanya sebesar perubahan) agar VHD dapat di-restore sewaktu-waktu.
+                </p>
+            </div>
+
+            <div class="modal-buttons flex-wrap gap-2">
+                <button class="btn btn-primary text-xs sm:text-sm" onclick="modalAction('commit')">Simpan Perubahan (Commit)</button>
+                <button class="btn btn-ghost text-xs sm:text-sm" style="border-color: #ef4444; color: #ef4444;" onclick="modalAction('discard')">Buang Perubahan (Discard)</button>
+                <button class="btn btn-ghost text-xs sm:text-sm" onclick="closeModal()">Batal</button>
             </div>
         </div>
     </div>
