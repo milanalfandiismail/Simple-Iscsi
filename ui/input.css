@@ -3,8 +3,9 @@
 @source "../ui/**/*.js";
 
 @theme {
-  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "General Sans", "Outfit", "DM Sans", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -25,8 +26,8 @@
     inset: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(15, 23, 42, 0.45);
-    backdrop-filter: blur(4px);
+    background-color: rgba(10, 10, 10, 0.45);
+    backdrop-filter: blur(6px);
     z-index: 9999;
     align-items: center;
     justify-content: center;
@@ -68,7 +69,33 @@
     opacity: 1;
   }
 
-  /* Minimal Scrollbar */
+  /* Subtle Card Hover Lift from Genesis Design */
+  .card-hover {
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Primary Button Subtle Hover Glow */
+  .btn-primary {
+    background-color: #6366f1;
+    color: #ffffff;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  }
+  .btn-primary:hover {
+    background-color: #4f46e5;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  }
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  /* Minimal Clean Scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -77,57 +104,62 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: #d4d4d8;
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: #a1a1aa;
   }
 }
 
 /* ==========================================================================
-   Comprehensive Dark Theme Design System (Tailwind Compatible)
+   Genesis Design System - Light & Dark Palette Rules
    ========================================================================== */
+html, body {
+  background-color: #fafafa;
+  color: #0a0a0a;
+  font-family: var(--font-sans);
+}
+
+/* Dark Mode Overrides */
 html.dark,
 body.dark {
   background-color: #09090b !important;
-  color: #f4f4f5 !important;
+  color: #fafafa !important;
   color-scheme: dark;
 }
 
 html.dark body {
   background-color: #09090b !important;
-  color: #f4f4f5 !important;
+  color: #fafafa !important;
 }
 
-/* Base Panels, Aside, Card Containers */
+/* Base Surfaces & Cards in Dark Mode */
 html.dark aside,
-html.dark .bg-white {
-  background-color: #18181b !important;
-  border-color: #27272a !important;
-  color: #f4f4f5 !important;
-}
-
-/* Modal Content Card */
+html.dark .bg-white,
 html.dark .modal-backdrop > div {
   background-color: #18181b !important;
   border-color: #27272a !important;
-  color: #f4f4f5 !important;
+  color: #fafafa !important;
 }
 
-/* Border Overrides */
+/* Subtle Borders in Dark Mode */
 html.dark .border-stone-200,
 html.dark .border-stone-100,
-html.dark .border-stone-300 {
+html.dark .border-stone-300,
+html.dark .border-zinc-200,
+html.dark .border-zinc-100 {
   border-color: #27272a !important;
 }
 
-html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]) {
+html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-zinc-100 > :not([hidden]) ~ :not([hidden]) {
   border-color: #27272a !important;
 }
 
-/* Headings & Texts */
+/* Headings & Text Colors in Dark Mode */
 html.dark .text-stone-900,
+html.dark .text-zinc-900,
 html.dark h1,
 html.dark h2,
 html.dark h3 {
@@ -135,28 +167,35 @@ html.dark h3 {
 }
 
 html.dark .text-stone-800,
-html.dark .text-stone-700 {
+html.dark .text-stone-700,
+html.dark .text-zinc-800,
+html.dark .text-zinc-700 {
   color: #e4e4e7 !important;
 }
 
 html.dark .text-stone-600,
-html.dark .text-stone-500 {
+html.dark .text-stone-500,
+html.dark .text-zinc-600,
+html.dark .text-zinc-500 {
   color: #a1a1aa !important;
 }
 
-html.dark .text-stone-400 {
+html.dark .text-stone-400,
+html.dark .text-zinc-400 {
   color: #71717a !important;
 }
 
 /* Tables in Dark Mode */
 html.dark thead tr,
-html.dark .bg-stone-50 {
+html.dark .bg-stone-50,
+html.dark .bg-zinc-50 {
   background-color: #202024 !important;
   border-color: #27272a !important;
   color: #d4d4d8 !important;
 }
 
-html.dark .bg-stone-100 {
+html.dark .bg-stone-100,
+html.dark .bg-zinc-100 {
   background-color: #27272a !important;
   color: #e4e4e7 !important;
 }
@@ -166,46 +205,38 @@ html.dark tbody tr:hover {
   background-color: #242429 !important;
 }
 
-/* Form Controls */
+/* Form Controls in Dark Mode */
 html.dark input,
 html.dark select,
 html.dark textarea {
   background-color: #1f1f23 !important;
   border-color: #3f3f46 !important;
-  color: #f4f4f5 !important;
+  color: #fafafa !important;
 }
 
 html.dark input:focus,
 html.dark select:focus,
 html.dark textarea:focus {
-  border-color: #a1a1aa !important;
-  box-shadow: 0 0 0 2px rgba(244, 244, 245, 0.1) !important;
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
 }
 
-/* Buttons */
-html.dark .bg-stone-900 {
-  background-color: #fafafa !important;
-  color: #18181b !important;
-}
-
-html.dark .bg-stone-900:hover {
-  background-color: #f4f4f5 !important;
-}
-
+/* Secondary Button in Dark Mode */
 html.dark button.bg-white {
   background-color: #27272a !important;
   border-color: #3f3f46 !important;
-  color: #f4f4f5 !important;
+  color: #fafafa !important;
 }
 
 html.dark button.bg-white:hover {
   background-color: #3f3f46 !important;
 }
 
-/* Navigation Items */
+/* Navigation Items in Dark Mode */
 html.dark .nav-item.active {
-  background-color: #fafafa !important;
-  color: #18181b !important;
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: #818cf8 !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
 }
 
 html.dark .nav-item:not(.active) {
@@ -217,43 +248,43 @@ html.dark .nav-item:not(.active):hover {
   color: #fafafa !important;
 }
 
-/* Pills & Badges */
+/* Status Badges in Dark Mode */
 html.dark .bg-emerald-50 {
-  background-color: rgba(6, 78, 59, 0.45) !important;
+  background-color: rgba(16, 185, 129, 0.15) !important;
   color: #6ee7b7 !important;
   border-color: rgba(16, 185, 129, 0.3) !important;
 }
 
 html.dark .bg-rose-50 {
-  background-color: rgba(136, 19, 55, 0.45) !important;
-  color: #fda4af !important;
-  border-color: rgba(244, 63, 94, 0.3) !important;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
 html.dark .bg-blue-50 {
-  background-color: rgba(30, 58, 138, 0.45) !important;
-  color: #93c5fd !important;
-  border-color: rgba(59, 130, 246, 0.3) !important;
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: #a5b4fc !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
 }
 
 html.dark .bg-amber-100 {
-  background-color: rgba(120, 53, 15, 0.45) !important;
+  background-color: rgba(245, 158, 11, 0.15) !important;
   color: #fde68a !important;
   border-color: rgba(245, 158, 11, 0.3) !important;
 }
 
 html.dark .bg-indigo-100 {
-  background-color: rgba(49, 46, 129, 0.45) !important;
+  background-color: rgba(99, 102, 241, 0.15) !important;
   color: #c7d2fe !important;
   border-color: rgba(99, 102, 241, 0.3) !important;
 }
 
-/* Context Menu */
+/* Context Menu in Dark Mode */
 html.dark .context-menu {
   background-color: #18181b !important;
   border-color: #27272a !important;
-  color: #f4f4f5 !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+  color: #fafafa !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
 }
 
 html.dark .context-item {

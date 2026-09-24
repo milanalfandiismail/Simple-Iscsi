@@ -50,11 +50,10 @@
   next_server     = "192.168.180.1"
   image_manager   = ""
 
-
 [[client]]
   hostname        = "PC-05"
   mac             = "04:7C:16:CF:F6:DC"
-  ip              = "192.168.180.2"
+  ip              = "192.168.180.6"
   gateway         = "192.168.180.1"
   dns             = "8.8.8.8"
   pxe             = "sb-custom"
@@ -63,3 +62,4 @@
   bootfile_ipxe   = ""
   next_server     = "192.168.180.1"
   image_manager   = ""
+
