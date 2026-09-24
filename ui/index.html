@@ -559,44 +559,68 @@
 
     <!-- MODAL DISK PARTITION ROLE ALLOCATION -->
     <div id="partition-modal" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto">
-        <div class="bg-white border border-stone-200 rounded-2xl p-5 sm:p-7 lg:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto my-auto">
-            <h2 class="text-base sm:text-lg font-bold text-stone-900 font-['General_Sans','Outfit',sans-serif] pb-3 sm:pb-4 border-b border-stone-100 mb-4 sm:mb-6">Alokasikan Partisi Disk</h2>
-            <p class="text-xs text-stone-500 mb-4" id="partition-modal-desc">Partisi: ...</p>
+        <div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-5 sm:p-7 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto my-auto transition-colors">
+            <div class="flex items-center justify-between pb-3.5 border-b border-stone-100 dark:border-stone-800 mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base">
+                        🗄️
+                    </div>
+                    <h2 class="text-base sm:text-lg font-bold text-stone-900 dark:text-white font-['General_Sans','Outfit',sans-serif]">Alokasikan Partisi Disk</h2>
+                </div>
+                <button type="button" class="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 text-lg p-1" onclick="closePartitionModal()">✕</button>
+            </div>
+            
+            <p class="text-xs text-stone-500 dark:text-stone-400 mb-4 leading-relaxed" id="partition-modal-desc">Pilih fungsi atau lepas alokasi untuk partisi disk.</p>
             <input type="hidden" id="partition-mount-point">
             
-            <div class="space-y-3 mb-6">
-                <label class="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:border-indigo-400 cursor-pointer transition-all">
-                    <input type="radio" name="partition-role" value="boot" class="text-indigo-600">
-                    <div>
-                        <span class="font-semibold text-xs sm:text-sm text-stone-900 block">💿 Booting Images (VHD)</span>
-                        <span class="text-[11px] text-stone-500">Menyimpan file master image OS klien.</span>
+            <div class="space-y-2.5 mb-6">
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-indigo-400 dark:hover:border-indigo-500 bg-white dark:bg-stone-900/60 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 cursor-pointer transition-all">
+                    <input type="radio" name="partition-role" value="boot" class="mt-1 text-indigo-600 focus:ring-indigo-500">
+                    <div class="min-w-0">
+                        <span class="font-bold text-xs sm:text-sm text-stone-900 dark:text-white flex items-center gap-1.5">
+                            <span>💿</span>
+                            <span>Booting Images (VHD)</span>
+                        </span>
+                        <span class="text-[11px] text-stone-500 dark:text-stone-400 block mt-0.5">Menyimpan direktori master image OS klien (<code class="font-mono text-[10px] text-indigo-600 dark:text-indigo-400">&lt;Drive&gt;:\vhd</code>).</span>
                     </div>
                 </label>
-                <label class="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:border-indigo-400 cursor-pointer transition-all">
-                    <input type="radio" name="partition-role" value="writeback" class="text-indigo-600">
-                    <div>
-                        <span class="font-semibold text-xs sm:text-sm text-stone-900 block">⚡ Writeback Cache</span>
-                        <span class="text-[11px] text-stone-500">Menampung cache write diskless klien.</span>
+                
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500 bg-white dark:bg-stone-900/60 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 cursor-pointer transition-all">
+                    <input type="radio" name="partition-role" value="writeback" class="mt-1 text-amber-600 focus:ring-amber-500">
+                    <div class="min-w-0">
+                        <span class="font-bold text-xs sm:text-sm text-stone-900 dark:text-white flex items-center gap-1.5">
+                            <span>⚡</span>
+                            <span>Writeback Cache</span>
+                        </span>
+                        <span class="text-[11px] text-stone-500 dark:text-stone-400 block mt-0.5">Menampung file write diskless klien (<code class="font-mono text-[10px] text-amber-600 dark:text-amber-400">&lt;Drive&gt;:\writeback</code>).</span>
                     </div>
                 </label>
-                <label class="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:border-indigo-400 cursor-pointer transition-all">
-                    <input type="radio" name="partition-role" value="gamedisk" class="text-indigo-600">
-                    <div>
-                        <span class="font-semibold text-xs sm:text-sm text-stone-900 block">🎮 Gamedisk Storage</span>
-                        <span class="text-[11px] text-stone-500">Drive game / storage virtual iSCSI terdistribusi.</span>
+                
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-emerald-400 dark:hover:border-emerald-500 bg-white dark:bg-stone-900/60 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 cursor-pointer transition-all">
+                    <input type="radio" name="partition-role" value="gamedisk" class="mt-1 text-emerald-600 focus:ring-emerald-500">
+                    <div class="min-w-0">
+                        <span class="font-bold text-xs sm:text-sm text-stone-900 dark:text-white flex items-center gap-1.5">
+                            <span>🎮</span>
+                            <span>Gamedisk Storage Target</span>
+                        </span>
+                        <span class="text-[11px] text-stone-500 dark:text-stone-400 block mt-0.5">Disk game iSCSI block target terdistribusi.</span>
                     </div>
                 </label>
-                <label class="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:border-indigo-400 cursor-pointer transition-all">
-                    <input type="radio" name="partition-role" value="none" class="text-indigo-600">
-                    <div>
-                        <span class="font-semibold text-xs sm:text-sm text-stone-900 block">⚪ Lepas Alokasi (None)</span>
-                        <span class="text-[11px] text-stone-500">Hapus alokasi fungsi untuk partisi ini.</span>
+                
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-rose-300 dark:hover:border-rose-500 bg-white dark:bg-stone-900/60 hover:bg-rose-50/30 dark:hover:bg-rose-950/20 cursor-pointer transition-all">
+                    <input type="radio" name="partition-role" value="none" class="mt-1 text-stone-600 focus:ring-stone-500">
+                    <div class="min-w-0">
+                        <span class="font-bold text-xs sm:text-sm text-stone-900 dark:text-white flex items-center gap-1.5">
+                            <span>⚪</span>
+                            <span>Lepas Alokasi (None / Unassigned)</span>
+                        </span>
+                        <span class="text-[11px] text-stone-500 dark:text-stone-400 block mt-0.5">Hapus seluruh fungsi alokasi dari partisi disk ini.</span>
                     </div>
                 </label>
             </div>
 
-            <div class="flex items-center justify-end gap-2.5 pt-4 border-t border-stone-100">
-                <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-semibold rounded-md bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 transition-all" onclick="closePartitionModal()">Batal</button>
+            <div class="flex items-center justify-end gap-2.5 pt-4 border-t border-stone-100 dark:border-stone-800">
+                <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-semibold rounded-md bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-700 transition-all" onclick="closePartitionModal()">Batal</button>
                 <button type="button" class="btn-primary inline-flex items-center justify-center px-4 py-2 sm:px-5 text-xs sm:text-sm shadow-xs" onclick="savePartitionRoleAction()">Simpan Alokasi</button>
             </div>
         </div>

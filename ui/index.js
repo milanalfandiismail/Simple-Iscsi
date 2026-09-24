@@ -885,40 +885,108 @@ function renderDiskGrid(drives) {
 
     container.innerHTML = '';
     drives.forEach(drive => {
-        const card = document.createElement('div');
-        card.className = "bg-white border border-stone-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-xs card-hover";
-
-        let currentRole = 'none';
         const letter = (drive.letter || '').toUpperCase();
+        let currentRole = 'none';
 
         if (configObj) {
+            // 1. Check Boot VHD directory
             if (configObj.windows && configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
                 currentRole = 'boot';
-            } else if (configObj.writeback && configObj.writeback.writeback_dirs && configObj.writeback.writeback_dirs.some(dir => dir.toUpperCase().startsWith(letter))) {
+            }
+            // 2. Check Writeback directory
+            else if (configObj.writeback && configObj.writeback.writeback_dirs && configObj.writeback.writeback_dirs.some(dir => dir && dir.toUpperCase().startsWith(letter))) {
                 currentRole = 'writeback';
-            } else if (configObj.gamedisk && configObj.gamedisk.some(gd => gd.physical_disk && drive.physical_disk && gd.physical_disk.toLowerCase() === drive.physical_disk.toLowerCase())) {
+            }
+            // 3. Check Gamedisk physical drives or volume
+            else if (configObj.gamedisk && configObj.gamedisk.some(gd => {
+                if (!gd.physical_disk) return false;
+                const matchPhys = drive.physical_disk && gd.physical_disk.toLowerCase() === drive.physical_disk.toLowerCase();
+                const matchVol = gd.physical_disk.toLowerCase().includes(letter.toLowerCase() + ":");
+                return matchPhys || matchVol;
+            })) {
                 currentRole = 'gamedisk';
             }
         }
 
-        const roleBadge = currentRole !== 'none' ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">${currentRole.toUpperCase()}</span>` : '';
+        // Genesis role styling configuration
+        const roleConfig = {
+            boot: {
+                label: 'BOOT VHD',
+                icon: '💿',
+                badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/80',
+                cardBorder: 'border-indigo-300/80 dark:border-indigo-800/60 ring-1 ring-indigo-500/15',
+                desc: 'Master OS VHD',
+                colorAccent: 'text-indigo-600 dark:text-indigo-400'
+            },
+            writeback: {
+                label: 'WRITEBACK',
+                icon: '⚡',
+                badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80',
+                cardBorder: 'border-amber-300/80 dark:border-amber-800/60 ring-1 ring-amber-500/15',
+                desc: 'Client Cache I/O',
+                colorAccent: 'text-amber-600 dark:text-amber-400'
+            },
+            gamedisk: {
+                label: 'GAMEDISK',
+                icon: '🎮',
+                badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80',
+                cardBorder: 'border-emerald-300/80 dark:border-emerald-800/60 ring-1 ring-emerald-500/15',
+                desc: 'Game Storage Target',
+                colorAccent: 'text-emerald-600 dark:text-emerald-400'
+            },
+            none: {
+                label: 'UNASSIGNED',
+                icon: '⚪',
+                badgeClass: 'bg-stone-100 text-stone-600 border-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700',
+                cardBorder: 'border-stone-200 dark:border-stone-800',
+                desc: 'Belum dialokasikan',
+                colorAccent: 'text-stone-500 dark:text-stone-400'
+            }
+        }[currentRole] || {
+            label: 'UNASSIGNED',
+            icon: '⚪',
+            badgeClass: 'bg-stone-100 text-stone-600 border-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700',
+            cardBorder: 'border-stone-200 dark:border-stone-800',
+            desc: 'Belum dialokasikan',
+            colorAccent: 'text-stone-500 dark:text-stone-400'
+        };
+
+        const card = document.createElement('div');
+        card.className = `bg-white border rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-xs transition-all hover:shadow-md ${roleConfig.cardBorder}`;
 
         card.innerHTML = `
             <div>
-                <div class="flex items-center gap-2 pb-2.5 border-b border-stone-100 mb-3">
-                    <span class="text-lg">🗄️</span>
-                    <div>
-                        <h3 class="font-bold text-xs sm:text-sm text-stone-900 truncate">Drive ${drive.letter}:</h3>
-                        <p class="text-[10px] text-stone-400 font-mono">${drive.physical_disk || 'Logical Volume'}</p>
+                <!-- Top Header: Drive Name & Physical Disk -->
+                <div class="flex items-center justify-between gap-2 pb-3 border-b border-stone-100 dark:border-stone-800/80 mb-3.5">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="w-8 h-8 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center text-base shrink-0 font-mono">
+                            🗄️
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="font-bold text-sm sm:text-base text-stone-900 dark:text-white truncate leading-tight font-['General_Sans','Outfit',sans-serif]">Drive ${drive.letter}:</h3>
+                            <p class="text-[10px] text-stone-400 font-mono truncate mt-0.5" title="${drive.physical_disk || 'Logical Volume'}">${drive.physical_disk || 'Logical Volume'}</p>
+                        </div>
                     </div>
+                    <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${roleConfig.badgeClass}">
+                        <span>${roleConfig.icon}</span>
+                        <span>${roleConfig.label}</span>
+                    </span>
                 </div>
-                <div class="p-2.5 rounded-lg border border-stone-200 hover:border-indigo-400 bg-stone-50/50 cursor-pointer flex items-center justify-between transition-all" onclick="openPartitionModal('${drive.letter}', '${drive.physical_disk || ''}', '${currentRole}')">
-                    <div>
-                        <span class="font-bold text-xs font-mono text-stone-900">${drive.letter}:\\</span>
-                        <span class="text-[11px] text-stone-500 ml-1.5">Klik untuk alokasi</span>
+
+                <!-- Role Info Description -->
+                <div class="text-[11px] text-stone-500 dark:text-stone-400 mb-3.5 flex items-center justify-between px-0.5">
+                    <span class="font-medium">Fungsi Disk:</span>
+                    <span class="font-semibold ${roleConfig.colorAccent}">${roleConfig.desc}</span>
+                </div>
+
+                <!-- Interactive Allocation Action Button -->
+                <button type="button" class="w-full group px-3 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700/80 bg-stone-50/80 hover:bg-indigo-50/70 dark:bg-stone-800/50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-600/60 cursor-pointer flex items-center justify-between transition-all active:scale-[0.99] text-left" onclick="openPartitionModal('${drive.letter}', '${drive.physical_disk || ''}', '${currentRole}')">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs group-hover:scale-110 transition-transform">⚙️</span>
+                        <span class="font-semibold text-xs text-stone-800 dark:text-stone-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-['General_Sans','Outfit',sans-serif]">Ubah Alokasi Role</span>
                     </div>
-                    ${roleBadge}
-                </div>
+                    <span class="text-xs text-stone-400 group-hover:text-indigo-500 font-bold transition-colors">→</span>
+                </button>
             </div>
         `;
         container.appendChild(card);
@@ -928,7 +996,7 @@ function renderDiskGrid(drives) {
 function openPartitionModal(letter, physicalDisk, currentRole) {
     const modal = document.getElementById('partition-modal');
     modal.style.display = 'flex';
-    document.getElementById('partition-modal-desc').textContent = `Partisi: Drive ${letter}:\\ (${physicalDisk || 'Logical Volume'})`;
+    document.getElementById('partition-modal-desc').textContent = `Pilih fungsi atau lepas alokasi untuk Drive ${letter}:\\ (${physicalDisk || 'Logical Volume'}).`;
     const mountInput = document.getElementById('partition-mount-point');
     mountInput.value = letter;
     mountInput.dataset.physicalDisk = physicalDisk || '';
@@ -968,43 +1036,49 @@ async function savePartitionRoleAction() {
     };
     if (!configObj.gamedisk) configObj.gamedisk = [];
 
-    // Remove previous associations for this drive letter
-    if (configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
-        if (role !== 'boot') configObj.windows.vhd_dir = 'C:\\vhd';
+    // 1. Clear previous role for this drive letter
+    if (configObj.windows && configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
+        configObj.windows.vhd_dir = "";
     }
-    if (configObj.writeback.writeback_dirs) {
-        configObj.writeback.writeback_dirs = configObj.writeback.writeback_dirs.filter(dir => !dir.toUpperCase().startsWith(letter));
-        if (configObj.writeback.writeback_dirs.length === 0 && role !== 'writeback') {
-            configObj.writeback.writeback_dirs = ['C:\\writeback'];
-        }
+    if (configObj.writeback && configObj.writeback.writeback_dirs) {
+        configObj.writeback.writeback_dirs = configObj.writeback.writeback_dirs.filter(dir => dir && !dir.toUpperCase().startsWith(letter));
     }
-    if (physicalDisk) {
-        configObj.gamedisk = configObj.gamedisk.filter(gd => gd.physical_disk && gd.physical_disk.toLowerCase() !== physicalDisk.toLowerCase());
+    if (configObj.gamedisk) {
+        configObj.gamedisk = configObj.gamedisk.filter(gd => {
+            if (!gd.physical_disk) return false;
+            const matchPhys = physicalDisk && gd.physical_disk.toLowerCase() === physicalDisk.toLowerCase();
+            const matchVol = gd.physical_disk.toLowerCase().includes(letter.toLowerCase() + ":");
+            return !matchPhys && !matchVol;
+        });
     }
 
-    // Apply new role
+    // 2. Apply new role if not 'none'
     if (role === 'boot') {
         configObj.windows.vhd_dir = `${letter}:\\vhd`;
     } else if (role === 'writeback') {
         if (!configObj.writeback.writeback_dirs) configObj.writeback.writeback_dirs = [];
         configObj.writeback.writeback_dirs.push(`${letter}:\\writeback`);
     } else if (role === 'gamedisk') {
-        if (physicalDisk) {
-            configObj.gamedisk.push({
-                physical_disk: physicalDisk,
-                block_size: 512,
-                vendor_id: "RUSTISCS",
-                product_id: `GameDisk-${configObj.gamedisk.length}`,
-                product_revision: "1.00"
-            });
-        }
+        const targetDiskPath = physicalDisk ? physicalDisk : `\\\\.\\${letter}:`;
+        configObj.gamedisk.push({
+            physical_disk: targetDiskPath,
+            block_size: 512,
+            vendor_id: "RUSTISCS",
+            product_id: `GameDisk-${configObj.gamedisk.length}`,
+            product_revision: "1.00"
+        });
+    }
+
+    // 3. Fallback ensure writeback_dirs is array
+    if (!configObj.writeback.writeback_dirs) {
+        configObj.writeback.writeback_dirs = [];
     }
 
     const saved = await saveConfigJsonFull();
     if (saved) {
         closePartitionModal();
         loadDiskPartitions();
-        showToast(`Peran partisi Drive ${letter}: berhasil diubah ke ${role.toUpperCase()}`, 'success');
+        showToast(role === 'none' ? `Alokasi peran Drive ${letter}: berhasil dilepas` : `Peran Drive ${letter}: berhasil diubah ke ${role.toUpperCase()}`, 'success');
     } else {
         showToast(`Gagal menyimpan alokasi partisi Drive ${letter}:`, 'error');
     }
