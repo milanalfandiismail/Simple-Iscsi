@@ -450,35 +450,36 @@ function renderDashboardClientsTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="flex items-center gap-1.5 flex-wrap">
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     ${statusSpan}
                     <span class="font-bold text-stone-900 text-xs sm:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || c.ip}</span>
                     ${superBadge}${dynamicBadge}
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[100px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[120px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="client-read-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-1">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="client-read-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="client-write-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-1">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="client-write-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
         tbody.appendChild(row);
@@ -524,35 +525,36 @@ function renderClientsManagerTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="flex items-center gap-1.5 flex-wrap">
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     ${statusSpan}
                     <span class="font-bold text-stone-900 text-xs sm:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || 'PC'}</span>
                     ${superBadge}
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1">${c.ip} • ${c.mac}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip} • ${c.mac}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="text-xs lg:text-[11px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[100px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
+                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[11px] lg:text-[10px] xl:text-[11px] text-stone-900 truncate max-w-[130px] lg:max-w-[120px] xl:max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
                 </div>
-                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-1"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[11px] lg:text-[10px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="client-read-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-1">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="client-read-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="client-write-total text-xs font-mono font-medium text-stone-700">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-1">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="client-write-total text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-2.5 lg:py-2 lg:px-2.5 xl:py-3.5 xl:px-4">
-                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+            <td class="py-2.5 px-2.5 lg:py-2.5 lg:px-3 xl:py-3.5 xl:px-4 whitespace-nowrap">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
 
