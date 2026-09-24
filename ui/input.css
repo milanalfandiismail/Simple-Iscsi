@@ -7,6 +7,8 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer utilities {
   /* Tab Navigation Visibility */
   .tab-panel {
@@ -81,4 +83,193 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
   }
+}
+
+/* ==========================================================================
+   Comprehensive Dark Theme Design System (Tailwind Compatible)
+   ========================================================================== */
+html.dark,
+body.dark {
+  background-color: #09090b !important;
+  color: #f4f4f5 !important;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #09090b !important;
+  color: #f4f4f5 !important;
+}
+
+/* Base Panels, Aside, Card Containers */
+html.dark aside,
+html.dark .bg-white {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  color: #f4f4f5 !important;
+}
+
+/* Modal Content Card */
+html.dark .modal-backdrop > div {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  color: #f4f4f5 !important;
+}
+
+/* Border Overrides */
+html.dark .border-stone-200,
+html.dark .border-stone-100,
+html.dark .border-stone-300 {
+  border-color: #27272a !important;
+}
+
+html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #27272a !important;
+}
+
+/* Headings & Texts */
+html.dark .text-stone-900,
+html.dark h1,
+html.dark h2,
+html.dark h3 {
+  color: #fafafa !important;
+}
+
+html.dark .text-stone-800,
+html.dark .text-stone-700 {
+  color: #e4e4e7 !important;
+}
+
+html.dark .text-stone-600,
+html.dark .text-stone-500 {
+  color: #a1a1aa !important;
+}
+
+html.dark .text-stone-400 {
+  color: #71717a !important;
+}
+
+/* Tables in Dark Mode */
+html.dark thead tr,
+html.dark .bg-stone-50 {
+  background-color: #202024 !important;
+  border-color: #27272a !important;
+  color: #d4d4d8 !important;
+}
+
+html.dark .bg-stone-100 {
+  background-color: #27272a !important;
+  color: #e4e4e7 !important;
+}
+
+html.dark tr.hover\:bg-stone-50:hover,
+html.dark tbody tr:hover {
+  background-color: #242429 !important;
+}
+
+/* Form Controls */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #1f1f23 !important;
+  border-color: #3f3f46 !important;
+  color: #f4f4f5 !important;
+}
+
+html.dark input:focus,
+html.dark select:focus,
+html.dark textarea:focus {
+  border-color: #a1a1aa !important;
+  box-shadow: 0 0 0 2px rgba(244, 244, 245, 0.1) !important;
+}
+
+/* Buttons */
+html.dark .bg-stone-900 {
+  background-color: #fafafa !important;
+  color: #18181b !important;
+}
+
+html.dark .bg-stone-900:hover {
+  background-color: #f4f4f5 !important;
+}
+
+html.dark button.bg-white {
+  background-color: #27272a !important;
+  border-color: #3f3f46 !important;
+  color: #f4f4f5 !important;
+}
+
+html.dark button.bg-white:hover {
+  background-color: #3f3f46 !important;
+}
+
+/* Navigation Items */
+html.dark .nav-item.active {
+  background-color: #fafafa !important;
+  color: #18181b !important;
+}
+
+html.dark .nav-item:not(.active) {
+  color: #a1a1aa !important;
+}
+
+html.dark .nav-item:not(.active):hover {
+  background-color: #27272a !important;
+  color: #fafafa !important;
+}
+
+/* Pills & Badges */
+html.dark .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.45) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+html.dark .bg-rose-50 {
+  background-color: rgba(136, 19, 55, 0.45) !important;
+  color: #fda4af !important;
+  border-color: rgba(244, 63, 94, 0.3) !important;
+}
+
+html.dark .bg-blue-50 {
+  background-color: rgba(30, 58, 138, 0.45) !important;
+  color: #93c5fd !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+html.dark .bg-amber-100 {
+  background-color: rgba(120, 53, 15, 0.45) !important;
+  color: #fde68a !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+html.dark .bg-indigo-100 {
+  background-color: rgba(49, 46, 129, 0.45) !important;
+  color: #c7d2fe !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Context Menu */
+html.dark .context-menu {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  color: #f4f4f5 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+}
+
+html.dark .context-item {
+  color: #d4d4d8 !important;
+}
+
+html.dark .context-item:hover {
+  background-color: #27272a !important;
+  color: #fafafa !important;
+}
+
+/* Scrollbar in Dark Mode */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
 }

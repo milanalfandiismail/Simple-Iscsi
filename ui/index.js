@@ -26,26 +26,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function initTheme() {
     const btn = document.getElementById('theme-toggle-btn');
-    const currentTheme = localStorage.getItem('theme') || 'light';
+    if (!btn) return;
 
-    if (currentTheme === 'dark') {
-        document.body.classList.add('dark-theme');
-        btn.textContent = '🌞 Mode Terang';
-    } else {
-        document.body.classList.remove('dark-theme');
-        btn.textContent = '🌙 Mode Gelap';
-    }
+    const applyTheme = (theme) => {
+        if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.body.classList.add('dark');
+            btn.textContent = '🌞 Mode Terang';
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.body.classList.remove('dark');
+            btn.textContent = '🌙 Mode Gelap';
+        }
+    };
+
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    applyTheme(savedTheme);
 
     btn.addEventListener('click', () => {
-        if (document.body.classList.contains('dark-theme')) {
-            document.body.classList.remove('dark-theme');
-            btn.textContent = '🌙 Mode Gelap';
-            localStorage.setItem('theme', 'light');
-        } else {
-            document.body.classList.add('dark-theme');
-            btn.textContent = '🌞 Mode Terang';
-            localStorage.setItem('theme', 'dark');
-        }
+        const isDark = document.documentElement.classList.contains('dark');
+        const nextTheme = isDark ? 'light' : 'dark';
+        localStorage.setItem('theme', nextTheme);
+        applyTheme(nextTheme);
     });
 }
 
@@ -657,7 +659,7 @@ async function saveClientsJson() {
 function renderVhdTable() {
     const tbody = document.getElementById('vhds-tbody');
     if (!configObj || !configObj.image_manager || Object.keys(configObj.image_manager).length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="py-12 px-6 text-center">
+        tbody.innerHTML = `<tr><td colspan="3" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-3">
                 <div class="text-4xl">💿</div>
                 <h3 class="font-bold text-base text-stone-900 font-['Outfit']">Belum Ada VHD</h3>
@@ -672,12 +674,22 @@ function renderVhdTable() {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
         row.innerHTML = `
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs font-bold text-stone-900">${key}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap font-mono text-xs text-stone-500">${path}</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap text-xs text-stone-500 font-medium" id="snapshots-count-${key}">Loading...</td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5 whitespace-nowrap" style="text-align: right;">
-                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all mr-2" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
-                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 shadow-sm transition-all" onclick="showVhdSnapshots('${key}')">Snapshots</button>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">💿</span>
+                    <span class="font-mono text-xs sm:text-sm font-bold text-stone-900 font-['Outfit']">${key}</span>
+                </div>
+                <div class="text-[11px] font-mono text-stone-500 truncate max-w-md mt-0.5" title="${path}">${path}</div>
+            </td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5">
+                <div class="text-xs font-semibold text-stone-800" id="snapshots-count-${key}">Loading...</div>
+                <div class="text-[11px] text-stone-400 mt-0.5">Auto Snapshot Ready</div>
+            </td>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5" style="text-align: right;">
+                <div class="inline-flex items-center gap-2 justify-end">
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 shadow-sm transition-all" onclick="showVhdSnapshots('${key}')">Snapshots</button>
+                </div>
             </td>
         `;
         tbody.appendChild(row);
