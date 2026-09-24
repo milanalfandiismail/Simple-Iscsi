@@ -50,7 +50,14 @@ impl TftpServer {
                     });
                 }
                 Err(e) => {
-                    error!("Error menerima TFTP packet: {}", e);
+                    // Error 10054 (WSAECONNRESET) on Windows: ICMP Port Unreachable received
+                    // after sending to a host that has no listener. This is benign — just
+                    // continue. Add a small yield to prevent a tight spin if errors keep coming.
+                    let is_conn_reset = e.raw_os_error().map_or(false, |c| c == 10054);
+                    if !is_conn_reset {
+                        error!("Error menerima TFTP packet: {}", e);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
                 }
             }
         }
@@ -200,7 +207,11 @@ impl TftpServer {
                             }
                         }
                     }
-                    Ok(Err(e)) => error!("TFTP Socket error: {}", e),
+                    Ok(Err(e)) => {
+                        // Socket error (e.g. 10054 WSAECONNRESET) — client gone, abort transfer
+                        error!("TFTP Socket error saat tunggu OACK ACK: {}", e);
+                        return;
+                    }
                     Err(_) => {
                         warn!("TFTP OACK timeout, retry...");
                         retries += 1;
@@ -251,7 +262,11 @@ impl TftpServer {
                             }
                         }
                     }
-                    Ok(Err(e)) => error!("TFTP Socket error: {}", e),
+                    Ok(Err(e)) => {
+                        // Socket error (e.g. 10054 WSAECONNRESET) — client gone, abort transfer
+                        error!("TFTP Socket error saat tunggu ACK blok {}: {}", block_num, e);
+                        return;
+                    }
                     Err(_) => {
                         warn!("TFTP ACK timeout untuk blok {}, retry...", block_num);
                         retries += 1;
