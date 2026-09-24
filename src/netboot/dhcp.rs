@@ -36,9 +36,12 @@ fn parse_mac(mac: &str) -> Option<[u8; 6]> {
 impl DhcpServer {
     pub async fn new(config: SharedConfig, stats: Arc<crate::stats::ServerStats>) -> std::io::Result<Arc<Self>> {
         let current_config = config.read();
-        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT);
-        let socket = UdpSocket::bind(addr).await?;
-        socket.set_broadcast(true)?;
+        let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        sock.set_reuse_address(true)?;
+        sock.set_broadcast(true)?;
+        let addr: std::net::SocketAddr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT).into();
+        sock.bind(&addr.into())?;
+        let socket = UdpSocket::from_std(sock.into())?;
         let socket_arc = Arc::new(socket);
 
         // Create a dedicated sender socket bound to the server IP:67
