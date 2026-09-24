@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(default)]
 pub struct Config {
     pub server: ServerConfig,
@@ -20,9 +20,7 @@ pub struct Config {
     pub dhcp: Option<DhcpConfig>,
 }
 
-fn default_true() -> bool { true }
-
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct DhcpConfig {
     pub enabled: bool,
     pub start_ip: String,
@@ -36,11 +34,9 @@ pub struct DhcpConfig {
     pub pxe_default: Option<String>,
     #[serde(default)]
     pub nic_ips: Option<Vec<String>>,
-    #[serde(default = "default_true")]
-    pub auto_add_client: bool,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum AddressConfig {
     Single(String),
@@ -62,7 +58,7 @@ impl Default for AddressConfig {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerConfig {
     pub address: AddressConfig,
     pub port: u16,
@@ -80,7 +76,7 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct GamediskTargetConfig {
     pub target_iqn: String,
@@ -96,7 +92,7 @@ impl Default for GamediskTargetConfig {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GamediskConfig {
     pub physical_disk: String,
     pub block_size: u64,
@@ -105,7 +101,7 @@ pub struct GamediskConfig {
     pub product_revision: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[allow(dead_code)]
 pub struct WindowsConfig {
     pub target_iqn_prefix: String,
@@ -119,7 +115,7 @@ pub struct WindowsConfig {
     pub super_client_action: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct WritebackConfig {
     pub writeback_dirs: Vec<String>,
     pub max_cache_per_client_gb: u64,
@@ -215,26 +211,32 @@ pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn
         Ok(c) => c,
         Err(_) => return Ok(HashMap::new()),
     };
-    let config: ClientsConfig = match toml::from_str(&content) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to parse {}: {}. Returning empty map.", path, e);
-            return Ok(HashMap::new());
-        }
-    };
+    let config: ClientsConfig = toml::from_str(&content)?;
 
-    let mut map: HashMap<String, ClientConfig> = HashMap::new();
+    // Validasi duplicate MAC (strict — HashMap key conflict)
     let mut mac_set = HashSet::new();
-    for client in config.clients {
-        let mac_norm = client.mac.trim().replace('-', ":").to_lowercase();
-        if mac_set.insert(mac_norm) {
-            map.insert(client.mac.clone(), client);
-        } else {
-            warn!("Duplicate MAC address in {}: {} (client: {}) — skipping duplicate",
-                path, client.mac, client.hostname.as_deref().unwrap_or("?"));
+    for client in &config.clients {
+        let mac_lower = client.mac.to_lowercase();
+        if !mac_set.insert(mac_lower) {
+            return Err(format!("Duplicate MAC address: {} (client: {})",
+                client.mac, client.hostname.as_deref().unwrap_or("?")).into());
         }
     }
 
+    // Cek duplicate IP (warning only — valid untuk DHCP beda client)
+    let mut ip_set = HashSet::new();
+    for client in &config.clients {
+        if !ip_set.insert(client.ip.clone()) {
+            warn!("Duplicate IP address: {} (client: {}) — allowed jika di subnet berbeda",
+                client.ip, client.hostname.as_deref().unwrap_or("?"));
+        }
+    }
+
+    let map: HashMap<String, ClientConfig> = config
+        .clients
+        .into_iter()
+        .map(|c| (c.mac.clone(), c))
+        .collect();
     info!("Loaded {} client(s) from {}", map.len(), path);
     Ok(map)
 }
@@ -319,16 +321,13 @@ pub fn auto_fix_duplicate_ips(clients_path: &str, start_ip: &str, end_ip: &str) 
 }
 
 pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn std::error::Error>> {
-    let client_mac_norm = client.mac.trim().replace('-', ":").to_lowercase();
-    let existing = load_clients(path).unwrap_or_default();
+    // Load existing dulu untuk validasi duplicate
+    let existing = load_clients(path)?;
 
-    // Validasi duplicate MAC (normalized)
-    for (existing_mac, existing_client) in &existing {
-        let existing_mac_norm = existing_mac.trim().replace('-', ":").to_lowercase();
-        if existing_mac_norm == client_mac_norm {
-            return Err(format!("MAC already exists: {} (used by {})",
-                client.mac, existing_client.hostname.as_deref().unwrap_or("?")).into());
-        }
+    // Validasi duplicate MAC (strict)
+    if existing.contains_key(&client.mac) {
+        return Err(format!("MAC already exists: {} (used by {})",
+            client.mac, existing[&client.mac].hostname.as_deref().unwrap_or("?")).into());
     }
 
     // Cek duplicate IP (warning only)
@@ -360,104 +359,4 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
     info!("Client '{}' ({}) appended to {}", 
         client.hostname.as_deref().unwrap_or("?"), client.mac, path);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_config_json_toml_roundtrip() {
-        let json_data = r#"{
-            "server": {
-                "address": "0.0.0.0",
-                "port": 3300,
-                "read_cache_gb": 4
-            },
-            "gamedisk_target": {
-                "target_iqn": "iqn.2024-01.com.tmdebug:gamedisks",
-                "discovery": true
-            },
-            "gamedisk": [
-                {
-                    "physical_disk": "\\\\.\\PhysicalDrive0",
-                    "block_size": 512,
-                    "vendor_id": "RUSTISCS",
-                    "product_id": "GameDisk-0",
-                    "product_revision": "1.00"
-                }
-            ],
-            "windows": {
-                "target_iqn_prefix": "iqn.2024-01.com.tmdebug:vhd-",
-                "vhd_dir": "",
-                "block_size": 512,
-                "vendor_id": "RUSTISCS",
-                "product_id": "WindowsBoot",
-                "product_revision": "1.00",
-                "discovery": false,
-                "super_client_ip": "",
-                "super_client_action": "none"
-            },
-            "writeback": {
-                "writeback_dirs": ["I:\\writeback", "E:\\writeback"],
-                "max_cache_per_client_gb": 10,
-                "max_write_speed_mbps": 100000
-            },
-            "dhcp": {
-                "enabled": true,
-                "start_ip": "192.168.180.2",
-                "end_ip": "192.168.180.200",
-                "router": "192.168.180.1",
-                "dns": "8.8.8.8",
-                "next_server": "192.168.180.1",
-                "subnet_mask": "255.255.255.0",
-                "tftp_dir": "pxe",
-                "pxe_default": "sb-custom",
-                "nic_ips": []
-            }
-        }"#;
-
-        let cfg: Config = serde_json::from_str(json_data).expect("Failed to parse JSON");
-        assert_eq!(cfg.gamedisk.len(), 1);
-        assert_eq!(cfg.gamedisk[0].physical_disk, r"\\.\PhysicalDrive0");
-
-        let toml_str = toml::to_string(&cfg).expect("Failed to serialize to TOML");
-        println!("Generated TOML:\n{}", toml_str);
-
-        let parsed_cfg: Config = toml::from_str(&toml_str).expect("Failed to parse generated TOML");
-        assert_eq!(parsed_cfg.gamedisk.len(), 1);
-        assert_eq!(parsed_cfg.gamedisk[0].physical_disk, r"\\.\PhysicalDrive0");
-    }
-
-    #[test]
-    fn test_config_json_toml_empty_gamedisk() {
-        let json_data = r#"{
-            "server": {
-                "address": "0.0.0.0",
-                "port": 3300,
-                "read_cache_gb": 4
-            },
-            "gamedisk_target": {
-                "target_iqn": "iqn.2024-01.com.tmdebug:gamedisks",
-                "discovery": true
-            },
-            "gamedisk": [],
-            "windows": null,
-            "writeback": {
-                "writeback_dirs": ["I:\\writeback"],
-                "max_cache_per_client_gb": 10,
-                "max_write_speed_mbps": 100000
-            },
-            "dhcp": null
-        }"#;
-
-        let cfg: Config = serde_json::from_str(json_data).expect("Failed to parse JSON");
-        assert_eq!(cfg.gamedisk.len(), 0);
-
-        let toml_str = toml::to_string(&cfg).expect("Failed to serialize to TOML");
-        println!("Generated TOML empty:\n{}", toml_str);
-
-        let parsed_cfg: Config = toml::from_str(&toml_str).expect("Failed to parse generated TOML");
-        assert_eq!(parsed_cfg.gamedisk.len(), 0);
-    }
 }

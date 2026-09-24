@@ -4,6 +4,7 @@ use tracing::{info, warn, error, debug};
 use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr};
 use std::collections::{HashMap, BTreeMap};
 use tokio::sync::Mutex;
+use bytes::Buf;
 use std::str::FromStr;
 use socket2::{Socket, Domain, Type, Protocol};
 
@@ -23,55 +24,21 @@ pub struct DhcpServer {
 }
 
 fn parse_mac(mac: &str) -> Option<[u8; 6]> {
-    let clean = mac.trim().replace('-', ":");
-    let parts: Vec<&str> = clean.split(':').collect();
+    let parts: Vec<&str> = mac.split(':').collect();
     if parts.len() != 6 { return None; }
     let mut bytes = [0u8; 6];
     for (i, p) in parts.iter().enumerate() {
-        bytes[i] = u8::from_str_radix(p.trim(), 16).ok()?;
+        bytes[i] = u8::from_str_radix(p, 16).ok()?;
     }
     Some(bytes)
 }
 
 impl DhcpServer {
-    fn get_dhcp_router(&self) -> String {
-        self.config.read().dhcp.as_ref()
-            .map(|d| d.router.clone())
-            .unwrap_or_else(|| "10.10.10.1".to_string())
-    }
-
-    fn get_dhcp_dns(&self) -> String {
-        self.config.read().dhcp.as_ref()
-            .map(|d| d.dns.clone())
-            .unwrap_or_else(|| "8.8.8.8".to_string())
-    }
-
-    fn get_dhcp_next_server(&self) -> String {
-        self.config.read().dhcp.as_ref()
-            .map(|d| d.next_server.clone())
-            .unwrap_or_else(|| "10.10.10.1".to_string())
-    }
-
-    fn get_dhcp_pxe_default(&self) -> String {
-        self.config.read().dhcp.as_ref()
-            .and_then(|d| d.pxe_default.clone())
-            .unwrap_or_else(|| "sb-custom".to_string())
-    }
-
-    fn get_dhcp_subnet_mask(&self) -> String {
-        self.config.read().dhcp.as_ref()
-            .map(|d| d.subnet_mask.clone())
-            .unwrap_or_else(|| "255.255.255.0".to_string())
-    }
-
     pub async fn new(config: SharedConfig, stats: Arc<crate::stats::ServerStats>) -> std::io::Result<Arc<Self>> {
         let current_config = config.read();
-        let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-        sock.set_reuse_address(true)?;
-        sock.set_broadcast(true)?;
-        let addr: std::net::SocketAddr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT).into();
-        sock.bind(&addr.into())?;
-        let socket = UdpSocket::from_std(sock.into())?;
+        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT);
+        let socket = UdpSocket::bind(addr).await?;
+        socket.set_broadcast(true)?;
         let socket_arc = Arc::new(socket);
 
         // Create a dedicated sender socket bound to the server IP:67
@@ -102,9 +69,7 @@ impl DhcpServer {
         };
 
         // Parse IPs
-        let start_ip = current_config.dhcp.as_ref()
-            .and_then(|d| Ipv4Addr::from_str(&d.start_ip).ok())
-            .unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
+        let start_ip = Ipv4Addr::from_str(&current_config.dhcp.as_ref().unwrap().start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
         let start_ip_u32 = u32::from_be_bytes(start_ip.octets());
 
         let mut clients_map = HashMap::new();
@@ -156,67 +121,10 @@ impl DhcpServer {
         Ok(server)
     }
 
-    async fn allocate_next_free_ip(&self, clients_guard: &HashMap<[u8; 6], ClientConfig>, leases_guard: &HashMap<[u8; 6], Ipv4Addr>) -> Ipv4Addr {
-        let (start_ip_u32, end_ip_u32) = {
-            let cfg = self.config.read();
-            if let Some(ref dhcp) = cfg.dhcp {
-                let start = Ipv4Addr::from_str(&dhcp.start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
-                let end = dhcp.end_ip.as_ref()
-                    .and_then(|s| Ipv4Addr::from_str(s).ok())
-                    .unwrap_or_else(|| {
-                        let oct = start.octets();
-                        Ipv4Addr::new(oct[0], oct[1], oct[2], 254)
-                    });
-                (u32::from_be_bytes(start.octets()), u32::from_be_bytes(end.octets()))
-            } else {
-                (u32::from_be_bytes([10, 10, 10, 100]), u32::from_be_bytes([10, 10, 10, 254]))
-            }
-        };
-
-        // Collect all used IPs (from static clients & active leases)
-        let mut used_ips = std::collections::HashSet::new();
-        for client in clients_guard.values() {
-            if let Ok(ip) = Ipv4Addr::from_str(&client.ip) {
-                used_ips.insert(u32::from_be_bytes(ip.octets()));
-            }
-        }
-        for ip in leases_guard.values() {
-            used_ips.insert(u32::from_be_bytes(ip.octets()));
-        }
-
-        let mut next = self.next_ip.lock().await;
-        let mut candidate = *next;
-        if candidate < start_ip_u32 || candidate > end_ip_u32 {
-            candidate = start_ip_u32;
-        }
-
-        let total_range = if end_ip_u32 >= start_ip_u32 {
-            end_ip_u32 - start_ip_u32 + 1
-        } else {
-            1
-        };
-
-        for _ in 0..total_range {
-            if !used_ips.contains(&candidate) {
-                *next = if candidate >= end_ip_u32 { start_ip_u32 } else { candidate + 1 };
-                return Ipv4Addr::from(candidate);
-            }
-            candidate = if candidate >= end_ip_u32 { start_ip_u32 } else { candidate + 1 };
-        }
-
-        let fallback = candidate;
-        *next = if candidate >= end_ip_u32 { start_ip_u32 } else { candidate + 1 };
-        Ipv4Addr::from(fallback)
-    }
-
     async fn allocate_ip(&self, mac: &[u8; 6], client_conf: Option<&ClientConfig>) -> Ipv4Addr {
-        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
         if let Some(c) = client_conf {
             let static_ip_str = &c.ip;
             if let Ok(ip) = Ipv4Addr::from_str(static_ip_str) {
-                self.stats.dhcp_leases.insert(mac_str, ip.to_string());
                 return ip;
             } else {
                 warn!("IP statis tidak valid di clients.toml untuk MAC: {:?}", mac);
@@ -225,14 +133,17 @@ impl DhcpServer {
 
         let mut leases = self.leases.lock().await;
         if let Some(ip) = leases.get(mac) {
-            self.stats.dhcp_leases.insert(mac_str.clone(), ip.to_string());
             return *ip;
         }
 
-        let clients_guard = self.clients.lock().await;
-        let ip = self.allocate_next_free_ip(&clients_guard, &leases).await;
+        let mut next = self.next_ip.lock().await;
+        let ip = Ipv4Addr::from(*next);
+        *next += 1;
+        
         leases.insert(*mac, ip);
 
+        let mac_str = format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         self.stats.dhcp_leases.insert(mac_str, ip.to_string());
 
         ip
@@ -270,24 +181,24 @@ impl DhcpServer {
             if let Some(c) = clients_guard.get(&mac) {
                 (false, Some(c.clone()))
             } else {
-                let leases_guard = self.leases.lock().await;
-                let ip_addr = self.allocate_next_free_ip(&clients_guard, &leases_guard).await;
-                drop(leases_guard);
-
                 let pc_count = clients_guard.len() + 1;
                 let hostname = format!("PC-{:02}", pc_count);
+
+                let mut next = self.next_ip.lock().await;
+                let ip_addr = Ipv4Addr::from(*next);
+                *next += 1;
 
                 let new_client = ClientConfig {
                     hostname: Some(hostname),
                     mac: mac_str.clone(),
                     ip: ip_addr.to_string(),
-                    gateway: Some(self.get_dhcp_router()),
-                    dns: Some(self.get_dhcp_dns()),
+                    gateway: Some(self.config.read().dhcp.as_ref().unwrap().router.clone()),
+                    dns: Some(self.config.read().dhcp.as_ref().unwrap().dns.clone()),
                     pxe: Some("sb-custom".to_string()),
                     bootfile_uefi: None,
                     bootfile_legacy: None,
                     bootfile_ipxe: None,
-                    next_server: Some(self.get_dhcp_next_server()),
+                    next_server: Some(self.config.read().dhcp.as_ref().unwrap().next_server.clone()),
                     image_manager: None,
                 };
 
@@ -298,24 +209,18 @@ impl DhcpServer {
 
         if is_new_client {
             if let Some(ref conf) = client_conf {
-                let auto_add = self.config.read().dhcp.as_ref().map(|d| d.auto_add_client).unwrap_or(true);
-                if auto_add {
-                    let conf_clone = conf.clone();
-                    tokio::task::spawn_blocking(move || {
-                        match crate::config::append_client("clients.toml", &conf_clone) {
-                            Ok(_) => info!("Berhasil Auto-Add Klien Baru: {} ({}) -> IP: {}",
-                                conf_clone.hostname.as_deref().unwrap_or(""), conf_clone.mac, conf_clone.ip),
-                            Err(e) => error!("Gagal auto-add klien baru ke clients.toml: {}", e),
-                        }
-                    }).await.ok();
+                if let Err(e) = crate::config::append_client("clients.toml", conf) {
+                    error!("Gagal auto-add klien baru ke clients.toml: {}", e);
                 } else {
-                    info!("Auto-Add dinonaktifkan. Klien {} ({}) dilayani sementara dengan IP: {}",
-                        conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
+                    info!("Berhasil Auto-Add Klien Baru: {} ({}) -> IP: {}", conf.hostname.as_deref().unwrap_or(""), conf.mac, conf.ip);
                 }
             }
         }
 
         // ─── Bootfile selection ───────────────────────────────────────
+        // client_arch dari DHCP option 93 (2-byte big-endian)
+        // 0x0000 = BIOS x86 (Legacy), 0x0006 = UEFI x86
+        // 0x0007 = UEFI x64, 0x0009 = UEFI x64 w/PXE, 0x000D = BIOS w/UEFI BC
         let client_arch = req.options.get(&93).and_then(|v| {
             if v.len() >= 2 {
                 Some(u16::from_be_bytes([v[0], v[1]]))
@@ -325,7 +230,7 @@ impl DhcpServer {
         });
         let has_opt_175 = req.options.contains_key(&175);
         let c = client_conf.as_ref();
-        let default_bf = self.get_dhcp_pxe_default();
+        let default_bf = self.config.read().dhcp.as_ref().unwrap().pxe_default.as_deref().unwrap_or("sb-custom").to_string();
 
         let bootfile = match client_arch {
             // Legacy BIOS
@@ -366,6 +271,11 @@ impl DhcpServer {
                 .unwrap_or_else(|| default_bf.to_string()),
         };
 
+        // info!(
+        //     "DHCP {:?} dari {} arch={:?} opt175={} flags=0x{:04X} bootfile={}",
+        //     msg_type, mac_str, client_arch, has_opt_175, req.flags, bootfile
+        // );
+
         match msg_type {
             DhcpMessageType::Discover => {
                 self.send_offer(req, mac, bootfile, client_conf.as_ref()).await;
@@ -397,7 +307,7 @@ impl DhcpServer {
 
         let next_server_str = client_conf.as_ref()
             .and_then(|c| c.next_server.clone())
-            .unwrap_or_else(|| self.get_dhcp_next_server());
+            .unwrap_or_else(|| self.config.read().dhcp.as_ref().unwrap().next_server.clone());
         let server_ip = Ipv4Addr::from_str(&next_server_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
 
         let mut resp = DhcpPacket {
@@ -436,13 +346,13 @@ impl DhcpServer {
             resp.options.insert(93, arch_data.clone());
         }
 
-        let subnet_str = self.get_dhcp_subnet_mask();
+        let subnet_str = self.config.read().dhcp.as_ref().unwrap().subnet_mask.clone();
         let subnet = Ipv4Addr::from_str(&subnet_str).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
         resp.options.insert(1, subnet.octets().to_vec());
 
         let router_str = client_conf.as_ref()
             .and_then(|c| c.gateway.clone())
-            .unwrap_or_else(|| self.get_dhcp_router());
+            .unwrap_or_else(|| self.config.read().dhcp.as_ref().unwrap().router.clone());
         let router = Ipv4Addr::from_str(&router_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
         if router != Ipv4Addr::UNSPECIFIED {
             resp.options.insert(3, router.octets().to_vec());
@@ -454,7 +364,7 @@ impl DhcpServer {
 
         let dns_str = client_conf.as_ref()
             .and_then(|c| c.dns.clone())
-            .unwrap_or_else(|| self.get_dhcp_dns());
+            .unwrap_or_else(|| self.config.read().dhcp.as_ref().unwrap().dns.clone());
         let dns = Ipv4Addr::from_str(&dns_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
         if dns != Ipv4Addr::UNSPECIFIED {
             resp.options.insert(6, dns.octets().to_vec());
@@ -512,14 +422,18 @@ impl DhcpServer {
         let is_broadcast = (req.flags & 0x8000) != 0;
         let packet = resp.serialize();
 
-        let s_addr_str = self.get_dhcp_next_server();
-        let s_ip = Ipv4Addr::from_str(&s_addr_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
-        let s_mask_str = self.get_dhcp_subnet_mask();
-        let s_mask = Ipv4Addr::from_str(&s_mask_str).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
+        // Hex dump first 48 bytes of packet for debugging
+        // let hex_dump: String = packet.iter().take(48).enumerate().map(|(i, b)| {
+        //     format!("{:02x}{}", b, if (i + 1) % 16 == 0 { "\n" } else { " " })
+        // }).collect();
+        // info!("DHCP {:?} packet hex dump (first 48 bytes):\n{}", msg_type, hex_dump);
+
+        let server_ip = Ipv4Addr::from_str(&self.config.read().dhcp.as_ref().unwrap().next_server).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let subnet = Ipv4Addr::from_str(&self.config.read().dhcp.as_ref().unwrap().subnet_mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
         
         // Calculate Subnet Broadcast Address (e.g., 10.10.10.255)
-        let s_oct = s_ip.octets();
-        let m_oct = s_mask.octets();
+        let s_oct = server_ip.octets();
+        let m_oct = subnet.octets();
         let broadcast_ip = Ipv4Addr::new(
             s_oct[0] | (!m_oct[0]),
             s_oct[1] | (!m_oct[1]),
@@ -540,10 +454,12 @@ impl DhcpServer {
         if let Err(e) = self.sender.send_to(&packet, dest).await {
             error!("Gagal mengirim DHCP Reply ke {}: {}", dest, e);
         } else {
+            // Also send to global broadcast as fallback (for multi-homed setups)
             let backup_dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, DHCP_CLIENT_PORT);
             if dest.ip() != &Ipv4Addr::BROADCAST {
                 let _ = self.sender.send_to(&packet, backup_dest).await;
             }
+            // info!("Sukses mengirim {:?} ke {} (Bootfile: {})", msg_type, dest, bootfile);
         }
     }
 }
