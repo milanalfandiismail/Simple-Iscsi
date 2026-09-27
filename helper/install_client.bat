@@ -16,23 +16,31 @@ echo.
 
 :: 1. Copy Files
 echo [1/3] Menyalin file driver dan helper...
-if exist "..\isharedisk\driver\iSharePp.sys" (
-    copy /Y "..\isharedisk\driver\iSharePp.sys" "C:\Windows\System32\drivers\iSharePp.sys" >nul
-) else if exist "iSharePp.sys" (
+:: Catatan: File driver .sys pihak ketiga tidak disertakan dalam repository ini (patuhi lisensi vendor).
+if exist "iSharePp.sys" (
     copy /Y "iSharePp.sys" "C:\Windows\System32\drivers\iSharePp.sys" >nul
+    echo       [+] File iSharePp.sys disalin ke drivers.
+) else if exist "..\isharedisk\driver\iSharePp.sys" (
+    copy /Y "..\isharedisk\driver\iSharePp.sys" "C:\Windows\System32\drivers\iSharePp.sys" >nul
+    echo       [+] File iSharePp.sys disalin ke drivers.
+) else (
+    echo       [!] Catatan: iSharePp.sys tidak ditemukan (dapat disediakan mandiri).
 )
 
 if exist "helper.exe" (
     copy /Y "helper.exe" "C:\Windows\System32\helper.exe" >nul
+    echo       [+] helper.exe disalin ke System32.
 )
-echo       [+] File iSharePp.sys dan helper.exe disalin.
 
 :: 2. Daftarkan Service iSharePnp
 echo [2/3] Mendaftarkan service iSharePnp...
-if exist "..\isharedisk\reg\SERVICE_ISHAREPNP.reg" (
+if exist "SERVICE_ISHAREPNP.reg" (
+    regedit /s "SERVICE_ISHAREPNP.reg"
+    echo       [+] Service iSharePnp terdaftar.
+) else if exist "..\isharedisk\reg\SERVICE_ISHAREPNP.reg" (
     regedit /s "..\isharedisk\reg\SERVICE_ISHAREPNP.reg"
+    echo       [+] Service iSharePnp terdaftar.
 )
-echo       [+] Service iSharePnp terdaftar.
 
 :: 3. Daftarkan helper.exe ke BootExecute
 echo [3/3] Mendaftarkan helper.exe ke BootExecute...

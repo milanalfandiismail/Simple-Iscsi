@@ -10,6 +10,19 @@
 *.lib
 *.obj
 
+# Local backups and archives
+*.sys
+*.rar
+*.7z
+*.zip
+*.reg
+/Diskless_Client_Backup/
+/isharedisk/
+/CCBootExtF/
+/CCBootHelper/
+/xpnp_nic_drivers/
+
+
 # IDE
 .vscode/
 .idea/
