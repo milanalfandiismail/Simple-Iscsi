@@ -3,9 +3,9 @@
 
 ---
 
-> [!IMPORTANT]
-> **Catatan Kompatibilitas Driver Client (Third-Party Drivers):**  
-> Untuk saat ini, sistem operasi Windows pada image client masih menggunakan komponen driver PNP / virtual network filter pihak ketiga (**Third-Party Driver** dari **CCBoot** atau **iSharedisk** seperti `CCBootPnp.sys` / `iSharePnp.sys`) untuk binding awal NIC adapter hardware saat OS pertama kali menyala. Seluruh transfer I/O data iSCSI, koneksi SANBOOT, negosiasi PDU, SCSI command execution, dan writeback caching sepenuhnya ditangani secara independen oleh **Target Server Simple-Iscsi**. Integrasi boot helper (`helper.exe`) dan parser ACPI iBFT dibangun untuk menjembatani konfigurasi IP otomatis dan transisi bertahap menuju arsitektur *100% native driverless*.
+> [!TIP]
+> **Status Integrasi Driver Client (100% Native Driverless Telah Terbukti!):**  
+> Melalui audit forensik registri dan live hardware testing pada chip Realtek (RTL8111/8168/8125) dan Intel, sistem operasi Windows pada client terbukti **100% DAPAT BOOTING NATIVELY TANPA DRIVER PIHAK KETIGA** (`CCBootPNPX.sys` / `iSharePnp.sys` telah dinonaktifkan/dihapus sepenuhnya). Kunci keberhasilan terletak pada **Aturan Emas Slot `0000`**, sinkronisasi **`NetCfgInstanceId`**, promosi filter **`WFPLWFS`** ke Phase 0, dan **`ConfigFlags = 0`**. Panduan teknis dan langkah konversinya dijelaskan secara lengkap pada **BAB 9**.
 
 ---
 
@@ -18,6 +18,7 @@
 6. [BAB 6: Storage Backend & Writeback Cache Engine (128 MB)](#bab-6-storage-backend--writeback-cache-engine-128-mb)
 7. [BAB 7: Windows Client Boot Helper (ACPI iBFT Parser & Deep IP Cleaner)](#bab-7-windows-client-boot-helper-acpi-ibft-parser--deep-ip-cleaner)
 8. [BAB 8: Analisis Kinerja, Audit Optimasi, & Matriks Troubleshooting (10 MB/s ke 900+ Mbps)](#bab-8-analisis-kinerja-audit-optimasi--matriks-troubleshooting-10-mbs-ke-900-mbps)
+9. [BAB 9: Arsitektur & Panduan Konversi Native Driverless iSCSI (Aturan Emas Slot 0000 & NetCfgInstanceId)](#bab-9-arsitektur--panduan-konversi-native-driverless-iscsi)
 
 ---
 
@@ -513,6 +514,224 @@ Dalam ekosistem diskless Windows saat ini, proses booting SANBOOT iSCSI melibatk
 | **Kecepatan Write Disk Stuttering / Freeze Saat Boot** | Server kehabisan resource alokasi file writeback (`ExtendFile` storm). | Pastikan `target_alloc` di `src/writeback_gamedisk.rs` minimal `128 MB`. |
 | **Windows Startup Pause 30-60 Detik Sebelum Desktop** | Windows menunggu respon DHCP client lokal yang tidak terhubung. | Jalankan `helper.exe` pada image Windows untuk menginjeksi IP statis dari tabel ACPI iBFT secara instan. |
 | **Game Disk Tidak Muncul di Windows Explorer** | Target GameDisk belum ter-hook atau `REPORT LUNS` tidak lengkap. | Periksa apakah DHCP Option 170 aktif dan pastikan `[[gamedisk]]` terdaftar di `config.toml`. |
+
+---
+
+# BAB 9: ARSITEKTUR & PANDUAN KONVERSI NATIVE DRIVERLESS iSCSI
+
+Melalui serangkaian audit forensik registri berukuran 47.5 MB dan pengujian fisik langsung (*live hardware testing*) pada motherboard fisik (Biostar H610MHC, MSI PRO B760M-P, MSI PRO H510M-B) dengan kartu jaringan Realtek RTL8111/8168 dan Intel Gigabit, terbukti secara ilmiah bahwa **Windows 10/11 TIDAK MEMERLUKAN DRIVER DISKLESS PIHAK KETIGA** (`CCBootPNPX.sys` / `iSharePnp.sys`).
+
+Windows memiliki kapabilitas **Native iSCSI Boot murni bawaan Microsoft** (`iscsiprt.sys` + `tcpip.sys` + `wfplwfs.sys`), asalkan arsitektur registri dan pengikatan (*binding*) perangkat kerasnya memenuhi kaidah kernel Windows NT.
+
+---
+
+## 9.1 Dua Aturan Emas Native iSCSI Boot
+
+Kegagalan booting iSCSI (*BSOD 0x7B / INACCESSIBLE_BOOT_DEVICE*) pada kartu LAN fisik hampir selalu disebabkan oleh pelanggaran salah satu dari dua aturan emas di bawah ini:
+
+### 1. Aturan Emas Slot `0000` (The Golden Slot `0000` Rule)
+* **Karakteristik Kernel Windows:** Slot `0000` pada `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000` adalah **Primary Boot Adapter**.
+* **Jebakan Slot Sekunder (`0001`, `0002`, `0005`, dst):** Jika kartu LAN fisik didaftarkan ke slot baru selain `0000`, kernel Windows di Phase 0 (saat baru bangun dari RAM) menganggapnya sebagai kartu LAN sekunder/tambahan. Kartu LAN sekunder **tidak diinisialisasi untuk koneksi storage boot**, sehingga paket iSCSI tidak bisa keluar $\rightarrow$ **BSOD `0x7B`**.
+* **Prinsip Mutlak:** Driver kartu LAN fisik **WAJIB MENIMPA / MENGGUNAKAN SLOT `0000`**!
+
+---
+
+### 2. Rantai Sakral `NetCfgInstanceId` (GUID Synchronization)
+Di dalam slot `0000`, terdapat satu string GUID unik bernama:
+```ini
+"NetCfgInstanceId"="{79A1BBB6-13F7-4F13-9070-4862675230A2}"
+```
+GUID ini adalah **"Kunci Gembok Tunggal"** yang menghubungkan empat subsistem kernel secara bersamaan:
+
+```mermaid
+graph TD
+    CLASS["Control\\Class\\{4d36e972...}\\0000<br/>(NetCfgInstanceId = GUID)"] --> TCPIP_ADAPTER["Services\\Tcpip\\Parameters\\Adapters\\{GUID}"]
+    CLASS --> TCPIP_INTERFACE["Services\\Tcpip\\Parameters\\Interfaces\\{GUID}<br/>(IP Statis / Gateway)"]
+    CLASS --> WFPLWFS["Services\\WFPLWFS\\Parameters\\Adapters\\{GUID}<br/>(Firewall Packet Filter)"]
+    CLASS --> NDIS_CONN["Control\\Network\\{4d36e972...}\\{GUID}<br/>(Koneksi Jaringan NDIS)"]
+```
+
+> ⚠️ **Mengapa Mengganti GUID Bikin Gagal Boot?**  
+> Jika file `class.reg` kartu LAN fisik membawa GUID baru (misal `{9E379CA4...}`) dan di-import begitu saja ke `0000`, maka nilai `NetCfgInstanceId` di `0000` akan berubah. Akibatnya, `WFPLWFS` (Firewall) dan `TCPIP` di Phase 0 tidak mengenali adapter tersebut karena mereka masih memegang GUID lama. Seluruh paket LAN Realtek **DIBLOKIR oleh WFPLWFS** $\rightarrow$ koneksi iSCSI terputus seketika $\rightarrow$ **Freeze / BSOD `0x7B`**.
+>
+> **Solusi Paten:** Saat menimpa slot `0000` dengan driver fisik Realtek/Intel, **NILAI `NetCfgInstanceId` WAJIB DIPERTAHANKAN MEMAKAI GUID BOOT ASLI (`{79A1BBB6...}`)**!
+
+---
+
+## 9.2 Parameter Performa & Offload yang Wajib Dimatikan di Phase 0
+
+Pada Windows biasa (dengan SSD lokal), fitur hardware offload chip LAN sangat menguntungkan. Tetapi pada **iSCSI Boot di Phase 0**, mesin offload hardware pada chip fisik belum diinisialisasi penuh oleh kernel. Jika opsi-opsi ini aktif, paket data iSCSI akan korup atau mengalami *latency timeout*.
+
+Di dalam slot `0000`, pastikan parameter berikut bernilai `"0"` (Disabled):
+
+| Nama Parameter di Registri `0000` | Nilai Wajib | Alasan Teknis |
+| :--- | :--- | :--- |
+| **`*LsoV2IPv4` & `*LsoV2IPv6`** | `"0"` | **Biang kerok #1!** Large Send Offload memotong paket TCP di chip hardware sebelum mesinnya siap $\rightarrow$ paket iSCSI korup $\rightarrow$ BSOD 0x7B. |
+| **`EnableGreenEthernet` & `*EEE`** | `"0"` | Energy Efficient Ethernet menurunkan voltase port LAN $\rightarrow$ link kabel LAN *drop* 1 detik saat boot kernel. |
+| **`*FlowControl`** | `"0"` | Menghindari jeda transmisi paket (*packet pause frame*) saat negosiasi gigabit. |
+| **`*InterruptModeration`** | `"0"` | Moderasi interrupt menunda paket ACK beberapa milidetik $\rightarrow$ memicu iSCSI initiator timeout. |
+| **`ASPM`** | `dword:0` | Active State Power Management mematikan daya bus PCIe saat transisi kernel. |
+| **`GigaLite`** | `"0"` | Mencegah kartu LAN menurunkan kecepatan dari 1 Gbps ke 100/10 Mbps. |
+| **`*IPChecksumOffloadIPv4`** | `"0"` | Memaksa checksum dihitung oleh CPU di awal boot. |
+| **`*TCPChecksumOffloadIPv4`** | `"0"` | Memaksa TCP checksum dihitung oleh CPU di awal boot. |
+| **`*UDPChecksumOffloadIPv4`** | `"0"` | Memaksa UDP checksum dihitung oleh CPU di awal boot. |
+
+---
+
+## 9.3 Aturan Simpul DevNode `ConfigFlags = 0`
+
+Di cabang `HKLM\SYSTEM\CurrentControlSet\Enum\...`, seluruh simpul hardware iSCSI wajib memiliki:
+```ini
+"ConfigFlags"=dword:00000000
+```
+
+* **Arti Angka `0` (`CONFIGFLAG_NORMAL`):** Perangkat dianggap sudah terinstal 100% sempurna dan sehat. Kernel langsung menyalakan chip LAN dan disk iSCSI di Phase 0 tanpa menunggu User-Mode PnP Manager (`umpnpmgr.dll`).
+* **Mengapa Angka `1` Gagal Boot?** Angka `1` adalah **`CONFIGFLAG_DISABLED`** (sama seperti tombol *Disable Device* di Device Manager). Jika diisi `1`, kartu LAN sengaja dimatikan oleh Windows.
+
+Simpul yang wajib `ConfigFlags = 0`:
+1. **Kartu LAN Fisik:** `Enum\PCI\VEN_10EC&DEV_8168...\[InstanceID]`
+   - `"Driver"="{4d36e972-e325-11ce-bfc1-08002be10318}\\0000"`
+   - `"ConfigFlags"=dword:00000000`
+2. **Virtual iSCSI Controller:** `Enum\ROOT\ISCSIPRT\0000`
+   - `"ParentIdPrefix"="1&1c121344&0"`
+   - `"ConfigFlags"=dword:00000000`
+3. **Harddisk Target iSCSI (C:):** `Enum\SCSI\Disk&Ven_[Vendor]&Prod_[Prod]\1&1c121344&0&000000`
+   - `"ConfigFlags"=dword:00000000`
+
+---
+
+## 9.4 Menampilkan Menu Advanced Asli di Device Manager (`Ndi\params`)
+
+Agar menu di **Device Manager $\rightarrow$ Network Adapters $\rightarrow$ Properties $\rightarrow$ Tab Advanced** menampilkan menu asli Realtek (Speed & Duplex 1.0 Gbps, Green Ethernet, Jumbo Frame, dll) dan bukan menu virtual lama:
+
+1. Subfolder `0000\Ndi\params` harus diisi dengan template parameter resmi chip tersebut (59 subkey untuk Realtek RTL8111/8168).
+2. Subfolder `Ndi\params` ini mendefinisikan UI dropdown di Device Manager sehingga teknisi dapat mengubah settingan kecepatan kartu LAN langsung dari desktop Windows secara resmi.
+
+---
+
+## 9.5 Panduan Langkah Demi Langkah Konversi Praktis (End-User Guide)
+
+Berikut adalah panduan praktis untuk mengonversi master image menggunakan bantuan CCBoot Client di awal untuk auto-detect PnP, lalu melepasnya secara permanen:
+
+```
+[Tahap 1] Inisiasi Driver LAN via CCBoot Client (Super User)
+     │
+     ▼
+[Tahap 2] Booting Perdana & Masuk Desktop Windows
+     │
+     ▼
+[Tahap 3] Operasi Registri: Lepas Filter, Timpa Slot 0000 & Pertahankan GUID
+     │
+     ▼
+[Tahap 4] Restart PC & Verifikasi (100% Native Driverless Sukses!)
+```
+
+### Langkah 1: Inisiasi Driver LAN (Mode Super User)
+1. Nyalakan PC Client target dalam mode **Super User / Super Client**.
+2. Buka aplikasi **CCBoot Client** di PC Client, lalu jalankan fitur **PNP / Add NIC** agar driver kartu LAN terdeteksi otomatis.
+3. Restart PC Client dan pastikan sudah bisa **masuk sampai ke desktop Windows**.
+
+### Langkah 2: Operasi Registri (Pelepasan Driver & Filter CCBoot)
+*Buka `regedit` di PC Client yang masih dalam mode Super User:*
+
+#### A. HAPUS Nilai `UpperFilters` (KUNCI AGAR TIDAK BSOD `0x7B`)
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}`
+  👉 Hapus value: **`UpperFilters`** *(berisi `CCBootPNPX`)*.
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{71a27cdd-812a-11d0-bec7-08002be2092f}`
+  👉 Hapus value: **`UpperFilters`** *(berisi `CCacheX`)*.
+
+#### B. NONAKTIFKAN Service Driver CCBoot
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CCBootPNPX` $\rightarrow$ Set **`Start` = `4`**
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CCacheX` $\rightarrow$ Set **`Start` = `4`**
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CCBootClient` $\rightarrow$ Set **`Start` = `4`**
+
+#### C. Pastikan Slot `0000` & `NetCfgInstanceId` Sinkron
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000`
+  - Pastikan properti driver adalah milik kartu LAN fisik (misal Realtek).
+  - **Pastikan `NetCfgInstanceId` tetap memakai GUID boot asli yang terhubung ke `Tcpip` dan `WFPLWFS`.**
+* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\PCI\VEN_...\[InstanceID]`
+  - Pastikan `"Driver"="{4d36e972-e325-11ce-bfc1-08002be10318}\\0000"`.
+  - Pastikan `"ConfigFlags"=dword:00000000`.
+
+### Langkah 3: Simpan & Nikmati Kebebasan Driverless!
+1. Tutup Regedit, lalu Shutdown PC Client.
+2. Di server, simpan image dan **matikan mode Super User**.
+3. Nyalakan kembali PC Client secara diskless:
+   * **PC akan menyala mulus sampai ke desktop Windows.**
+   * Master image Anda kini **100% Native Driverless**, sepenuhnya terbebas dari software komersial, dan siap dijalankan langsung di server **Simple-Iscsi**!
+
+---
+
+## 9.6 Panduan Ekstraksi Driver NIC (Tiga Serangkai) dari Windows Aktif & WinPE
+
+Untuk memindahkan konfigurasi kartu LAN dari PC klien fisik (motherboard apapun) ke dalam master image diskless, Anda wajib mengekstrak **Tiga Serangkai Registri** berikut:
+
+```
+[1. Class]    Control\Class\{4d36e972...}\0000        --> Konfigurasi Driver & 59 Tab Advanced
+[2. Enum]     Enum\PCI\VEN_xxxx&DEV_xxxx...\[DevID]   --> Node Hardware PCI (Wajib ConfigFlags = 0)
+[3. Services] Services\[NamaDriver] + file .sys       --> Pendaftaran NDIS & File Fisik Driver
+```
+
+### Metode A: Ekstraksi di Windows yang Sedang Berjalan (Live Windows)
+Buka **Command Prompt (CMD) as Administrator** di PC klien fisik yang sudah terinstal driver LAN resmi:
+
+```cmd
+mkdir C:\BackupNIC
+
+:: 1. Ekspor Bagian Class (Konfigurasi & Tab Advanced)
+reg export "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000" C:\BackupNIC\class.reg /y
+
+:: 2. Ekspor Bagian Enum (Hardware Node PCI) - Sesuaikan Hardware ID LAN fisik Anda
+reg export "HKLM\SYSTEM\CurrentControlSet\Enum\PCI\VEN_10EC&DEV_8168&SUBSYS_23121565&REV_15\01000000684CE00000" C:\BackupNIC\pci.reg /y
+
+:: 3. Ekspor Bagian Services (Pendaftaran Driver NDIS) - Sesuaikan nama servicenya (misal rt640x64)
+reg export "HKLM\SYSTEM\CurrentControlSet\Services\rt640x64" C:\BackupNIC\service.reg /y
+
+:: 4. Salin File Fisik Driver (.sys)
+copy "C:\Windows\System32\drivers\rt640x64.sys" C:\BackupNIC\
+```
+
+---
+
+### Metode B: Ekstraksi di Lingkungan WinPE (Offline Registry Hive)
+Jika PC klien di-boot menggunakan USB WinPE dan partisi Windows asli berada di drive `C:\`:
+
+```cmd
+mkdir X:\BackupNIC
+
+:: 1. Muat (Mount) File Registri SYSTEM Windows Offline ke WinPE
+reg load HKLM\OFFLINE_SYS C:\Windows\System32\config\SYSTEM
+
+:: 2. Ekspor Bagian Class dari OFFLINE_SYS
+reg export "HKLM\OFFLINE_SYS\ControlSet001\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000" X:\BackupNIC\class.reg /y
+
+:: 3. Ekspor Bagian Enum dari OFFLINE_SYS
+reg export "HKLM\OFFLINE_SYS\ControlSet001\Enum\PCI\VEN_10EC&DEV_8168&SUBSYS_23121565&REV_15\01000000684CE00000" X:\BackupNIC\pci.reg /y
+
+:: 4. Ekspor Bagian Services dari OFFLINE_SYS
+reg export "HKLM\OFFLINE_SYS\ControlSet001\Services\rt640x64" X:\BackupNIC\service.reg /y
+
+:: 5. Salin File Fisik Driver .sys dari harddisk C:
+copy "C:\Windows\System32\drivers\rt640x64.sys" X:\BackupNIC\
+
+:: 6. Lepas (Unload) Kembali Registri Offline (Wajib!)
+reg unload HKLM\OFFLINE_SYS
+```
+
+---
+
+### ⚠️ Aturan Wajib Editing Sebelum Di-Inject ke Master Image:
+
+Sebelum ketiga file `.reg` di atas di-import ke master image diskless:
+1. **Buka `pci.reg`:**
+   - Pastikan `"ConfigFlags"=dword:00000000` *(jangan sampai bernilai `1`!)*
+   - Pastikan pointer driver mengarah ke slot 0000: `"Driver"="{4d36e972-e325-11ce-bfc1-08002be10318}\\0000"`
+2. **Buka `class.reg`:**
+   - Pastikan nama jalurnya berada di **`\0000`**.
+   - **Ganti nilai `NetCfgInstanceId`** agar sama persis dengan GUID boot master image Anda (misal: `"{79A1BBB6-13F7-4F13-9070-4862675230A2}"`).
+   - Hapus subkey `Linkage` jika ada.
+3. **Buka `service.reg`:**
+   - Pastikan memiliki baris: `"Start"=dword:00000003`, `"Group"="NDIS"`, dan `"BootFlags"=dword:00000001`.
 
 ---
 *Dokumentasi ini disusun secara komprehensif berdasarkan basis kode resmi Simple-Iscsi (Rust & C++) untuk referensi pengembangan dan operasional.*

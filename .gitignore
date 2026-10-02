@@ -17,6 +17,7 @@
 *.zip
 *.reg
 /Diskless_Client_Backup/
+/NIC LAN/
 /isharedisk/
 /CCBootExtF/
 /CCBootHelper/
