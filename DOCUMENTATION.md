@@ -734,4 +734,50 @@ Sebelum ketiga file `.reg` di atas di-import ke master image diskless:
    - Pastikan memiliki baris: `"Start"=dword:00000003`, `"Group"="NDIS"`, dan `"BootFlags"=dword:00000001`.
 
 ---
+
+## 9.7 Arsitektur Urutan Pemuatan Kernel: ServiceGroupOrder & Kustom Grup `iScsiPrt`
+
+Salah satu penemuan paling mendalam pada sistem iSCSI boot adalah **pembalikan urutan pemuatan driver kernel (*Driver Load Inversion*)** di dalam registri:
+`HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\ServiceGroupOrder` pada nilai **`List`** (REG_MULTI_SZ).
+
+### Perbedaan Ekstrem: Windows Normal vs iSCSI Boot
+
+```
+[Windows Normal / Local SSD]                 [Windows Diskless iSCSI Boot]
+Posisi  6: SCSI miniport (Storage Dulu!)    Posisi  6: NDIS Wrapper  ▲ (Jaringan Ditarik ke Atas!)
+Posisi  7: Port                             Posisi  7: NDIS          ▲
+Posisi  8: Primary Disk                     Posisi  8: Base          ▲
+...                                         Posisi  9: PNP_TDI       ▲ (TCP/IP & Firewall Aktif!)
+Posisi 45: NDIS Wrapper (Jaringan Nanti)    Posisi 10: SimpleISCSI / CCiSCSI (iScsiPrt Aktif!)
+Posisi 55: PNP_TDI      (TCP/IP Terlambat)  Posisi 11: SCSI miniport (Storage Terhubung via LAN)
+Posisi 56: NDIS         (Kartu LAN Belakangan)
+```
+
+> **Logika Kernel:**  
+> Pada PC lokal biasa, Windows membaca file sistem dari SSD SATA/NVMe terlebih dahulu, baru menyalakan kartu jaringan di posisi 45–56.  
+> Namun pada **iSCSI Boot**, harddisk `C:` berada di ujung kabel LAN! Jika `iScsiPrt` berjalan di posisi normal (posisi 6) saat TCP/IP belum menyala, `iscsiprt.sys` tidak bisa menghubungi target iSCSI $\rightarrow$ **BSOD `0x7B`**.
+>
+> Oleh karena itu, **grup jaringan (`NDIS Wrapper`, `NDIS`, dan `PNP_TDI`) WAJIB DITARIK KE ATAS** mendahului storage!
+
+---
+
+### Konsep Kustom Grup Bebas untuk `iScsiPrt`
+
+Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
+```ini
+"Group"="SimpleISCSI"
+```
+
+* **Nama Grup Bebas Dipilih:**
+  Nama grup ini **TIDAK TERIKAT pada CCBoot**. Anda bebas menamainya apa saja, misalnya:
+  - `"Group"="SimpleISCSI"`
+  - `"Group"="iSCSI_Boot"`
+  - `"Group"="CCiSCSI"`
+* **Aturan Posisi Mutlak:**
+  Nama grup yang Anda pilih tersebut **WAJIB DISISIPKAN ke dalam daftar `ServiceGroupOrder\List` pada posisi:**
+  $$\text{Setelah } \mathbf{PNP\_TDI} \text{ (Posisi 9)} \quad \longrightarrow \quad \text{Sebelum / Sejajar } \mathbf{SCSI\text{ miniport}} \text{ (Posisi 11)}$$
+* **Tujuan Penempatan Ini:**
+  Menjamin bahwa pada detik `iscsiprt.sys` mulai memanggil fungsi socket kernel, driver kartu LAN (`NDIS`) dan tumpukan protokol TCP/IP (`PNP_TDI` + `WFPLWFS`) sudah berstatus *Running* dan siap mengalirkan paket data block storage!
+
+---
 *Dokumentasi ini disusun secara komprehensif berdasarkan basis kode resmi Simple-Iscsi (Rust & C++) untuk referensi pengembangan dan operasional.*
