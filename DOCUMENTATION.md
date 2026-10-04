@@ -5,7 +5,7 @@
 
 > [!TIP]
 > **Status Integrasi Driver Client (100% Native Driverless Telah Terbukti!):**  
-> Melalui audit forensik registri dan live hardware testing pada chip Realtek (RTL8111/8168/8125) dan Intel, sistem operasi Windows pada client terbukti **100% DAPAT BOOTING NATIVELY TANPA DRIVER PIHAK KETIGA** (`CCBootPNPX.sys` / `iSharePnp.sys` telah dinonaktifkan/dihapus sepenuhnya). Kunci keberhasilan terletak pada **Aturan Emas Slot `0000`**, sinkronisasi **`NetCfgInstanceId`**, promosi filter **`WFPLWFS`** ke Phase 0, dan **`ConfigFlags = 0`**. Panduan teknis dan langkah konversinya dijelaskan secara lengkap pada **BAB 9**.
+> Melalui audit forensik registri dan live hardware testing pada chip Realtek (RTL8111/8168/8125) dan Intel, sistem operasi Windows pada client terbukti **100% DAPAT BOOTING NATIVELY TANPA DRIVER PIHAK KETIGA** (tanpa memerlukan filter driver pihak ketiga/legacy apapun). Kunci keberhasilan terletak pada **Aturan Emas Slot `0000`**, sinkronisasi **`NetCfgInstanceId`**, promosi filter **`WFPLWFS`** ke Phase 0, dan **`ConfigFlags = 0`**. Panduan teknis dan langkah implementasinya dijelaskan secara lengkap pada **BAB 9**.
 
 ---
 
@@ -474,18 +474,17 @@ flowchart TD
     TUNE_BURST --> END_READY["Windows Masuk Desktop Mulus Tanpa Delay DHCP"]
 ```
 
-## 7.2 Status Integrasi Driver Client & Penggunaan Third-Party Driver (CCBoot & iSharedisk)
-
-Dalam ekosistem diskless Windows saat ini, proses booting SANBOOT iSCSI melibatkan dua komponen utama pada sisi client:
-
-1. **Inisialisasi NIC Adapter Hardware (PNP Driver Level):**
-   * Saat Windows kernel (`ntoskrnl.exe`) dan NDIS (*Network Driver Interface Specification*) pertama kali memuat driver kartu jaringan (Intel/Realtek/Aquantia), adapter jaringan membutuhkan filter driver PNP agar koneksi socket TCP level kernel ke target server tidak terputus (*link drop*).
-   * **Untuk saat ini, sistem masih menggunakan filter driver PNP pihak ketiga (*Third-Party Driver*) yaitu CCBoot (`CCBootPnp.sys`) atau iSharedisk (`iSharePnp.sys`) pada image Windows master client.** Driver ini bertugas menjaga *binding* kartu LAN agar tetap aktif saat transisi fase boot real-mode iPXE ke protected mode Windows.
-
-2. **Peran Target Server Simple-Iscsi & `helper.exe`:**
+## 7.2 Status Arsitektur Driverless Windows Client
+ 
+Dalam arsitektur Simple-Iscsi modern, proses booting SANBOOT iSCSI Windows client berjalan secara **100% Native Driverless murni**:
+ 
+1. **Inisialisasi Stack Network & Storage Bawaan Kernel Windows:**
+   * Kartu jaringan (Intel/Realtek) diinisialisasi secara native oleh stack kernel bawaan Microsoft (`ndis.sys` + `tcpip.sys` + `wfplwfs.sys` + `iscsiprt.sys`) tanpa memerlukan filter driver pihak ketiga/legacy apapun.
+   * Kunci keberhasilan terletak pada peletakan hardware NIC fisik di **Golden Slot `0000`**, sinkronisasi `NetCfgInstanceId`, promosi filter `WFPLWFS` ke Phase 0, serta pembalikan urutan driver via `ServiceGroupOrder`.
+ 
+2. **Peran Target Server Simple-Iscsi & Dual-Stage Helper:**
    * Seluruh pertukaran data I/O block storage (VHD OS & GameDisk), pemrosesan paket iSCSI RFC 7143, state machine SCSI SPC-4/SBC-3, dan alokasi *Writeback Cache Engine 128 MB* ditangani **100% secara independen oleh Simple-Iscsi Target Server**.
-   * Utilitas `helper.exe` mengambil alih konfigurasi jaringan runtime (IP, subnet, gateway, DNS, hostname) langsung dari tabel firmware ACPI iBFT dan membersihkan residu IP lama tanpa bergantung pada software client CCBoot/iSharedisk berbayar.
-   * Arsitektur ini dirancang sebagai jembatan transisi yang stabil menuju pengembangan modul *native filter driver open-source* mandiri di masa depan.
+   * Utilitas `helper.exe` (Stage 1 BootExecute) dan `helper-svc.exe` (Stage 2 User-Mode) mengambil alih konfigurasi jaringan runtime (IP, subnet, gateway, DNS, hostname) langsung dari tabel firmware ACPI iBFT, menyinkronkan identitas mesin secara otomatis, dan melenyapkan residual IP lama tanpa bergantung pada software proprietary apapun.
 
 ---
 
@@ -519,7 +518,7 @@ Dalam ekosistem diskless Windows saat ini, proses booting SANBOOT iSCSI melibatk
 
 # BAB 9: ARSITEKTUR & PANDUAN KONVERSI NATIVE DRIVERLESS iSCSI
 
-Melalui serangkaian audit forensik registri berukuran 47.5 MB dan pengujian fisik langsung (*live hardware testing*) pada motherboard fisik (Biostar H610MHC, MSI PRO B760M-P, MSI PRO H510M-B) dengan kartu jaringan Realtek RTL8111/8168 dan Intel Gigabit, terbukti secara ilmiah bahwa **Windows 10/11 TIDAK MEMERLUKAN DRIVER DISKLESS PIHAK KETIGA** (`CCBootPNPX.sys` / `iSharePnp.sys`).
+Melalui serangkaian audit forensik registri berukuran 47.5 MB dan pengujian fisik langsung (*live hardware testing*) pada motherboard fisik (Biostar H610MHC, MSI PRO B760M-P, MSI PRO H510M-B) dengan kartu jaringan Realtek RTL8111/8168 dan Intel Gigabit, terbukti secara ilmiah bahwa **Windows 10/11 TIDAK MEMERLUKAN DRIVER DISKLESS PIHAK KETIGA APAPUN**.
 
 Windows memiliki kapabilitas **Native iSCSI Boot murni bawaan Microsoft** (`iscsiprt.sys` + `tcpip.sys` + `wfplwfs.sys`), asalkan arsitektur registri dan pengikatan (*binding*) perangkat kerasnya memenuhi kaidah kernel Windows NT.
 
@@ -536,25 +535,26 @@ Kegagalan booting iSCSI (*BSOD 0x7B / INACCESSIBLE_BOOT_DEVICE*) pada kartu LAN 
 
 ---
 
-### 2. Rantai Sakral `NetCfgInstanceId` (GUID Synchronization)
+### 2. Rantai Sakral & Hukum Permanen `NetCfgInstanceId` (GUID Synchronization)
 Di dalam slot `0000`, terdapat satu string GUID unik bernama:
 ```ini
 "NetCfgInstanceId"="{79A1BBB6-13F7-4F13-9070-4862675230A2}"
 ```
-GUID ini adalah **"Kunci Gembok Tunggal"** yang menghubungkan empat subsistem kernel secara bersamaan:
+GUID ini adalah **"Kunci Gembok Tunggal Abadi"** yang menghubungkan 12 subsistem kernel secara bersamaan:
 
 ```mermaid
 graph TD
     CLASS["Control\\Class\\{4d36e972...}\\0000<br/>(NetCfgInstanceId = GUID)"] --> TCPIP_ADAPTER["Services\\Tcpip\\Parameters\\Adapters\\{GUID}"]
     CLASS --> TCPIP_INTERFACE["Services\\Tcpip\\Parameters\\Interfaces\\{GUID}<br/>(IP Statis / Gateway)"]
+    CLASS --> TCPIP_LINKAGE["Services\\Tcpip\\Linkage<br/>(Bind = \\Device\\{GUID})"]
     CLASS --> WFPLWFS["Services\\WFPLWFS\\Parameters\\Adapters\\{GUID}<br/>(Firewall Packet Filter)"]
     CLASS --> NDIS_CONN["Control\\Network\\{4d36e972...}\\{GUID}<br/>(Koneksi Jaringan NDIS)"]
 ```
 
-> ⚠️ **Mengapa Mengganti GUID Bikin Gagal Boot?**  
-> Jika file `class.reg` kartu LAN fisik membawa GUID baru (misal `{9E379CA4...}`) dan di-import begitu saja ke `0000`, maka nilai `NetCfgInstanceId` di `0000` akan berubah. Akibatnya, `WFPLWFS` (Firewall) dan `TCPIP` di Phase 0 tidak mengenali adapter tersebut karena mereka masih memegang GUID lama. Seluruh paket LAN Realtek **DIBLOKIR oleh WFPLWFS** $\rightarrow$ koneksi iSCSI terputus seketika $\rightarrow$ **Freeze / BSOD `0x7B`**.
+> ⚠️ **Hukum Mutlak: GUID Slot `0000` Tidak Boleh Diubah Sampai Kapanpun!**  
+> GUID di slot `0000` di-generate satu kali saat Windows di-install dan bersifat **permanen**. Jika file `class.reg` kartu LAN fisik membawa GUID baru (misal `{9E379CA4...}`) dan di-import begitu saja ke `0000`, maka nilai `NetCfgInstanceId` di `0000` akan berubah. Akibatnya, `WFPLWFS` (Firewall) dan `TCPIP\Linkage` di Phase 0 tidak mengenali adapter tersebut karena mereka masih memegang GUID lama. Seluruh paket LAN Realtek/Intel **DIBLOKIR oleh WFPLWFS** $\rightarrow$ koneksi iSCSI terputus seketika $\rightarrow$ **Freeze / BSOD `0x7B`**.
 >
-> **Solusi Paten:** Saat menimpa slot `0000` dengan driver fisik Realtek/Intel, **NILAI `NetCfgInstanceId` WAJIB DIPERTAHANKAN MEMAKAI GUID BOOT ASLI (`{79A1BBB6...}`)**!
+> **Solusi Paten (Set and Forget):** Saat menimpa slot `0000` dengan driver fisik Realtek/Intel, **NILAI `NetCfgInstanceId` DAN `NetLuidIndex` (`dword:00008000`) WAJIB DIPERTAHANKAN MEMAKAI MILIK BOOT ASLI `0000`**!
 
 ---
 
@@ -611,39 +611,37 @@ Agar menu di **Device Manager $\rightarrow$ Network Adapters $\rightarrow$ Prope
 
 ## 9.5 Panduan Langkah Demi Langkah Konversi Praktis (End-User Guide)
 
-Berikut adalah panduan praktis untuk mengonversi master image menggunakan bantuan CCBoot Client di awal untuk auto-detect PnP, lalu melepasnya secara permanen:
+Berikut adalah panduan praktis untuk konfigurasi master image Windows client secara 100% Native Driverless murni:
 
 ```
-[Tahap 1] Inisiasi Driver LAN via CCBoot Client (Super User)
+[Tahap 1] Deteksi & Instalasi Driver LAN Fisik (Super Client Mode)
      │
      ▼
-[Tahap 2] Booting Perdana & Masuk Desktop Windows
+[Tahap 2] Verifikasi Booting Perdana & Masuk Desktop Windows
      │
      ▼
-[Tahap 3] Operasi Registri: Lepas Filter, Timpa Slot 0000 & Pertahankan GUID
+[Tahap 3] Operasi Registri: Bersihkan UpperFilters, Validasi Slot 0000 & GUID
      │
      ▼
 [Tahap 4] Restart PC & Verifikasi (100% Native Driverless Sukses!)
 ```
 
-### Langkah 1: Inisiasi Driver LAN (Mode Super User)
+### Langkah 1: Inisiasi Driver LAN Fisik (Mode Super User / Super Client)
 1. Nyalakan PC Client target dalam mode **Super User / Super Client**.
-2. Buka aplikasi **CCBoot Client** di PC Client, lalu jalankan fitur **PNP / Add NIC** agar driver kartu LAN terdeteksi otomatis.
+2. Pastikan driver resmi kartu jaringan (Realtek PCIe GbE Family Controller / Intel Ethernet) terpasang dengan benar di Device Manager.
 3. Restart PC Client dan pastikan sudah bisa **masuk sampai ke desktop Windows**.
 
-### Langkah 2: Operasi Registri (Pelepasan Driver & Filter CCBoot)
+### Langkah 2: Operasi Registri (Pembersihan Filter & Validasi Driverless)
 *Buka `regedit` di PC Client yang masih dalam mode Super User:*
 
 #### A. HAPUS Nilai `UpperFilters` (KUNCI AGAR TIDAK BSOD `0x7B`)
 * Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}`
-  👉 Hapus value: **`UpperFilters`** *(berisi `CCBootPNPX`)*.
+  👉 Hapus value: **`UpperFilters`** jika ada (hapus sisa filter driver pihak ketiga/legacy).
 * Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{71a27cdd-812a-11d0-bec7-08002be2092f}`
-  👉 Hapus value: **`UpperFilters`** *(berisi `CCacheX`)*.
+  👉 Hapus value: **`UpperFilters`** jika ada.
 
-#### B. NONAKTIFKAN Service Driver CCBoot
-* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CCBootPNPX` $\rightarrow$ Set **`Start` = `4`**
-* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CCacheX` $\rightarrow$ Set **`Start` = `4`**
-* Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CCBootClient` $\rightarrow$ Set **`Start` = `4`**
+#### B. NONAKTIFKAN Service Driver Legacy
+* Pastikan seluruh service driver pihak ketiga / legacy pada master image dinonaktifkan $\rightarrow$ Set **`Start` = `4`** (Disabled).
 
 #### C. Pastikan Slot `0000` & `NetCfgInstanceId` Sinkron
 * Buka: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000`
@@ -728,8 +726,11 @@ Sebelum ketiga file `.reg` di atas di-import ke master image diskless:
    - Pastikan pointer driver mengarah ke slot 0000: `"Driver"="{4d36e972-e325-11ce-bfc1-08002be10318}\\0000"`
 2. **Buka `class.reg`:**
    - Pastikan nama jalurnya berada di **`\0000`**.
-   - **Ganti nilai `NetCfgInstanceId`** agar sama persis dengan GUID boot master image Anda (misal: `"{79A1BBB6-13F7-4F13-9070-4862675230A2}"`).
-   - Hapus subkey `Linkage` jika ada.
+   - **Ganti nilai `NetCfgInstanceId`** agar sama persis dengan GUID boot master image Anda (misal: `"{79A1BBB6-13F7-4F13-9070-4862675230A2}"`). **GUID ini bersifat permanen dan tidak boleh diubah.**
+   - Pastikan **`"NetLuidIndex"=dword:00008000`**.
+   - **Hapus baris `"NoDisplayClass"="1"`** jika ada (agar kartu LAN tidak disembunyikan dari Device Manager).
+   - Pastikan **`"Characteristics"=dword:00000084`** (`NCF_PHYSICAL | NCF_HAS_UI`) agar kartu LAN muncul resmi di Device Manager & Network Connections (`ncpa.cpl`).
+   - **JANGAN MENGHAPUS subkey `Linkage`!** Subkey `Linkage` (berisi `UpperBind`, `Export`, `RootDevice`) wajib tetap ada agar protokol TCP/IP dapat di-bind ke driver kartu LAN fisik slot `0000`.
 3. **Buka `service.reg`:**
    - Pastikan memiliki baris: `"Start"=dword:00000003`, `"Group"="NDIS"`, dan `"BootFlags"=dword:00000001`.
 
@@ -769,10 +770,10 @@ Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
 ```
 
 * **Nama Grup Bebas Dipilih:**
-  Nama grup ini **TIDAK TERIKAT pada CCBoot**. Anda bebas menamainya apa saja, misalnya:
+  Nama grup ini fleksibel dan bebas Anda tentukan, misalnya:
   - `"Group"="SimpleISCSI"`
   - `"Group"="iSCSI_Boot"`
-  - `"Group"="CCiSCSI"`
+  - `"Group"="SANBOOT"`
 * **Aturan Posisi Mutlak:**
   Nama grup yang Anda pilih tersebut **WAJIB DISISIPKAN ke dalam daftar `ServiceGroupOrder\List` pada posisi:**
   $$\text{Setelah } \mathbf{PNP\_TDI} \text{ (Posisi 9)} \quad \longrightarrow \quad \text{Sebelum / Sejajar } \mathbf{SCSI\text{ miniport}} \text{ (Posisi 11)}$$

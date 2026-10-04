@@ -117,7 +117,9 @@ pub struct WindowsConfig {
     pub product_id: String,
     pub product_revision: String,
     pub discovery: bool,
+    #[serde(default)]
     pub super_client_ip: String,
+    #[serde(default)]
     pub super_client_action: String,
 }
 
@@ -365,4 +367,16 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
     info!("Client '{}' ({}) appended to {}", 
         client.hostname.as_deref().unwrap_or("?"), client.mac, path);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_current_config() {
+        let res = load_config("config.toml");
+        println!("load_config result: {:?}", res);
+        assert!(res.is_ok());
+    }
 }

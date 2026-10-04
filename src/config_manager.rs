@@ -29,30 +29,65 @@ impl SharedConfig {
         }
         self.update(current_cfg);
     }
+
+    pub fn set_super_client(&self, ip: String, action: String) {
+        let mut current_cfg = (*self.read()).clone();
+        if let Some(ref mut win) = current_cfg.windows {
+            win.super_client_ip = ip;
+            win.super_client_action = action;
+        }
+        self.update(current_cfg);
+    }
+
+    pub fn clear_super_client(&self) {
+        self.set_super_client(String::new(), String::new());
+    }
+}
+
+pub fn update_super_client_config_file(config_path: &str, ip: &str, action: &str) -> std::io::Result<()> {
+    let content = std::fs::read_to_string(config_path)?;
+    let mut new_lines = Vec::new();
+    let mut ip_found = false;
+    let mut action_found = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("super_client_ip") {
+            new_lines.push(format!("super_client_ip = \"{}\"", ip));
+            ip_found = true;
+        } else if trimmed.starts_with("super_client_action") {
+            new_lines.push(format!("super_client_action = \"{}\"", action));
+            action_found = true;
+        } else {
+            new_lines.push(line.to_string());
+        }
+    }
+
+    // Jika super_client_ip atau super_client_action belum ada di config.toml, sisipkan di bawah section [windows]
+    if !ip_found || !action_found {
+        let mut final_lines = Vec::new();
+        for line in new_lines {
+            let is_win = line.trim() == "[windows]";
+            final_lines.push(line);
+            if is_win {
+                if !ip_found {
+                    final_lines.push(format!("super_client_ip = \"{}\"", ip));
+                }
+                if !action_found {
+                    final_lines.push(format!("super_client_action = \"{}\"", action));
+                }
+            }
+        }
+        std::fs::write(config_path, final_lines.join("\r\n"))?;
+    } else {
+        std::fs::write(config_path, new_lines.join("\r\n"))?;
+    }
+
+    Ok(())
 }
 
 pub fn clear_super_client_config(config_path: &str) -> std::io::Result<()> {
-    use std::io::{BufRead, Write};
-    let file = std::fs::File::open(config_path)?;
-    let reader = std::io::BufReader::new(file);
-    let mut new_lines = Vec::new();
-    
-    for line in reader.lines() {
-        let line = line?;
-        if line.trim().starts_with("super_client_ip") {
-            new_lines.push("super_client_ip = \"\"".to_string());
-        } else if line.trim().starts_with("super_client_action") {
-            new_lines.push("super_client_action = \"\"".to_string());
-        } else {
-            new_lines.push(line);
-        }
-    }
-    
-    let mut out = std::fs::File::create(config_path)?;
-    for line in new_lines {
-        writeln!(out, "{}", line)?;
-    }
-    Ok(())
+    update_super_client_config_file(config_path, "", "")
 }
 
 pub fn start_config_watcher(
@@ -145,4 +180,66 @@ pub fn start_config_watcher(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_super_client_file_and_shared_config_lifecycle() {
+        let temp_dir = std::env::temp_dir();
+        let test_cfg_path = temp_dir.join("test_super_config.toml");
+        let path_str = test_cfg_path.to_str().unwrap();
+
+        // 1. Initial config file without super_client keys
+        let initial_content = r#"
+[server]
+address = "127.0.0.1"
+port = 3260
+read_cache_gb = 4
+
+[gamedisk_target]
+target_iqn = "iqn.test:gamedisk"
+discovery = true
+
+[windows]
+target_iqn_prefix = "iqn.test:vhd-"
+vhd_dir = "C:\\vhd"
+block_size = 512
+vendor_id = "RUSTISCS"
+product_id = "WindowsBoot"
+product_revision = "1.00"
+discovery = false
+
+[writeback]
+writeback_dirs = ["C:\\writeback"]
+max_cache_per_client_gb = 10
+"#;
+        std::fs::write(&test_cfg_path, initial_content).unwrap();
+
+        // 2. Enable Super Client (inserts keys under [windows])
+        update_super_client_config_file(path_str, "192.168.180.2", "enable").unwrap();
+        let loaded = crate::config::load_config(path_str).unwrap();
+        assert_eq!(loaded.windows.as_ref().unwrap().super_client_ip, "192.168.180.2");
+        assert_eq!(loaded.windows.as_ref().unwrap().super_client_action, "enable");
+
+        // 3. Test SharedConfig in-memory update
+        let shared = SharedConfig::new(loaded);
+        assert_eq!(shared.read().windows.as_ref().unwrap().super_client_ip, "192.168.180.2");
+
+        // 4. Disable Super Client (clears IP and action to empty string)
+        update_super_client_config_file(path_str, "", "").unwrap();
+        let loaded_disabled = crate::config::load_config(path_str).unwrap();
+        assert_eq!(loaded_disabled.windows.as_ref().unwrap().super_client_ip, "");
+        assert_eq!(loaded_disabled.windows.as_ref().unwrap().super_client_action, "");
+
+        // 5. Test SharedConfig clear_super_client
+        shared.clear_super_client();
+        assert_eq!(shared.read().windows.as_ref().unwrap().super_client_ip, "");
+        assert_eq!(shared.read().windows.as_ref().unwrap().super_client_action, "");
+
+        // Cleanup
+        let _ = std::fs::remove_file(test_cfg_path);
+    }
 }
