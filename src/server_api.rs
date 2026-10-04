@@ -3,16 +3,17 @@ use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json::json;
 use tracing::{info, error};
-use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
 
-use crate::config_manager::{SharedConfig, clear_super_client_config};
+use crate::config_manager::SharedConfig;
 use crate::stats::ServerStats;
-use crate::vhd_merge;
-use crate::writeback_super;
 
-pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
+pub async fn start_api_server(
+    config: SharedConfig,
+    stats: Arc<ServerStats>,
+    service_manager: Arc<crate::service_manager::ServiceManager>,
+) {
     let addr = "127.0.0.1:8080";
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -28,6 +29,7 @@ pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
             Ok((mut socket, _client_addr)) => {
                 let config_clone = config.clone();
                 let stats_clone = stats.clone();
+                let service_mgr_clone = service_manager.clone();
                 tokio::spawn(async move {
                     let mut req_bytes = Vec::new();
                     let mut buf = [0u8; 4096];
@@ -76,7 +78,7 @@ pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
                         if request.starts_with("GET /api/stats/stream ") {
                             crate::api::routes_stats::handle_sse_stream(socket, config_clone, stats_clone).await;
                         } else {
-                            let response = handle_request(&request, &config_clone, &stats_clone).await;
+                            let response = handle_request(&request, &config_clone, &stats_clone, &service_mgr_clone).await;
                             let _ = socket.write_all(response.as_bytes()).await;
                             let _ = socket.flush().await;
                         }
@@ -90,7 +92,12 @@ pub async fn start_api_server(config: SharedConfig, stats: Arc<ServerStats>) {
     }
 }
 
-async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStats>) -> String {
+async fn handle_request(
+    req: &str,
+    config: &SharedConfig,
+    stats: &Arc<ServerStats>,
+    service_manager: &Arc<crate::service_manager::ServiceManager>,
+) -> String {
     let mut lines = req.lines();
     let request_line = match lines.next() {
         Some(l) => l,
@@ -146,6 +153,68 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
             build_response(200, "OK", "application/json", &payload.to_string())
         }
 
+        ("GET", "/api/services/status") => {
+            let status = service_manager.get_status();
+            match serde_json::to_string(&status) {
+                Ok(json_str) => build_response(200, "OK", "application/json", &json_str),
+                Err(e) => build_response(500, "Internal Server Error", "text/plain", &e.to_string()),
+            }
+        }
+
+        ("POST", "/api/services/restart") => {
+            let service = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("service").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "all".to_string());
+            
+            let sm = service_manager.clone();
+            tokio::spawn(async move {
+                match service.as_str() {
+                    "dhcp" => sm.restart_dhcp().await,
+                    "tftp" => sm.restart_tftp().await,
+                    "iscsi" => sm.restart_iscsi().await,
+                    _ => sm.restart_all().await,
+                }
+            });
+            build_response(200, "OK", "application/json", r#"{"status":"ok","message":"Restart initiated"}"#)
+        }
+
+        ("POST", "/api/services/stop") => {
+            let service = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("service").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "all".to_string());
+            
+            let sm = service_manager.clone();
+            tokio::spawn(async move {
+                match service.as_str() {
+                    "dhcp" => sm.stop_dhcp().await,
+                    "tftp" => sm.stop_tftp().await,
+                    "iscsi" => sm.stop_iscsi().await,
+                    _ => sm.stop_all().await,
+                }
+            });
+            build_response(200, "OK", "application/json", r#"{"status":"ok","message":"Stop initiated"}"#)
+        }
+
+        ("POST", "/api/services/start") => {
+            let service = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("service").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "all".to_string());
+            
+            let sm = service_manager.clone();
+            tokio::spawn(async move {
+                match service.as_str() {
+                    "dhcp" => sm.start_dhcp().await,
+                    "tftp" => sm.start_tftp().await,
+                    "iscsi" => sm.start_iscsi().await,
+                    _ => sm.start_all().await,
+                }
+            });
+            build_response(200, "OK", "application/json", r#"{"status":"ok","message":"Start initiated"}"#)
+        }
+
         ("GET", "/api/config") => {
             match fs::read_to_string("config.toml") {
                 Ok(content) => build_response(200, "OK", "text/plain", &content),
@@ -193,8 +262,13 @@ async fn handle_request(req: &str, config: &SharedConfig, stats: &Arc<ServerStat
                                 error!("Gagal menulis file config.toml: {}", e);
                                 build_response(500, "Internal Server Error", "text/plain", &e.to_string())
                             } else {
-                                info!("Berhasil memperbarui file config.toml di disk.");
-                                build_response(200, "OK", "text/plain", "Config saved successfully")
+                                info!("Berhasil memperbarui file config.toml di disk. Memicu reload instan...");
+                                config.update(cfg);
+                                let sm = service_manager.clone();
+                                tokio::spawn(async move {
+                                    sm.restart_all().await;
+                                });
+                                build_response(200, "OK", "text/plain", "Config saved and services reloaded successfully")
                             }
                         }
                         Err(e) => {

@@ -21,6 +21,14 @@ impl SharedConfig {
     pub fn update(&self, new_config: Config) {
         *self.inner.write() = Arc::new(new_config);
     }
+
+    pub fn set_dhcp_enabled(&self, enabled: bool) {
+        let mut current_cfg = (*self.read()).clone();
+        if let Some(ref mut d) = current_cfg.dhcp {
+            d.enabled = enabled;
+        }
+        self.update(current_cfg);
+    }
 }
 
 pub fn clear_super_client_config(config_path: &str) -> std::io::Result<()> {

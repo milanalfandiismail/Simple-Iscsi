@@ -254,7 +254,7 @@ Sebelum menyusun langkah di plan, lakukan audit terhadap basis kode yang disentu
 * Jalankan `detect_changes` pada MCP untuk memeriksa apakah ada dampak yang terlewat.
 
 #### Langkah 6: Wajib Catat ke Living Memory (`ANTIGRAVITY.md`)
-* Setelah semua langkah terverifikasi, perbarui Bagian 7 ([Matriks Status Fitur](#7-matriks-status-fitur)) dan Bagian 8 ([Riwayat Pengerjaan & Change Log](#8-riwayat-pengerjaan--change-log)) di dokumen ini.
+* Setelah semua langkah terverifikasi, perbarui Bagian 8 ([Matriks Status Fitur](#8-matriks-status-fitur)) dan Bagian 9 ([Riwayat Pengerjaan & Change Log](#9-riwayat-pengerjaan--change-log)) di dokumen ini.
 
 ---
 
@@ -310,39 +310,190 @@ Setiap file plan wajib menggunakan struktur berikut:
 
 ---
 
-## 3. STANDAR OPERASIONAL PROSEDUR (SOP) KERJA LENGKAP AI AGENT
+## 3. PROTOKOL SYSTEMATIC DEBUGGING (PLUGIN `superpowers:systematic-debugging`)
 
-Ringkasan siklus kerja harian AI Agent:
+Setiap kali menghadapi bug, error panic, crash, test failure, port collision, atau perilaku tak terduga (*unexpected behavior*), AI Agent **DILARANG KERAS** langsung menebak-nebak perbaikan atau membuat perubahan kode acak.
+
+> [!CAUTION]
+> **HUKUM BESI DEBUGGING (THE IRON LAW):**
+> ```
+> TIDAK BOLEH MEMBUAT FIX TANPA INVESTIGASI ROOT CAUSE TERLEBIH DAHULU!
+> (NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST)
+> ```
+> Memperbaiki gejala (*symptom fix*) tanpa memahami akar penyebab adalah kegagalan fatal.
+
+```mermaid
+flowchart TD
+    D1["1. Investigasi Root Cause<br/>(Baca Trace Lengkap, Reproduksi, Cek Perubahan, Trace Data Flow)"] --> D2["2. Analisis Pola<br/>(Bandingkan dengan Implementasi Normal & Spesifikasi Standar)"]
+    D2 --> D3["3. Hipotesis Ilmiah<br/>(Rumuskan Hipotesis Tunggal, Uji Secara Minimal / Satu Variabel)"]
+    D3 --> D4["4. Implementasi & Verifikasi<br/>(Perbaiki di Sumber Masalah, Buktikan Sukses Tanpa Regresi)"]
+    D4 -->|Jika 3x Gagal| D_ARCH["STOP! Evaluasi Arsitektur Bersama User"]
+```
+
+### 3.1 Empat Fase Systematic Debugging
+
+Setiap investigasi masalah **WAJIB** melalui 4 fase berikut secara berurutan:
+
+#### Fase 1: Investigasi Root Cause (Investigasi Akar Masalah)
+1. **Baca Pesan Error & Stack Trace Sampai Tuntas:**
+   * Jangan melompati error atau sekadar membaca sekilas baris pertama.
+   * Catat nomor baris exact, nama file, modul, dan kode status (contoh: error `1812`, `10048`, `0xc0000409`, `0x0000007B`).
+2. **Reproduksi Masalah Secara Konsisten:**
+   * Pastikan skenario pemicu (*trigger*) dapat diulang dengan langkah yang pasti. Jika belum bisa direproduksi, kumpulkan lebih banyak data log/trace, jangan menebak.
+3. **Cek Perubahan Terakhir:**
+   * Periksa `git diff` dan commit terbaru (`git status`, `git log -n 5`). Komponen apa yang baru saja disentuh?
+4. **Kumpulkan Bukti pada Batas Komponen (Boundary Logging):**
+   * Tambahkan instrumentasi diagnostik sementara pada perbatasan layer:
+     * Antara Tokio runtime dan foreign thread (Win32 OS thread).
+     * Antara layer network UDP/TCP dan parser biner PDU/DHCP.
+     * Antara kernel registry dan storage driver Phase 0.
+5. **Trace Data Flow ke Arah Belakang (*Backward Tracing*):**
+   * Cari dari mana nilai/kondisi yang keliru pertama kali berasal. Perbaiki di sumbernya, bukan di tempat gejala muncul.
+
+#### Fase 2: Analisis Pola (*Pattern Analysis*)
+1. **Temukan Contoh yang Berfungsi (*Working Examples*):**
+   * Cari kode serupa di codebase yang bekerja normal.
+2. **Bandingkan dengan Referensi:**
+   * Baca dokumentasi API atau standar RFC (RFC 2131/2132 untuk DHCP, RFC 7143 untuk iSCSI, dokumentasi MSDN untuk Win32).
+3. **Identifikasi Perbedaan Sekecil Apa Pun:**
+   * Jangan pernah berasumsi "perbedaan kecil ini pasti tidak berpengaruh".
+
+#### Fase 3: Hipotesis dan Pengujian Minimal
+1. **Rumuskan Satu Hipotesis Spesifik:**
+   * Tuliskan pernyataan: *"Saya menduga X adalah akar masalah karena Y."*
+2. **Uji Secara Minimal (Satu Variabel):**
+   * Ubah seminimal mungkin kode untuk membuktikan atau mematahkan hipotesis. Jangan mengubah banyak modul sekaligus.
+3. **Verifikasi Bukti:**
+   * Jika hipotesis terbukti salah, batalkan perubahan dan rumuskan hipotesis baru. Jangan menumpuk dugaan di atas dugaan.
+
+#### Fase 4: Implementasi dan Verifikasi
+1. **Buat Test Case / Bukti Reproduksi:**
+   * Pastikan ada cara menguji bahwa bug sudah hilang.
+2. **Terapkan Single Fix:**
+   * Perbaiki tepat di akar masalah. Jangan selipkan refactoring di luar konteks (*no bundled refactoring*).
+3. **Buktikan Keberhasilan (*Evidence-Based*):**
+   * Jalankan `cargo check`, `cargo build`, atau tes fungsional.
+4. **Aturan 3x Gagal (Stop & Question Architecture):**
+   * Jika sudah **3 kali mencoba perbaikan dan masih gagal**, **BERHENTI**. Ini menandakan masalah arsitektur fundamental, bukan sekadar bug sintaks. Diskusikan segera dengan user!
+
+---
+
+### 3.2 Playbook Debugging Kasus Nyata Proyek Simple-Iscsi
+
+Berikut panduan pemecahan masalah untuk kasus-kasus kritis yang sering ditemui pada repositori ini:
+
+#### 1. Panic Tokio Runtime pada Foreign Thread (Win32 Message Loop / System Tray)
+* **Gejala / Error:**
+  `panicked at src\tray.rs: there is no reactor running, must be called from the context of a Tokio 1.x runtime`
+  `STATUS_STACK_BUFFER_OVERRUN (exit code: 0xc0000409)`
+* **Akar Masalah:**
+  Fungsi `tokio::spawn(...)` dipanggil langsung dari thread OS biasa (misalnya `std::thread` yang menjalankan Windows Message Pump `GetMessageW`). Karena callback `wnd_proc` bertipe `extern "system"`, panic tidak bisa unwind melintasi batas C FFI sehingga Windows langsung menghentikan proses (*abort*).
+* **Solusi Baku:**
+  Tangkap `tokio::runtime::Handle::current()` dari thread utama yang menjalankan Tokio runtime, lalu teruskan ke struct state tray. Gunakan `handle.spawn(async move { ... })` untuk mendispatch task async dari thread mana pun secara aman.
+
+#### 2. Socket Port Collision / Reuse Error (UDP 67 DHCP & UDP 69 TFTP)
+* **Gejala / Error:**
+  `os error 10048 (WSAEADDRINUSE)` saat server DHCP atau TFTP di-restart dengan cepat.
+* **Akar Masalah:**
+  Kernel Windows masih menahan socket lama dalam antrean atau ada background task (seperti loop file watcher `clients.toml`) yang belum terhenti dan masih memegang handle socket UDP.
+* **Solusi Baku:**
+  1. Buat socket menggunakan `socket2::Socket` dengan flag `set_reuse_address(true)`.
+  2. Sambungkan semua background watcher task dengan broadcast channel `shutdown_rx` sehingga langsung mati seketika saat sinyal shutdown dikirim.
+  3. Diagnostik via PowerShell:
+     ```powershell
+     # Cek proses yang menahan port 67 / 69
+     netstat -ano | findstr :67
+     netstat -ano | findstr :69
+     # Dapatkan nama proses berdasarkan PID
+     Get-Process -Id <PID>
+     ```
+
+#### 3. Win32 Missing Icon Resource (Error 1812)
+* **Gejala / Error:**
+  `Error setting icon from resource: 1812` (`ERROR_RESOURCE_DATA_NOT_FOUND`).
+* **Akar Masalah:**
+  Crate tray pihak ketiga mencari embedded icon `.ico` pada resource section file PE binary yang belum dikompilasi dengan file `.rc`.
+* **Solusi Baku:**
+  Gunakan implementasi Pure Native Win32 API ([`src/tray.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/tray.rs)) dengan memanggil `win32::LoadIconW(0, win32::IDI_APPLICATION as *const u16)` dan `win32::Shell_NotifyIconW`. Ini bebas dependensi eksternal dan 100% selalu berhasil di semua edisi Windows.
+
+#### 4. Client Diskless BSOD `0x0000007B` (INACCESSIBLE_BOOT_DEVICE)
+* **Gejala / Error:**
+  PC Client berhasil melewati iPXE, tetapi mengalami Blue Screen `0x7B` beberapa detik setelah logo Windows berputar.
+* **Akar Masalah:**
+  Pelanggaran pada salah satu dari 6 Pilar Native Driverless:
+  - NIC fisik tidak terpasang di slot `0000`.
+  - GUID `NetCfgInstanceId` pada driver NIC tidak sinkron dengan `TCPIP\Parameters\Interfaces`.
+  - Service `WFPLWFS` tidak aktif di `Start = 0` (Boot-Start) atau `BootFlags != 1`.
+  - Perangkat NIC atau iScsiPrt memiliki `ConfigFlags` selain `0x00000000` (mengakibatkan PnP deferral).
+* **Solusi Baku & Diagnostik:**
+  Jalankan audit hive SYSTEM menggunakan skrip bantu di direktori `scratch/`:
+  ```powershell
+  python scratch/check_class_0000.py
+  python scratch/check_bootflags.py
+  python scratch/check_services.py
+  ```
+
+#### 5. Menjalankan Diagnostik Trace & Verbose Logging
+* **Server Logging:**
+  Aktifkan backtrace lengkap dan filter log level detail:
+  ```powershell
+  $env:RUST_BACKTRACE="1"
+  $env:RUST_LOG="rust_iscsi_server=debug,tokio=info"
+  cargo run
+  ```
+* **Network Packet Capture (Wireshark):**
+  - Filter DHCP/PXE: `bootp || udp.port == 67 || udp.port == 68`
+  - Filter TFTP: `udp.port == 69 || tftp`
+  - Filter iSCSI Data: `tcp.port == 3260 || iscsi`
+
+---
+
+### 3.3 Alat Bantu Debugging MCP `codebase-memory`
+
+Gunakan tool MCP berikut secara spesifik saat proses debugging:
+1. `trace_path`: Lacak caller/callee stack untuk mengetahui siapa yang memanggil fungsi yang mengalami error atau mengirim nilai tidak valid (`direction: "both"`).
+2. `search_code`: Cari string error message, kode status, atau keyword tertentu di seluruh repositori secara cepat.
+3. `detect_changes`: Analisis dampak (*blast radius*) dari kode yang baru diubah sebelum menjalankan pengujian menyeluruh.
+
+---
+
+## 4. STANDAR OPERASIONAL PROSEDUR (SOP) KERJA LENGKAP AI AGENT
+
+Ringkasan siklus kerja harian AI Agent (Fitur Baru maupun Debugging):
 
 ```
-[Menerima Task / Request]
-        │
-        ▼
-[1. Baca ANTIGRAVITY.md] ──► Token Irit & Paham Arsitektur
-        │
-        ▼
-[2. MCP index_status] ────► Pastikan Graf Siap
-        │
-        ▼
-[3. superpowers:brainstorming + writing-plans]
-        ├─ MCP search_graph / get_code_snippet
-        └─ MCP trace_path (Blast Radius)
-        │
-        ▼
-[4. Eksekusi Kode Berbasis Bukti]
-        ├─ replace_file_content
-        └─ Jaga integritas komentar/dokumentasi
-        │
-        ▼
-[5. Validasi: cargo check / build / test] ──► superpowers:verification-before-completion
-        │
-        ▼
-[6. Update ANTIGRAVITY.md] ───────────────► Living Memory Terjaga!
+[Menerima Task / Request / Laporan Bug]
+                 │
+                 ▼
+     [1. Baca ANTIGRAVITY.md] ──► Token Irit & Paham Arsitektur
+                 │
+                 ▼
+       [2. MCP index_status] ────► Pastikan Graf Siap
+                 │
+        ┌────────┴─────────────────────────────┐
+        │ (Fitur Baru / Refactoring)           │ (Bug / Crash / Error)
+        ▼                                      ▼
+[3. superpowers:brainstorming]         [3. superpowers:systematic-debugging]
+        │                                      ├─ Investigasi Root Cause (Error/Trace)
+        ▼                                      ├─ Analisis Pola & Hipotesis Tunggal
+[4. superpowers:writing-plans]                 └─ Uji & Implementasi Minimal
+        │                                      │
+        └──────────────────┬───────────────────┘
+                           ▼
+            [5. Eksekusi Kode Berbasis Bukti]
+                    ├─ replace_file_content
+                    └─ Jaga integritas komentar/dokumentasi
+                           │
+                           ▼
+          [6. Validasi: cargo check / build / test] ──► superpowers:verification-before-completion
+                           │
+                           ▼
+            [7. Update ANTIGRAVITY.md] ───────────────► Living Memory Terjaga!
 ```
 
 ---
 
-## 4. PETA ARSITEKTUR & TEKNOLOGI
+## 5. PETA ARSITEKTUR & TEKNOLOGI
 
 Sistem **Simple-Iscsi** adalah target storage iSCSI dan infrastruktur network boot berkinerja tinggi (*high performance*) yang dibangun dengan **Rust** (runtime asinkronus Tokio) dan helper NT-native **C++**, yang dirancang khusus untuk lingkungan diskless (tanpa HDD/SSD lokal pada PC client).
 
@@ -363,6 +514,8 @@ flowchart TD
     end
 
     subgraph Server ["Server Simple-Iscsi (Rust Core)"]
+        SRV_MGR["Service Manager (src/service_manager.rs)"]
+        SRV_TRAY["System Tray GUI (src/tray.rs)"]
         SRV_DHCP["DHCP Server (src/netboot/dhcp.rs)"]
         SRV_TFTP["TFTP Server (src/netboot/tftp.rs)"]
         SRV_ISCSI["iSCSI PDU Engine (src/pdu/ & src/session/)"]
@@ -372,6 +525,10 @@ flowchart TD
         SRV_API["REST Server & Dashboard (src/api/)"]
     end
 
+    SRV_MGR --> SRV_DHCP
+    SRV_MGR --> SRV_TFTP
+    SRV_MGR --> SRV_ISCSI
+    SRV_TRAY --> SRV_MGR
     UEFI -->|"1. DHCPDISCOVER"| DHCP_PORT --> SRV_DHCP
     SRV_DHCP -->|"2. DHCPOFFER (Opt 66/67)"| DHCP_PORT --> UEFI
     UEFI -->|"3. TFTP RRQ ipxe.efi"| TFTP_PORT --> SRV_TFTP
@@ -385,7 +542,7 @@ flowchart TD
 ```
 
 ### 4.1 Tech Stack Inti
-* **Server Backend:** Rust (Edisi 2021), Tokio Async Runtime, DashMap, Parking Lot, Moka Cache, Serde/TOML, Socket2.
+* **Server Backend:** Rust (Edisi 2021), Tokio Async Runtime, DashMap, Parking Lot, Moka Cache, Serde/TOML, Socket2 (`SO_REUSEADDR`), Pure Native Win32 Shell Notify Icon (`user32`, `kernel32`, `shell32`).
 * **Client Boot Helper:** C++ (Win32 / Native NT API `ntdll.dll`), compiled with MSVC `cl.exe`.
 * **Network & Storage Protocols:**
   * Network Booting: PXE, DHCP (RFC 2131 / 2132), TFTP (RFC 1350), iPXE scripting.
@@ -395,7 +552,7 @@ flowchart TD
 
 ---
 
-## 5. STRUKTUR DIREKTORI & INVENTARIS SIMBOL
+## 6. STRUKTUR DIREKTORI & INVENTARIS SIMBOL
 
 Pemetaan modul untuk navigasi instan AI Agent:
 
@@ -408,6 +565,8 @@ c:\Project GIT\Simple-Iscsi\
 ├── clients.toml                # Pemetaan IP client, MAC address, target VHD, & WB cache
 ├── src/
 │   ├── main.rs                 # Server daemon entry point, CLI dispatcher, signal handling
+│   ├── service_manager.rs      # Central Service Manager (Zero-downtime hot-reload DHCP/TFTP/iSCSI)
+│   ├── tray.rs                 # Windows System Tray controller & Win32 console toggle
 │   ├── server.rs               # Listener TCP port 3260/3300, worker spawn loop
 │   ├── server_api.rs           # Web server HTTP REST & WebSocket endpoint
 │   ├── backend.rs              # Abstraksi storage backend (VHD + Raw Disk)
@@ -458,7 +617,7 @@ c:\Project GIT\Simple-Iscsi\
 
 ---
 
-## 6. PENGETAHUAN INTI NATIVE DRIVERLESS SANBOOT (BAB 9)
+## 7. PENGETAHUAN INTI NATIVE DRIVERLESS SANBOOT (BAB 9)
 
 Salah satu terobosan fundamental repositori ini adalah keberhasilan Windows 10/11 client untuk booting secara **100% Native Driverless** tanpa driver pihak ketiga (`CCBootPNPX.sys` atau `iSharePnp.sys` telah dibuang sepenuhnya).
 
@@ -476,7 +635,7 @@ flowchart TD
     end
 ```
 
-### 6.1 Penjelasan 6 Pilar Registri
+### 7.1 Penjelasan 6 Pilar Registri
 
 1. **Aturan Emas Slot `0000` (`Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000`):**
    * Loader network kernel Phase 0 Windows **hanya menginisialisasi slot `0000`**.
@@ -518,14 +677,16 @@ flowchart TD
 
 ---
 
-## 7. MATRIKS STATUS FITUR
+## 8. MATRIKS STATUS FITUR
 
 Daftar status modul dan kapabilitas sistem Simple-Iscsi saat ini:
 
 | Modul / Fitur | Lokasi Kode | Status | Keterangan & Catatan Teknis |
 | :--- | :--- | :---: | :--- |
-| **DHCP Server Engine** | [`src/netboot/dhcp.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/netboot/dhcp.rs) | **STABLE** | RFC 2131/2132, PXE Opt 66/67, iPXE Opt 17/168/169/170, binding multi-IP. |
-| **TFTP File Server** | [`src/netboot/tftp.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/netboot/tftp.rs) | **STABLE** | UDP 69, transfer file binary bootloader (`ipxe.efi`, `autoexec.ipxe`). |
+| **Service Lifecycle Manager** | [`src/service_manager.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/service_manager.rs) | **STABLE** | Hot-reload instan DHCP, TFTP, & iSCSI tanpa restart proses Rust. Graceful shutdown via broadcast channel, socket `SO_REUSEADDR` UDP 67/69, preservasi lease client aktif. |
+| **Windows System Tray GUI** | [`src/tray.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/tray.rs) | **STABLE** | Background tray icon controller (Pure Native Win32 `Shell_NotifyIconW`), popup submenus dinamis untuk Enable (Start), Disable (Stop), dan Restart per-layanan & massal, live status icons (🟢/🔴/🟡), toggle Console Window, & Web UI launcher. |
+| **DHCP Server Engine** | [`src/netboot/dhcp.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/netboot/dhcp.rs) | **STABLE** | RFC 2131/2132, PXE Opt 66/67, iPXE Opt 17/168/169/170, binding multi-IP, zero-delay restart dengan pembersihan task watcher clients.toml. |
+| **TFTP File Server** | [`src/netboot/tftp.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/netboot/tftp.rs) | **STABLE** | UDP 69, transfer file binary bootloader (`ipxe.efi`, `autoexec.ipxe`), graceful cancellation channel. |
 | **iSCSI PDU Parsing** | [`src/pdu/`](file:///c:/Project%20GIT/Simple-Iscsi/src/pdu/) | **STABLE** | RFC 7143 full header/data parsing, Login, SCSI Command/Response. |
 | **Session State Machine** | [`src/session/`](file:///c:/Project%20GIT/Simple-Iscsi/src/session/) | **STABLE** | Multi-client connection tracking, negosiasi parameter throughput optimal. |
 | **SCSI SBC-3 / SPC-4** | [`src/scsi_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_gamedisk.rs) | **STABLE** | Emulasi Inquiry, Read Capacity, Read/Write 10/16, Mode Sense, Synccache. |
@@ -534,11 +695,11 @@ Daftar status modul dan kapabilitas sistem Simple-Iscsi saat ini:
 | **VHD Engine** | [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) | **STABLE** | Fixed & Dynamic VHD parsing, BAT mapping, parent-child diffing. |
 | **Boot Helper C++** | [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp) | **STABLE** | `helper.exe` berjalan via `BootExecute`, parse ACPI iBFT, Deep IP Cleaner. |
 | **Native Driverless Boot** | Registri & [`DOCUMENTATION.md`](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md) (BAB 9) | **VERIFIED** | 100% Native Driverless (Slot 0000, `NetCfgInstanceId`, `WFPLWFS`, `ConfigFlags = 0`). |
-| **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP. |
+| **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP, tombol kontrol & restart cepat per-layanan/semua layanan. |
 
 ---
 
-## 8. RIWAYAT PENGERJAAN & CHANGE LOG
+## 9. RIWAYAT PENGERJAAN & CHANGE LOG
 
 Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan menyertakan tanggal, ringkasan pekerjaan, modul terdampak, dan justifikasi teknisnya.
 
@@ -550,6 +711,75 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 - **Rincian Perubahan:** Poin-poin spesifik apa saja yang diubah atau ditambahkan.
 - **Hasil & Verifikasi:** Hasil pengujian, kompilasi, atau status graf index.
 ```
+
+---
+
+### [2026-10-04] - Penambahan Kontrol Enable & Disable Layanan pada Windows System Tray
+- **Tujuan:** Melengkapi menu klik-kanan System Tray dengan opsi Enable (Start) dan Disable (Stop) untuk setiap layanan (DHCP, TFTP, iSCSI) serta kontrol massal, dilengkapi indikator status visual (🟢 Aktif / 🔴 Nonaktif).
+- **Modul Terdampak:** [`src/tray.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/tray.rs), [`docs/superpowers/plans/2026-10-04-tray-service-controls-enable-disable-plan.md`](file:///c:/Project%20GIT/Simple-Iscsi/docs/superpowers/plans/2026-10-04-tray-service-controls-enable-disable-plan.md).
+- **Rincian Perubahan:**
+  1. Menambahkan Win32 Popup Submenus (`MF_POPUP`) untuk kontrol individual per-layanan dan massal.
+  2. Mengintegrasikan pembacaan status live `service_manager.get_status()` sehingga judul submenu langsung mencerminkan kondisi layanan saat menu dibuka.
+  3. Menyediakan aksi lengkap: *Aktifkan (Enable)*, *Matikan (Disable)*, dan *Restart Layanan* yang didispatch secara asinkronus dan aman melalui Tokio runtime handle.
+- **Hasil & Verifikasi:** Kompilasi `cargo check` dan `cargo build` sukses 100% (Exit Code 0).
+
+---
+
+### [2026-10-04] - Bugfix: Dynamic Service Enablement in ServiceManager (DHCP & TFTP)
+- **Tujuan:** Memperbaiki masalah di mana DHCP dan TFTP tidak dapat dinyalakan via System Tray atau Web Dashboard API saat awal boot diset `dhcp.enabled = false` di `config.toml`, serta memisahkan alur initial boot start (`start_configured`) dengan explicit start (`start_dhcp`).
+- **Modul Terdampak:**
+  - [`src/service_manager.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/service_manager.rs)
+  - [`src/config_manager.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config_manager.rs)
+  - [`src/main.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/main.rs)
+  - [`src/server_api.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/server_api.rs)
+- **Root Cause:**
+  - Sebelumnya, `start_dhcp()` dan `start_tftp()` memeriksa flag statis `config.dhcp.enabled` dan langsung abort jika bernilai `false`, tanpa memperbarui flag runtime di memori saat user mengirim instruksi *Enable/Start*.
+  - TFTP terikat secara kaku dengan flag `dhcp.enabled` sehingga tidak dapat dijalankan secara independen.
+- **Rincian Perubahan:**
+  1. Menambahkan helper `set_dhcp_enabled(&self, enabled: bool)` di `SharedConfig` untuk mengubah status runtime konfigurasi di memori secara aman dan sinkron.
+  2. Memperbarui `start_dhcp()` untuk menandai `config.set_dhcp_enabled(true)` dan mem-boot listener UDP 67 setelah membersihkan task lama.
+  3. Memperbarui `stop_dhcp()` untuk menandai `config.set_dhcp_enabled(false)` dan mematikan task listener secara graceful.
+  4. Menjadikan `start_tftp()` independen dari flag `dhcp.enabled` selama konfigurasi netboot ada di `config.toml`.
+  5. Menambahkan fungsi `start_configured()` pada `ServiceManager` yang dipanggil saat boot awal aplikasi di `main.rs` agar menghormati konfigurasi awal `config.toml` tanpa memblokir aktivasi dinamis di masa berjalan.
+- **Hasil & Verifikasi:**
+  - `cargo check` sukses 100% (Exit Code 0).
+  - Integrasi graf diperbarui via MCP `codebase-memory`.
+
+---
+
+### [2026-10-04] - Penambahan Protokol Systematic Debugging & Playbook Kasus Nyata
+- **Tujuan:** Melengkapi panduan AI Agent dengan protokol debugging berdisiplin tinggi (*superpowers:systematic-debugging*) serta panduan solusi konkret untuk kasus-kasus crash/error kritis di Simple-Iscsi.
+- **Modul Terdampak:** [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md).
+- **Rincian Perubahan:**
+  1. Menambahkan Section 3: *The Iron Law of Debugging* ("Tidak boleh membuat fix tanpa investigasi root cause terlebih dahulu") dan 4 Fase Systematic Debugging (Investigasi Root Cause, Analisis Pola, Hipotesis Ilmiah & Pengujian Minimal, Implementasi & Verifikasi).
+  2. Menyusun Playbook Kasus Nyata Proyek: Solusi baku panic Tokio runtime pada foreign thread Win32 (`runtime_handle.spawn`), penanganan socket reuse WSAEADDRINUSE 10048, penanganan missing icon resource Win32 1812, dan audit registri BSOD 0x7B Native Driverless.
+  3. Mengintegrasikan alur cabang debugging ke dalam diagram alur kerja SOP harian AI Agent (Section 4).
+- **Hasil & Verifikasi:** Dokumen `ANTIGRAVITY.md` memiliki panduan troubleshooting yang lengkap, mencegah AI melakukan tindakan tebak-menebak (*guess-and-check*) yang berisiko merusak kestabilan kode.
+
+---
+
+### [2026-10-04] - Zero-Downtime Service Lifecycle Manager & Windows System Tray Controller
+- **Tujuan:** Mengatasi masalah lambatnya restart DHCP/TFTP/iSCSI yang sebelumnya mengharuskan proses Rust di-kill secara manual, mencegah kegagalan alokasi DHCP pada PC client saat restart cepat, serta menambahkan Windows System Tray GUI untuk mengontrol server dan menyembunyikan/menampilkan jendela konsol.
+- **Modul Terdampak:**
+  - `src/service_manager.rs` (Baru)
+  - `src/tray.rs` (Baru)
+  - `src/netboot/dhcp.rs`
+  - `src/netboot/tftp.rs`
+  - `src/netboot/mod.rs`
+  - `src/server.rs`
+  - `src/server_api.rs`
+  - `src/main.rs`
+  - `Cargo.toml`
+  - `ui/index.html` & `ui/index.js`
+- **Rincian Perubahan:**
+  1. **Sentralisasi `ServiceManager`:** Membangun orkestrator siklus hidup layanan terpusat dengan broadcast shutdown channel (`tokio::sync::broadcast`) untuk pembatalan asinkronus instan pada DHCP, TFTP, dan listener iSCSI tanpa mengganggu sesi klien yang sedang bermain.
+  2. **Socket `SO_REUSEADDR` & Graceful Watcher Cancellation:** Mengganti pembuatan UDP socket standar dengan `socket2::Socket` berfitur `set_reuse_address(true)` pada UDP port 67 dan port 69, memusnahkan galat `os error 10048 (WSAEADDRINUSE)`. Mengikat task background `clients.toml` file watcher ke channel shutdown agar tidak menggantung (*zombie file lock*).
+  3. **Preservasi Lease DHCP Client:** Memastikan status lease IP dan MAC client yang sudah aktif di `stats.dhcp_leases` tetap terjaga saat server DHCP di-restart, sehingga PC client diskless tidak kehilangan koneksi jaringan.
+  4. **Windows System Tray GUI Controller (Native Win32):** Mengintegrasikan native Win32 `Shell_NotifyIconW` dan `LoadIconW` (standar `IDI_APPLICATION`) dengan menu konteks (Restart DHCP/TFTP/iSCSI, Restart All, Show/Hide Console Window via Win32 `ShowWindow`/`GetConsoleWindow`, Open Web UI di browser default, dan Exit Server). Bebas dari isu missing `.ico` resource (*error 1812*).
+  5. **Web UI REST API & Quick Action Buttons:** Menambahkan endpoint `/api/services/status`, `/api/services/restart`, `/api/services/start`, `/api/services/stop`, serta menambahkan tombol "🔄 Restart Semua Layanan" dan tombol restart per-layanan di Web Dashboard.
+- **Hasil & Verifikasi:**
+  - Kompilasi `cargo build` sukses 100% tanpa error (`target/debug/rust-iscsi-server.exe`).
+  - Graf dependensi terupdate via MCP `codebase-memory`.
 
 ---
 

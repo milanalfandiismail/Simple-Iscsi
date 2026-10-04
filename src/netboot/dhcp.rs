@@ -4,7 +4,6 @@ use tracing::{info, warn, error, debug};
 use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr};
 use std::collections::{HashMap, BTreeMap};
 use tokio::sync::Mutex;
-use bytes::Buf;
 use std::str::FromStr;
 use socket2::{Socket, Domain, Type, Protocol};
 
@@ -34,21 +33,29 @@ fn parse_mac(mac: &str) -> Option<[u8; 6]> {
 }
 
 impl DhcpServer {
-    pub async fn new(config: SharedConfig, stats: Arc<crate::stats::ServerStats>) -> std::io::Result<Arc<Self>> {
+    pub async fn new(
+        config: SharedConfig,
+        stats: Arc<crate::stats::ServerStats>,
+        mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    ) -> std::io::Result<Arc<Self>> {
         let current_config = config.read();
-        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT);
-        let socket = UdpSocket::bind(addr).await?;
-        socket.set_broadcast(true)?;
+        let addr: std::net::SocketAddr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DHCP_SERVER_PORT).into();
+        
+        // Receiver socket dengan SO_REUSEADDR & BROADCAST
+        let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        sock.set_reuse_address(true)?;
+        sock.set_broadcast(true)?;
+        sock.bind(&addr.into())?;
+        sock.set_nonblocking(true)?;
+        let socket = UdpSocket::from_std(sock.into())?;
         let socket_arc = Arc::new(socket);
 
-        // Create a dedicated sender socket bound to the server IP:67
-        // Uses SO_REUSEADDR so two sockets can share port 67
-        // UEFI PXE firmware requires replies from source port 67
+        // Dedicated sender socket dengan SO_REUSEADDR & BROADCAST
         let server_addr = Ipv4Addr::from_str(&current_config.server.address.as_vec().first().cloned().unwrap_or_default())
             .unwrap_or(Ipv4Addr::UNSPECIFIED);
 
         let sender = if server_addr.is_unspecified() {
-            info!("DHCP Server: Server address is unspecified (0.0.0.0). Reusing receiver socket for sender.");
+            info!("DHCP Server: Alamat server 0.0.0.0. Menggunakan receiver socket untuk sender.");
             socket_arc.clone()
         } else {
             let sock2 = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
@@ -57,12 +64,13 @@ impl DhcpServer {
             let sender_addr: std::net::SocketAddr = SocketAddrV4::new(server_addr, DHCP_SERVER_PORT).into();
             match sock2.bind(&sender_addr.into()) {
                 Ok(_) => {
+                    sock2.set_nonblocking(true)?;
                     let s = UdpSocket::from_std(sock2.into())?;
-                    info!("Sender DHCP socket bound to {}:{}", server_addr, DHCP_SERVER_PORT);
+                    info!("Sender DHCP socket berhasil di-bind ke {}:{}", server_addr, DHCP_SERVER_PORT);
                     Arc::new(s)
                 }
                 Err(e) => {
-                    warn!("Failed to bind dedicated DHCP sender socket to {}:{}: {}. Falling back to receiver socket.", server_addr, DHCP_SERVER_PORT, e);
+                    warn!("Gagal bind dedicated DHCP sender socket ({}:{}): {}. Fallback ke receiver socket.", server_addr, DHCP_SERVER_PORT, e);
                     socket_arc.clone()
                 }
             }
@@ -72,6 +80,7 @@ impl DhcpServer {
         let start_ip = Ipv4Addr::from_str(&current_config.dhcp.as_ref().unwrap().start_ip).unwrap_or(Ipv4Addr::new(10, 10, 10, 100));
         let start_ip_u32 = u32::from_be_bytes(start_ip.octets());
 
+        // Load clients.toml
         let mut clients_map = HashMap::new();
         if let Ok(loaded_clients) = crate::config::load_clients("clients.toml") {
             for (_, c) in loaded_clients {
@@ -81,38 +90,61 @@ impl DhcpServer {
             }
         }
 
+        // Pertahankan lease dari stats yang sudah ada antar restart
+        let mut leases_map = HashMap::new();
+        for entry in stats.dhcp_leases.iter() {
+            if let Some(mac_bytes) = parse_mac(entry.key()) {
+                if let Ok(ip) = Ipv4Addr::from_str(entry.value()) {
+                    leases_map.insert(mac_bytes, ip);
+                }
+            }
+        }
+
         let server = Arc::new(DhcpServer {
             config,
             stats,
             socket: socket_arc,
             sender,
-            leases: Mutex::new(HashMap::new()),
+            leases: Mutex::new(leases_map),
             next_ip: Mutex::new(start_ip_u32),
             clients: Mutex::new(clients_map),
         });
 
-        // Spawn clients.toml watcher
+        // Spawn clients.toml watcher yang mendengarkan sinyal shutdown (mencegah zombie task)
         {
             let server_clone = server.clone();
             tokio::spawn(async move {
                 let mut last_mtime = std::fs::metadata("clients.toml").and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3));
                 loop {
-                    interval.tick().await;
-                    let current_mtime = std::fs::metadata("clients.toml").and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                    if current_mtime != last_mtime {
-                        let loaded = crate::config::load_clients("clients.toml").ok();
-                        if let Some(loaded_clients) = loaded {
-                            let mut new_map = HashMap::new();
-                            for (_, c) in loaded_clients {
-                                if let Some(mac_bytes) = parse_mac(&c.mac) {
-                                    new_map.insert(mac_bytes, c);
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            let current_mtime = std::fs::metadata("clients.toml").and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                            if current_mtime != last_mtime {
+                                let new_map_opt = match crate::config::load_clients("clients.toml") {
+                                    Ok(loaded_clients) => {
+                                        let mut new_map = HashMap::new();
+                                        for (_, c) in loaded_clients {
+                                            if let Some(mac_bytes) = parse_mac(&c.mac) {
+                                                new_map.insert(mac_bytes, c);
+                                            }
+                                        }
+                                        Some(new_map)
+                                    }
+                                    Err(_) => None,
+                                };
+
+                                if let Some(new_map) = new_map_opt {
+                                    *server_clone.clients.lock().await = new_map;
+                                    info!("DhcpServer: clients.toml berhasil di-reload otomatis.");
                                 }
+                                last_mtime = current_mtime;
                             }
-                            *server_clone.clients.lock().await = new_map;
-                            info!("DhcpServer: clients.toml di-reload.");
                         }
-                        last_mtime = current_mtime;
+                        _ = shutdown_rx.recv() => {
+                            debug!("DhcpServer: clients.toml watcher task berhenti.");
+                            break;
+                        }
                     }
                 }
             });
@@ -149,19 +181,27 @@ impl DhcpServer {
         ip
     }
 
-    pub async fn run(self: Arc<Self>) {
-        info!("Memulai DHCP Server di 0.0.0.0:67...");
+    pub async fn run(self: Arc<Self>, mut shutdown_rx: tokio::sync::broadcast::Receiver<()>) {
+        info!("Memulai DHCP Server listener di 0.0.0.0:67...");
         let mut buf = [0u8; 2048];
         
         loop {
-            match self.socket.recv_from(&mut buf).await {
-                Ok((len, addr)) => {
-                    if let Some(packet) = DhcpPacket::parse(&buf[..len]) {
-                        self.handle_packet(packet, addr).await;
+            tokio::select! {
+                res = self.socket.recv_from(&mut buf) => {
+                    match res {
+                        Ok((len, addr)) => {
+                            if let Some(packet) = DhcpPacket::parse(&buf[..len]) {
+                                self.handle_packet(packet, addr).await;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error menerima DHCP packet: {}", e);
+                        }
                     }
                 }
-                Err(e) => {
-                    error!("Error menerima DHCP packet: {}", e);
+                _ = shutdown_rx.recv() => {
+                    info!("DHCP Server loop menerima sinyal shutdown, listener port 67 ditutup.");
+                    break;
                 }
             }
         }

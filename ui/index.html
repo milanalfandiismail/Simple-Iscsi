@@ -91,6 +91,11 @@
                         <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900 font-['General_Sans','Outfit',sans-serif]">Dashboard Overview</h1>
                         <p class="text-xs sm:text-sm text-stone-500 mt-1">Pantau performa live iSCSI, DHCP, TFTP, dan aktivitas I/O diskless real-time.</p>
                     </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="restartAllServicesAction()" id="btn-restart-all-services" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-xs font-semibold shadow-xs transition-all cursor-pointer">
+                            🔄 <span>Restart Semua Layanan</span>
+                        </button>
+                    </div>
                 </header>
 
                 <!-- Service Status Cards Grid -->
@@ -101,7 +106,10 @@
                             <h3 class="font-semibold text-sm sm:text-base text-stone-900 truncate mb-0.5">iSCSI Daemon</h3>
                             <p id="iscsi-port-info" class="text-[11px] sm:text-xs text-stone-500 font-mono">Port: ...</p>
                         </div>
-                        <span class="pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap shrink-0" id="iscsi-status-pill">🔴 Offline</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap" id="iscsi-status-pill">🔴 Offline</span>
+                            <button onclick="restartServiceAction('iscsi')" title="Restart iSCSI Daemon" class="p-1.5 hover:bg-stone-100 active:bg-stone-200 text-stone-600 rounded-lg transition text-xs border border-stone-200 cursor-pointer">🔄</button>
+                        </div>
                     </div>
 
                     <!-- DHCP Card -->
@@ -110,7 +118,10 @@
                             <h3 class="font-semibold text-sm sm:text-base text-stone-900 truncate mb-0.5">DHCP Server</h3>
                             <p id="dhcp-port-info" class="text-[11px] sm:text-xs text-stone-500 font-mono">Port: ...</p>
                         </div>
-                        <span class="pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap shrink-0" id="dhcp-status-pill">🔴 Offline</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap" id="dhcp-status-pill">🔴 Offline</span>
+                            <button onclick="restartServiceAction('dhcp')" title="Restart DHCP Server" class="p-1.5 hover:bg-stone-100 active:bg-stone-200 text-stone-600 rounded-lg transition text-xs border border-stone-200 cursor-pointer">🔄</button>
+                        </div>
                     </div>
 
                     <!-- TFTP Card -->
@@ -119,7 +130,10 @@
                             <h3 class="font-semibold text-sm sm:text-base text-stone-900 truncate mb-0.5">TFTP Server</h3>
                             <p id="tftp-port-info" class="text-[11px] sm:text-xs text-stone-500 font-mono">Port: ...</p>
                         </div>
-                        <span class="pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap shrink-0" id="tftp-status-pill">🔴 Offline</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap" id="tftp-status-pill">🔴 Offline</span>
+                            <button onclick="restartServiceAction('tftp')" title="Restart TFTP Server" class="p-1.5 hover:bg-stone-100 active:bg-stone-200 text-stone-600 rounded-lg transition text-xs border border-stone-200 cursor-pointer">🔄</button>
+                        </div>
                     </div>
                 </div>
 

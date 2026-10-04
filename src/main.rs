@@ -18,6 +18,8 @@ mod stats;
 mod config_manager;
 mod server_api;
 mod api;
+mod service_manager;
+mod tray;
 
 use backend::Backend;
 use std::fs;
@@ -180,24 +182,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stats = stats::ServerStats::new();
     stats::ServerStats::start_periodic_logging(stats.clone());
 
-    // Inisialisasi API Server (Tauri Frontend Connector)
-    {
-        let config_api = shared_config.clone();
-        let stats_api = stats.clone();
-        tokio::spawn(async move {
-            crate::server_api::start_api_server(config_api, stats_api).await;
-        });
-    }
-
-    // Inisialisasi Netboot
-    {
-        let clients_config = shared_config.clone();
-        let stats_netboot = stats.clone();
-        tokio::spawn(async move {
-            crate::netboot::start_netboot(clients_config, stats_netboot).await;
-        });
-    }
-
     // Inisialisasi Gamedisk backends
     let mut gamedisk_backends_map: HashMap<u8, Arc<Backend>> = HashMap::new();
     for (i, gd_cfg) in config.gamedisk.iter().enumerate() {
@@ -224,6 +208,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let gamedisk_backends = Arc::new(std::sync::RwLock::new(gamedisk_backends_map));
 
+    // Inisialisasi ServiceManager
+    let service_manager = service_manager::ServiceManager::new(
+        shared_config.clone(),
+        stats.clone(),
+        Arc::clone(&gamedisk_backends),
+    );
+
+    // Inisialisasi API Server (Tauri Frontend & Web Dashboard Connector)
+    {
+        let config_api = shared_config.clone();
+        let stats_api = stats.clone();
+        let sm_api = service_manager.clone();
+        tokio::spawn(async move {
+            crate::server_api::start_api_server(config_api, stats_api, sm_api).await;
+        });
+    }
+
     // Inisialisasi file watcher via config_manager dengan gamedisk_backends
     config_manager::start_config_watcher(
         shared_config.clone(),
@@ -242,15 +243,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if let Err(e) = server::start_server(
-        shared_config.clone(),
-        gamedisk_backends,
-        stats,
-    )
-    .await
+    // Jalankan layanan sesuai status konfigurasi awal
+    service_manager.start_configured().await;
+
+    // Inisialisasi System Tray di dedicated OS thread
     {
-        error!("Server terhenti karena fatal error: {}", e);
-        std::process::exit(1);
+        let sm_tray = service_manager.clone();
+        let rt_handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            if let Err(e) = tray::run_tray(sm_tray, "http://127.0.0.1:8080".to_string(), rt_handle) {
+                tracing::error!("Gagal menjalankan System Tray: {}", e);
+            }
+        });
+    }
+
+    // Tunggu sinyal interrupt Ctrl+C untuk graceful shutdown
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {
+            info!("Menerima sinyal shutdown (Ctrl+C). Menghentikan seluruh layanan secara graceful...");
+            service_manager.stop_all().await;
+            info!("Server Simple-Iscsi telah berhenti dengan aman.");
+        }
+        Err(e) => {
+            error!("Gagal mendengarkan sinyal shutdown: {}", e);
+        }
     }
 
     Ok(())

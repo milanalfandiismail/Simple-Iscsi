@@ -1588,3 +1588,49 @@ function closeConfirmModal(confirmed = false) {
     }
     confirmCallback = null;
 }
+
+// Service Management Quick Actions
+async function restartServiceAction(serviceName) {
+    const pill = document.getElementById(`${serviceName}-status-pill`);
+    if (pill) {
+        pill.textContent = '⏳ Restarting...';
+        pill.className = 'pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
+    }
+    showToast(`Memulai restart layanan ${serviceName.toUpperCase()}...`, 'info');
+    const res = await apiPost('/api/services/restart', { service: serviceName });
+    if (res && res.status === 'ok') {
+        setTimeout(async () => {
+            showToast(`Layanan ${serviceName.toUpperCase()} berhasil di-restart secara instan!`, 'success');
+            await loadInitialData();
+        }, 300);
+    } else {
+        showToast(`Gagal merestart layanan ${serviceName.toUpperCase()}`, 'error');
+    }
+}
+
+async function restartAllServicesAction() {
+    const btn = document.getElementById('btn-restart-all-services');
+    if (btn) btn.disabled = true;
+    showToast('Memulai restart seluruh layanan Simple-Iscsi...', 'info');
+    
+    ['iscsi', 'dhcp', 'tftp'].forEach(s => {
+        const pill = document.getElementById(`${s}-status-pill`);
+        if (pill) {
+            pill.textContent = '⏳ Restarting...';
+            pill.className = 'pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap';
+        }
+    });
+
+    const res = await apiPost('/api/services/restart', { service: 'all' });
+    if (res && res.status === 'ok') {
+        setTimeout(async () => {
+            showToast('Seluruh layanan berhasil di-restart secara instan!', 'success');
+            await loadInitialData();
+            if (btn) btn.disabled = false;
+        }, 400);
+    } else {
+        showToast('Gagal merestart layanan', 'error');
+        if (btn) btn.disabled = false;
+    }
+}
+
