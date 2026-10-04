@@ -446,6 +446,156 @@ Berikut panduan pemecahan masalah untuk kasus-kasus kritis yang sering ditemui p
   - Filter TFTP: `udp.port == 69 || tftp`
   - Filter iSCSI Data: `tcp.port == 3260 || iscsi`
 
+#### 6. Double IP Address pada Windows Client Diskless (Master Image Static IP vs DHCP/iBFT IP)
+* **Gejala / Error:**
+  PC Client diskless memiliki dua alamat IPv4 aktif di `ipconfig` dan jendela GUI *Advanced TCP/IP Settings -> IP addresses* (misal IP master image super client `192.168.180.10` berada di baris 1 sebagai IP utama, dan IP DHCP/iBFT `192.168.180.2` berada di baris 2 sebagai IP sekunder).
+* **Akar Masalah (Hasil Investigasi Empiris Mendalam):**
+  1. **Phase 0 Kernel Boot-Start Binding (`tcpip.sys`):**
+     Driver `tcpip.sys` merupakan *Boot-Start Driver* (`Start = 0`, `Group = "PNP_TDI"`, `BootFlags = 1`) yang dimuat oleh Windows Kernel pada **Phase 0** — jauh sebelum `smss.exe` dan `BootExecute` dieksekusi. Pada Phase 0, `tcpip.sys` membaca file SYSTEM hive dari disk VHD yang masih menyimpan konfigurasi static IP super client (`192.168.180.10`) dan mengikatnya ke kernel RAM.
+  2. **iSCSI Miniport Dynamic Injection (`msiscsi.sys`):**
+     Driver `msiscsi.sys` membaca tabel ACPI iBFT yang berisi IP baru dari DHCP (`192.168.180.2`), lalu secara otomatis menyuntikkan IP tersebut ke adapter sebagai IP sekunder agar koneksi socket TCP port 3260 ke target iSCSI tidak terputus saat booting disk berlangsung.
+  3. **Limitasi Fase `BootExecute` (`smss.exe` Phase 1):**
+     `helper.exe` berjalan di Phase 1 (`smss.exe`). Meskipun `helper.exe` berhasil menimpa registri di disk hive (`Tcpip\Parameters\Interfaces\{GUID}` dan `Services\{GUID}\Parameters\Tcpip`), driver `tcpip.sys` yang sudah terlanjur berjalan di kernel memory **tidak memuat ulang (*reload*) tabel IP aktifnya** hanya dari perubahan sel registri tanpa notifikasi antarmuka NSI/IP Helper. Selain itu, pemanggilan `NtFlushKey` pada fase ini mengembalikan status `0xC000014D` (`STATUS_REGISTRY_IO_FAILED`) karena volume file system masih dalam status proteksi I/O sebelum `autochk` tuntas.
+  4. **Residu Layanan Diskless Pihak Ketiga (Legacy Third-Party Services):**
+     Layanan residual warisan sistem diskless lama (`Start = 2`) pada master image yang berjalan di user-mode dapat berpotensi memaksakan restorasi konfigurasi super client jika tidak dinonaktifkan.
+* **Solusi Baku (Arsitektur Dual-Stage Network Alignment):**
+  Menggunakan pendekatan dua tahap (*Dual-Stage*) yang menyelaraskan registri di boot-time dan menyucikan memori kernel di user-time:
+  1. **Stage 1 — Native Subsystem (`helper.exe` di `BootExecute`):**
+     - Membaca parameter jaringan murni dari ACPI iBFT (HostName, Target IP, Mask, Gateway, DNS).
+     - Menimpa serentak (*dual overwrite*) seluruh subkey `Tcpip\Parameters\Interfaces\{GUID}` dan `Services\{GUID}\Parameters\Tcpip` dengan format `REG_MULTI_SZ` tunggal (`<IP>\0\0`).
+     - Menyinkronkan Hostname murni tanpa suffix ke 4 kunci registri sistem.
+     - Menulis penanda konfigurasi bersih di `HKLM\SYSTEM\CurrentControlSet\Services\SimpleIscsiBoot` (`TargetIp`, `SubnetMask`, `GatewayIp`, `Hostname`, `PurgeNeeded = 1`).
+     - Melucuti layanan pengacau: Mengubah `Start = 4` (Disabled) pada seluruh residu service diskless pihak ketiga/legacy.
+  2. **Stage 2 — User-Mode Purge Companion (`helper-svc.exe` via Service / Run Key):**
+     - Berjalan saat sistem masuk ke fase user-mode (`services.exe` atau Startup).
+     - Menggunakan Windows IP Helper API resmi (`iphlpapi.dll`): Memanggil `GetUnicastIpAddressTable(AF_INET, ...)`.
+     - Mendeteksi alamat IP yang tidak sesuai dengan target DHCP/iBFT (misal `192.168.180.10`).
+     - Memanggil `DeleteUnicastIpAddressEntry()` secara terarah. Fungsi ini mengirimkan IOCTL ke `tcpip.sys` untuk segera mencabut `192.168.180.10` dari RAM kernel dan GUI Network Connections, **tanpa mengganggu sesi koneksi iSCSI** pada `192.168.180.2`.
+     - Proses langsung exit setelah pembersihan tuntas (0% CPU, 0 MB overhead).
+
+#### 7. Windows Batch Script Force Close / Syntax Crash (`&` Command Chaining & Nested Parentheses)
+* **Gejala / Error:**
+  Script batch (`install_client.bat`) langsung menutup jendela konsol seketika tanpa peringatan (*silent force close*) atau memunculkan pesan error singkat `'Startup' is not recognized as an internal or external command` dan `... was unexpected at this time`.
+* **Akar Masalah:**
+#### 9. VHD Mapping Form Validation & Backslash Escaping Bug (`\` Hilang saat Edit)
+* **Gejala / Error:**
+  - Saat menekan tombol **Edit** pada baris VHD Mapping di Web UI, seluruh karakter backslash (`\`) pada path fisik VHD mendadak hilang (misal `D:\Images\Win10.vhd` menjadi `D:ImagesWin10.vhd`), sehingga saat disimpan path menjadi rusak dan gagal diakses target iSCSI.
+  - Form VHD Mapping mengizinkan penyimpanan input teks sembarang yang bukan berformat path valid.
+* **Akar Masalah:**
+  1. Pada fungsi `renderVhdTable()`, variabel `path` disuntikkan langsung ke inline HTML attribute string: `onclick="openVhdCrudModal('${key}', '${path}')"`. Parser JavaScript mengevaluasi string literal `'D:\Images\Win10.vhd'` di mana `\I` dan `\W` diperlakukan sebagai *escape sequence*, sehingga melenyapkan seluruh karakter backslash.
+  2. Kurangnya validasi format path (`.vhd`/`.vhdx` dan direktori pemisah) pada frontend `saveVhdAction()`.
+* **Solusi Baku:**
+  1. **Direct Object State Lookup:** Fungsi `openVhdCrudModal(key)` hanya menerima parameter `key` (alias), lalu mengambil nilai `path` langsung dari objek JavaScript memori `configObj.image_manager[key]`. Tidak ada lagi interpolasi string raw path ke dalam attribute HTML.
+  2. **Validasi Strict Path:** Memastikan input path wajib memiliki ekstensi `.vhd` / `.vhdx` dan format path direktori valid (contoh: `D:\Images\Win10.vhd`).
+
+#### 10. VHD Snapshot Restore Indexing, Ukuran File, dan Async Merge Progress Lifecycle
+* **Gejala / Error:**
+  - Pada modal Riwayat Snapshot VHD, kolom *Ukuran* menampilkan angka `1` atau `#1` (nomor index) bukan ukuran file asli (contoh: `2.4 GB`).
+  - Tombol **Restore Snapshot** gagal me-restore dan menampilkan pesan error `"Gagal me-restore snapshot"`.
+  - Setelah commit Super Client berhasil di-trigger, status Super Client masih tampak aktif di Web UI karena merge berjalan asinkron di background tanpa live polling status tuntas.
+* **Akar Masalah:**
+  1. Frontend meletakkan variabel `snap.index` pada kolom tabel bertajuk *Ukuran*, sementara backend `get_vhd_backups` sebelumnya belum menghitung `metadata().len()` file backup VHD.
+  2. `post_vhd_restore` di backend mengharapkan parameter `index: usize`, namun frontend mengirimkan `{ snapshot_name: ... }` tanpa `index`, serta backend mengembalikan response `"status": "success"` yang tidak cocok dengan evaluasi frontend `res.status === 'ok'`.
+  3. Frontend memanggil `loadConfigJson()` seketika (100ms) setelah men-trigger commit sebelum merge VHD di backend selesai, sehingga UI me-reload data `config.toml` lama yang belum dibersihkan.
+* **Solusi Baku:**
+  1. **Rich Snapshot Metadata:** Backend `get_vhd_backups` mengembalikan objek lengkap: `index`, `name`, `path`, `size` (dalam bytes), dan `date`. Frontend memformat byte dengan `formatBytes(snap.size)` sehingga tampil rapi (misal `2.54 GB` atau `120 MB`).
+  2. **Strict Restore Action & File Cleanup:** Frontend mengirim `{ image_key, index }` dan backend mengeksekusi restore BAT & truncate base VHD. Setelah restore sukses, backend memanggil `cleanup_backup_files()` untuk menghapus file snapshot `.meta` dan `.vhd` terkait (sehingga tidak ada residu snapshot usang), membersihkan differencing `.super.vhd`, me-reset konfigurasi Super Client, dan mengembalikan status 200 OK standar JSON `{ "status": "ok", "message": "..." }`.
+  3. **Floating Async Merge Progress & Auto-Sync:**
+     - Backend mengekspos endpoint live status `GET /api/vhd/merge_status` yang menghitung progress real-time per block (`allocated_blocks` dan `current_block`).
+     - Frontend memunculkan floating widget progress bar elegan dan melakukan polling status berkala (750ms).
+     - Saat merge selesai 100%, frontend otomatis memuat ulang `config.toml`, me-refresh tabel klien (menghilangkan badge Super Client seketika), dan menampilkan toast sukses tanpa mengganggu navigasi user.
+
+#### 11. Super Client Online State Guard & Instant Differencing VHD Creation
+* **Gejala / Kebutuhan:**
+  - Menghindari pengaktifan Super Client pada PC yang sedang aktif/online, yang dapat memicu korupsi sesi writeback atau konflik file differencing.
+  - File differencing `.super.vhd` wajib langsung terbentuk di disk seketika mode Super Client diaktifkan, sehingga siap digunakan sebelum PC klien dinyalakan.
+  - **Commit / Discard saat klien masih online juga wajib diblokir**: operasi merge atau hapus file differencing VHD saat klien sedang menulis via iSCSI akan menyebabkan VHD corrupt dan tidak bisa di-boot.
+* **Solusi Baku:**
+  1. **Online State Guard (Enable):** Validasi ganda — Backend `post_superclient_set` via `stats.client_stats[ip].active_sessions > 0` dan Frontend `ctxToggleSuperClient` via `sessionInfo.active === true`. Jika PC online, request ditolak.
+  2. **Online State Guard (Commit & Discard):** Validasi ganda juga diterapkan pada `post_superclient_commit` dan `post_superclient_discard` (backend). Frontend `openSuperClientDisableModal` memeriksa status online via `activeSessionsMap` sebelum membuka modal. Jika online, modal tidak terbuka dan toast error langsung ditampilkan.
+  3. **Instant Differencing Creation:** Pada saat `post_superclient_set` dieksekusi dengan `action: enable`, backend memanggil `crate::writeback_super::init_super_vhd(&base_path, &super_path)` untuk langsung membuat differencing VHD di disk filesystem seketika.
+
+#### 12. VHD Corrupt Setelah Commit — Root Cause & Standard-Compliant Fix
+* **Gejala:** File `.vhd` master langsung corrupt (tidak bisa dibuka oleh Windows Disk Management, Hyper-V, atau di-boot oleh klien) setelah operasi Commit Super Client.
+* **Akar Masalah (Root Cause):**
+  1. **Trailing Footer Hilang / Tertimpa:** VHD dynamic disk (`type=3`) memiliki footer 512 byte di ujung file (`EOF - 512`). Menulis block di `SeekFrom::End(0)` menimpa footer asli dan meninggalkan data tanpa penutup footer yang valid di akhir file.
+  2. **Hardcoded BAT Offset `1536`:** Pada VHD standar Windows / DiskPart / Hyper-V, BAT tabel (`table_offset`) bisa berada di offset `2048`, `4096`, dll. Kode yang meng-hardcode offset `1536` menimpa header/padding dan membiarkan BAT asli tidak terupdate.
+  3. **Non-Contiguous BAT Index Miswrite:** Pembaruan BAT batch yang mengasumsikan sequential block index (`first_off += 4`) mengakibatkan index BAT yang lompat tertulis di slot blok yang salah.
+  4. **Sector Bitmap 0x00 vs 0xFF:** Menulis bitmap all-zero membuat parser VHD menganggap semua sektor dalam blok 2MB unallocated / unwritten. Sektor valid harus memiliki bitmap byte `0xFF`.
+  5. **Footer & Header Checksum Salah:** Checksum dihitung dengan menjumlahkan `u32` BE alih-alih `u8` (byte-by-byte sum) sesuai spesifikasi Microsoft VHD.
+* **Solusi Baku (di `src/vhd.rs` & `src/vhd_merge.rs`):**
+  1. **In-Place Overwrite & Appending:** Jika block sudah ada di parent (`parent.bat[block_idx] != 0xFFFFFFFF`), timpa langsung di offset parent yang lama tanpa memperbesar file. Jika block baru, tulis mulai `parent_eof - 512` (menimpa footer lama).
+  2. **Dynamic `table_offset`:** Struktur `VhdBackend` menyimpan `table_offset` dinamis dari header VHD, dan seluruh update BAT menulis ke `table_offset + (block_idx * 4)`.
+  3. **Trailing Footer & File Truncate:** Tulis ulang 512-byte footer di `next_write_pos`, sinkronkan footer copy di offset 0, lalu potong file tepat dengan `set_len(next_write_pos + 512)`.
+#### 13. Preservasi Subkey Linkage & Pembersihan Helper dari Intervensi Driver Pihak Ketiga
+* **Gejala:** PC Klien tidak dapat melakukan booting iSCSI (freeze di logo Windows atau BSOD `0x7B`) setelah restart akibat registri binding jaringan terganggu atau driver pihak ketiga dimatikan paksa.
+* **Akar Masalah (Root Cause):**
+  1. **Subkey `Linkage` Terhapus / Rusak:** Subkey `Linkage` (pada `Control\Class\{4d36e972...}\0000\Linkage`, `Services\Tcpip\Linkage`, dan `Services\{GUID}\Linkage`) mendefinisikan `UpperBind = Tcpip`, `Export = \Device\{GUID}`, dan `RootDevice`. Menghapus subkey ini memutus binding antara NDIS dan protokol TCP/IP, sehingga stack iSCSI Phase 0 (`iScsiPrt` / `msiscsi`) kehilangan jalur komunikasi jaringan ke server.
+  2. **Intervensi Pemaksaan Disable Service (`Start = 4`):** Helper lama berusaha mematikan service pihak ketiga (`CCBootClient`, `iSharePnp`, dll.). Jika master image klien bergantung pada driver tersebut untuk deteksi PnP kartu LAN, mematikannya otomatis menggagalkan inisialisasi hardware kartu LAN saat boot.
+  3. **Blind Loop ke Seluruh Subkey `Services\{GUID}`:** Helper lama menyapu bersih semua service berawalan `{`, menimpa `Parameters\Tcpip` pada filter/virtual adapter yang bukan kartu LAN boot.
+* **Solusi Baku (di `helper/helper.cpp` & `helper/install_client.bat`):**
+  1. **Linkage 100% Utuh & Dilindungi:** Helper tidak pernah menghapus atau mengubah subkey `Linkage`.
+  2. **Hapus Logika `DisarmRogueServices`:** Penghapusan/penonaktifan service diserahkan secara manual kepada teknisi, helper fokus murni pada injeksi parameter IP, Hostname, dan tuning iSCSI.
+  3. **Hapus Blind Sweep Services:** Helper hanya mengonfigurasi adapter yang terdaftar valid di bawah `Services\Tcpip\Parameters\Interfaces\{GUID}`.
+
+#### 14. Inventaris Murni Subkey Linkage Khusus iSCSI & Jaringan LAN (Hasil Audit Hive Registri 1)
+Berdasarkan audit langsung pada file hive registri master (`Iscsi menyala tanpa butuh driver bawaan.reg` / Hive 1) dengan mengeliminasi entri WAN/Dial-Up yang tidak relevan, berikut adalah **seluruh subkey `Linkage` murni yang mengatur aliran data LAN dan iSCSI Boot**:
+
+```
+[Hardware NIC Physical (Slot 0000)]
+         │
+         ▼
+[1. Class Linkage: Control\Class\{4d36e972...}\0000\Linkage]
+   ├─ RootDevice = "{GUID}"
+   ├─ Export     = "\Device\{GUID}"
+   └─ UpperBind  = Tcpip, Tcpip6, Ndisuio, lltdio, rspndr, MsLldp, RDMANDK
+         │
+         ▼
+[2. Protocol Linkage: Services\Tcpip\Linkage & Tcpip6\Linkage]
+   ├─ Bind   = "\Device\{GUID}"
+   ├─ Route  = "\"{GUID}\""
+   └─ Export = "\Device\Tcpip_{GUID}"
+         │
+         ├───────────────────────────────┬───────────────────────────────┐
+         ▼                               ▼                               ▼
+[3. iSCSI Initiator]            [4. TDI / NetBT Linkage]        [5. SMB File Sharing Linkage]
+   (Services\iScsiPrt)             (Services\NetBT\Linkage)        (Services\LanmanWorkstation\Linkage)
+   Memanggil WSK ke                ├─ OtherDependencies = Tcpip    ├─ Bind = "\Device\Tcpip_{GUID}"
+   \Device\Tcpip_{GUID}            ├─ Bind = "\Device\Tcpip_{GUID}"└─ Route = "Tcpip" "{GUID}"
+   untuk streaming disk C:         └─ Export = "\Device\NetBT_..."
+```
+
+##### Rincian Nilai Riil pada Hive Registri:
+1. **`Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\0000\Linkage` (Jangkar Adapter Fisik Slot 0000):**
+   * **`RootDevice`** = `"{FBE750E4-B44C-44D9-BD16-810A4E4A8D4A}"`
+   * **`Export`** = `"\Device\{FBE750E4-B44C-44D9-BD16-810A4E4A8D4A}"`
+   * **`UpperBind`** = `Tcpip`, `Tcpip6`, `Ndisuio`, `lltdio`, `rspndr`, `MsLldp`, `RDMANDK`
+   *(Kunci mutlak: `Tcpip` di `UpperBind` memerintahkan NDIS untuk mengalirkan frame L2 langsung ke driver `tcpip.sys`).*
+
+2. **`Services\Tcpip\Linkage` (Pengikatan Protokol TCP/IP ke Adapter):**
+   * **`Bind`** = `"\Device\{FBE750E4-B44C-44D9-BD16-810A4E4A8D4A}"`
+   * **`Route`** = `"\"{FBE750E4-B44C-44D9-BD16-810A4E4A8D4A}\""`
+   * **`Export`** = `"\Device\Tcpip_{FBE750E4-B44C-44D9-BD16-810A4E4A8D4A}"`
+
+3. **`Services\Tcpip6\Linkage` (Pengikatan Protokol IPv6):**
+   * Struktur identik dengan `Tcpip\Linkage` untuk dukungan dual-stack IPv6 pada adapter yang sama.
+
+4. **`Services\NetBT\Linkage` & `Services\NetBIOS\Linkage` (NetBIOS over TCP/IP):**
+   * **`OtherDependencies`** = `Tcpip`
+   * **`Bind`** = `"\Device\Tcpip_{FBE750E4...}"`
+   * **`Route`** = `"Tcpip" "{FBE750E4...}"`
+   * **`Export`** = `"\Device\NetBT_Tcpip_{FBE750E4...}"` dan `"\Device\NetBIOS_NetBT_Tcpip_{FBE750E4...}"`
+
+5. **`Services\LanmanWorkstation\Linkage` & `Services\LanmanServer\Linkage` (SMB File Sharing):**
+   * **`Bind`** = `"\Device\Tcpip_{FBE750E4...}"`
+   * **`Route`** = `"Tcpip" "{FBE750E4...}"`
+   * **`Export`** = `"\Device\LanmanWorkstation_Tcpip_{FBE750E4...}"`
+
+6. **Hubungan ke `Services\iScsiPrt` (Microsoft iSCSI Initiator):**
+   * `iscsiprt.sys` tidak memiliki subkey `Linkage` sendiri karena ia adalah driver storage SCSI miniport yang memanggil fungsi Winsock Kernel (WSK) langsung ke `\Device\Tcpip_{GUID}` (yang diekspos oleh `Tcpip\Linkage`).
+
+> **Pelajaran Penting:** Dari 31 header Linkage di registri Windows, hanya **`Class\0000\Linkage`** dan **`Services\Tcpip\Linkage`** yang menjadi **Dua Jantung Utama iSCSI Boot**. Jika salah satu dari kedua kunci ini hilang atau tidak sinkron GUID-nya, transmisi iSCSI di Phase 0 akan mati total (BSOD `0x7B`).
+
 ---
 
 ### 3.3 Alat Bantu Debugging MCP `codebase-memory`
@@ -619,7 +769,7 @@ c:\Project GIT\Simple-Iscsi\
 
 ## 7. PENGETAHUAN INTI NATIVE DRIVERLESS SANBOOT (BAB 9)
 
-Salah satu terobosan fundamental repositori ini adalah keberhasilan Windows 10/11 client untuk booting secara **100% Native Driverless** tanpa driver pihak ketiga (`CCBootPNPX.sys` atau `iSharePnp.sys` telah dibuang sepenuhnya).
+Salah satu terobosan fundamental repositori ini adalah keberhasilan Windows 10/11 client untuk booting secara **100% Native Driverless** murni menggunakan stack bawaan sistem operasi tanpa membutuhkan driver diskless pihak ketiga manapun.
 
 Setiap AI Agent yang menangani masalah boot, BSOD `0x0000007B` (*INACCESSIBLE_BOOT_DEVICE*), atau konfigurasi registri client **WAJIB** memahami 6 pilar berikut:
 
@@ -642,9 +792,13 @@ flowchart TD
    * Jika driver kartu jaringan fisik (Realtek/Intel) berada di slot `0001` atau `0005`, adapter fisik tidak akan hidup saat boot storage berlangsung, menyebabkan kegagalan koneksi iSCSI dan BSOD `0x7B`.
    * Registri driver fisik harus disuntikkan secara tepat menggantikan/menempati slot `0000`.
 
-2. **Sinkronisasi `NetCfgInstanceId`:**
-   * Nilai string `NetCfgInstanceId` pada slot `0000` (contoh: `{79A1BBB6-D0AE-4171-BB0D-1B21EE54BA4C}`) **harus identik** dengan konfigurasi adapter pada service `TCPIP\Parameters\Interfaces\{GUID}` dan `Linkage` protokol.
-   * Jika GUID tidak sinkron, Windows akan menganggap adapter tersebut belum dikonfigurasi dan menolak mengirim frame TCP iSCSI.
+2. **Sinkronisasi & Preservasi Mutlak `NetCfgInstanceId` (Hukum Permanen GUID Slot `0000`):**
+   * Nilai string `NetCfgInstanceId` pada slot `0000` (contoh: `{FBE750E4-B44C-44D9-BD16-810A4E4A8D4A}`) **BERSIFAT PERMANEN & MUTLAK DILARANG DIUBAH SAMPAI KAPANPUN**.
+   * **Mengapa Dilarang Diubah:** GUID ini mengikat 12 cabang registri Windows sekaligus (`Control\Class\...\0000`, `0000\Linkage`, `Services\Tcpip\Linkage`, `Tcpip\Parameters\Interfaces\{GUID}`, `Tcpip\Parameters\Adapters\{GUID}`, `WFPLWFS\Parameters\Adapters\{GUID}`, `Services\{GUID}`, `Control\Network\...\{GUID}`, `NetBT\Linkage`, `LanmanWorkstation\Linkage`, dan database biner kernel `Control\Nsi`). Mengubah GUID di slot `0000` memutus rantai binding Phase 0 $\rightarrow$ **BSOD `0x7B`**.
+   * **Aturan Konversi Driver:** Saat memasang driver fisik baru (Realtek/Intel), cukup salin informasi driver hardware ke slot `0000`, **tetapi nilai `NetCfgInstanceId` & `NetLuidIndex` (dword:00008000) WAJIB DIPERTAHANKAN memakai milik `0000`**.
+   * **Memunculkan Adapter di Device Manager (Solusi Bekas Kernel Debug `kdnic`):**
+     - Jika slot `0000` awalnya berasal dari *Microsoft Kernel Debug Network Adapter*, **HAPUS baris `"NoDisplayClass"="1"`** (karena flag ini menyembunyikan perangkat dari UI).
+     - **Ubah `"Characteristics"=dword:00000084`** (`NCF_PHYSICAL = 0x04 | NCF_HAS_UI = 0x80`). Nilai default virtual `0x09` (`NCF_HIDDEN`) membuat kartu LAN tersembunyi. Dengan `0x84`, kartu LAN langsung tampil resmi di Device Manager & `ncpa.cpl`.
 
 3. **Promosi Filter `WFPLWFS` ke Boot-Start:**
    * Lokasi: `HKLM\SYSTEM\CurrentControlSet\Services\WFPLWFS`
@@ -675,6 +829,11 @@ flowchart TD
      * `ASPM = "0"` (Matikan PCIe Active State Power Management)
    * Menghasilkan throughput stabil 900+ Mbps pada jaringan Gigabit LAN.
 
+7. **Dual-Stage Network Alignment (BootExecute Registry Overwrite & Disarm + User-Mode IP Purge Companion):**
+   * Karena `tcpip.sys` memuat konfigurasi static IP super client di Phase 0 sebelum `BootExecute`, penimpaan registri saja tidak cukup untuk memaksa `tcpip.sys` menghapus IP tersebut dari memori aktif.
+   * **Stage 1 (BootExecute `helper.exe`):** Menimpa kedua lokasi registri (`Tcpip\Parameters\Interfaces\{GUID}` dan `Services\{GUID}\Parameters\Tcpip`), menyinkronkan Hostname murni, menulis marker `SimpleIscsiBoot`, dan melucuti (*disarm*) seluruh residu service diskless legacy (`Start = 4`).
+   * **Stage 2 (User-Mode `helper-svc.exe`):** Berjalan di user-mode, mendeteksi IP non-iBFT/DHCP via `GetUnicastIpAddressTable`, dan mengeksekusi `DeleteUnicastIpAddressEntry` dari `iphlpapi.dll`. Ini memerintahkan kernel `tcpip.sys` membuang IP lama tanpa mengganggu koneksi iSCSI yang sedang berjalan, menyisakan tepat satu IP murni dari DHCP.
+
 ---
 
 ## 8. MATRIKS STATUS FITUR
@@ -693,7 +852,10 @@ Daftar status modul dan kapabilitas sistem Simple-Iscsi saat ini:
 | **Queue Depth & CmdQue** | [`src/scsi_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_gamedisk.rs) | **OPTIMIZED** | `CmdQue = 1`, Queue Depth 32-64, throughput tembus kawat LAN 900+ Mbps. |
 | **Writeback Cache Engine** | [`src/writeback_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/writeback_gamedisk.rs) | **STABLE** | Initial allocation 128 MB per client dengan auto-expansion dinamis. |
 | **VHD Engine** | [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) | **STABLE** | Fixed & Dynamic VHD parsing, BAT mapping, parent-child diffing. |
-| **Boot Helper C++** | [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp) | **STABLE** | `helper.exe` berjalan via `BootExecute`, parse ACPI iBFT, Deep IP Cleaner. |
+| **Boot Helper C++ (Stage 1)** | [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp) | **STABLE** | `helper.exe` berjalan via `BootExecute` (Native Subsystem), sinkronisasi Hostname 100% murni dari DHCP/iBFT, dual-path registry overwrite (`Interfaces` & `Services\GUID`), disarming service pihak ketiga, dan pembuatan marker `SimpleIscsiBoot`. |
+| **User-Mode IP Helper (Stage 2)** | [`helper/helper-svc.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper-svc.cpp) | **STABLE** | `helper-svc.exe` berjalan via Windows Service / Run Key, membersihkan IP residu super client dari RAM kernel secara real-time via `DeleteUnicastIpAddressEntry` (`iphlpapi.dll`) tanpa memutus sesi iSCSI aktif. |
+| **Native Driverless Boot** | Registri & [`DOCUMENTATION.md`](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md) (BAB 9) | **VERIFIED** | 100% Native Driverless (Slot 0000, `NetCfgInstanceId`, `WFPLWFS`, `ConfigFlags = 0`). |
+| **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP, tombol kontrol & restart cepat per-layanan/semua layanan. |
 | **Native Driverless Boot** | Registri & [`DOCUMENTATION.md`](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md) (BAB 9) | **VERIFIED** | 100% Native Driverless (Slot 0000, `NetCfgInstanceId`, `WFPLWFS`, `ConfigFlags = 0`). |
 | **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP, tombol kontrol & restart cepat per-layanan/semua layanan. |
 
@@ -711,6 +873,101 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 - **Rincian Perubahan:** Poin-poin spesifik apa saja yang diubah atau ditambahkan.
 - **Hasil & Verifikasi:** Hasil pengujian, kompilasi, atau status graf index.
 ```
+
+---
+
+### [2026-10-04] - Bugfix: Eliminasi Syntax Crash & Auto-Elevation pada `install_client.bat`
+- **Tujuan:** Mengatasi insiden di mana `install_client.bat` langsung tertutup sendiri (*force close*) tanpa peringatan saat dijalankan di PC client/master image.
+- **Modul Terdampak:**
+  - [`helper/install_client.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/install_client.bat)
+  - [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md)
+- **Root Cause:**
+  1. Karakter ampersand `&` yang tidak ter-escape pada `echo [4/5] ... Service & Startup ...` memicu pembelahan perintah di `cmd.exe` sehingga Windows mencoba menjalankan token `Startup` sebagai executable program terpisah (`'Startup' is not recognized as an internal or external command`).
+  2. Tanda kurung tutup `)` di dalam blok percabangan `if/else` (seperti `(UAC elevation)...` dan `(menggunakan Run Key fallback)`) menutup blok lebih awal secara sintaksis dan menyebabkan fatal parse error `... was unexpected at this time`.
+- **Rincian Perubahan:**
+  1. Mengganti karakter `&` menjadi kata penghubung `dan`.
+  2. Menghilangkan tanda kurung nested di seluruh blok percabangan batch script.
+  3. Menambahkan mekanisme auto-elevation UAC via PowerShell agar script otomatis meminta hak Administrator jika di-double-click biasa.
+  4. Mengganti pembuatan service dari `sc delete` menjadi `sc query` + `sc config` / `sc create` untuk mencegah konflik `ERROR_SERVICE_MARKED_FOR_DELETE` (1072).
+  5. Menambahkan `taskkill /F /IM helper-svc.exe` sebelum proses copy file agar biner tidak terkunci saat update.
+- **Hasil & Verifikasi:**
+  - Eksekusi `helper/install_client.bat nopause` sukses 100% dengan exit code 0. Seluruh 5 tahap berjalan sempurna.
+
+---
+
+### [2026-10-04] - Arsitektur Dual-Stage Network Alignment (BootExecute + User-Mode Purge Companion)
+- **Tujuan:** Menyelesaikan tuntas akar masalah timbulnya dobel IP di mana IP master image super client (`192.168.180.10`) tetap menjadi IP utama (Row 1) dan IP DHCP/iBFT (`192.168.180.2`) menjadi IP sekunder (Row 2).
+- **Modul Terdampak:**
+  - [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp)
+  - [`helper/helper-svc.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper-svc.cpp) (Baru)
+  - [`helper/compile.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/compile.bat)
+  - [`helper/compile_svc.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/compile_svc.bat) (Baru)
+  - [`helper/compile_test.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/compile_test.bat) (Baru)
+  - [`helper/install_client.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/install_client.bat)
+  - [`helper/test_ip_cleaner.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/test_ip_cleaner.cpp)
+  - [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md)
+  - [`docs/superpowers/plans/2026-10-04-dual-stage-ip-override-root-cause-fix-plan.md`](file:///c:/Project%20GIT/Simple-Iscsi/docs/superpowers/plans/2026-10-04-dual-stage-ip-override-root-cause-fix-plan.md) (Baru)
+- **Akar Masalah Nyata:**
+  1. `tcpip.sys` dimuat oleh kernel di Phase 0 sebagai Boot-Start driver sebelum `smss.exe` Phase 1. Driver ini membaca IP super client `192.168.180.10` langsung dari file hive SYSTEM di VHD ke dalam tabel memori kernel.
+  2. `msiscsi.sys` membaca iBFT dan menyuntikkan `192.168.180.2` sebagai IP sekunder agar koneksi boot disk iSCSI tidak putus.
+  3. Mengubah registri di Phase 1 (`BootExecute`) saja tidak membuat `tcpip.sys` di RAM kernel me-reload konfigurasinya tanpa notifikasi NSI. Selain itu, `NtFlushKey` mengembalikan `0xC000014D` karena file system terkunci di Phase 1.
+- **Rincian Perubahan:**
+  1. **Stage 1 (BootExecute `helper.exe`):**
+     - Parser Multi-SZ murni (`ReadRegMultiSz`) untuk logging nilai sebelum dan sesudah penimpaan.
+     - Penimpaan serentak seluruh entri TCP/IP di `Interfaces` dan `Services\{GUID}`.
+     - Penulisan status dan konfigurasi ke `HKLM\SYSTEM\CurrentControlSet\Services\SimpleIscsiBoot`.
+     - Disarm otomatis seluruh residu layanan diskless legacy pihak ketiga (`Start = 4`).
+  2. **Stage 2 (User-Mode IP Purge `helper-svc.exe`):**
+     - Berjalan via Windows Service (`SimpleIscsiHelper`) atau Registry Run Key (`/run`).
+     - Menggunakan Windows IP Helper API: `GetUnicastIpAddressTable()` dan `DeleteUnicastIpAddressEntry()`.
+     - Mendeteksi dan menghapus stale IP (`192.168.180.10`) dari RAM driver `tcpip.sys` secara real-time tanpa memutus socket iSCSI atau memicu reboot/reset adapter.
+     - Menjadikan `192.168.180.2` sebagai satu-satunya IP aktif pada adapter.
+  3. **Otomatisasi & Pengujian:**
+     - Skrip `install_client.bat` otomatis menyalin kedua biner, mendaftarkan BootExecute, membuat Service auto-start, menambahkan Run key fallback, dan menonaktifkan seluruh residu service legacy.
+     - Unit test `test_ip_cleaner.cpp` diperluas mencakup multi-IP parsing (25 unit tests passed).
+- **Hasil & Verifikasi:**
+  - 25 unit test lulus 100%.
+  - Kompilasi `helper.exe` (Native) dan `helper-svc.exe` (Win32) via MSVC x64 sukses 100% tanpa error.
+
+---
+
+### [2026-10-04] - Investigasi Root Cause Masalah Dobel IP (Dual Registry Path) & Rencana Implementasi NtFlushKey
+- **Tujuan:** Menginvestigasi secara mendalam (*systematic debugging*) penyebab timbulnya dua IP address (IP master image `192.168.180.10` di baris 1 dan IP DHCP `192.168.180.2` di baris 2) pada Windows client diskless meskipun `helper.exe` telah berjalan di `BootExecute`.
+- **Modul Terdampak:**
+  - [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md)
+  - [`docs/superpowers/plans/2026-10-04-boot-helper-double-ip-root-cause-fix-plan.md`](file:///c:/Project%20GIT/Simple-Iscsi/docs/superpowers/plans/2026-10-04-boot-helper-double-ip-root-cause-fix-plan.md) (Baru)
+  - [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp)
+  - [`helper/test_ip_cleaner.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/test_ip_cleaner.cpp)
+- **Root Cause & Temuan Kritis:**
+  1. **Dual Registry Storage:** Melalui audit biner registri Windows (`Iscsi menyala tanpa butuh driver bawaan.reg`), ditemukan bahwa Windows menyimpan konfigurasi static IP di DUA lokasi independen:
+     - `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}`
+     - `HKLM\SYSTEM\CurrentControlSet\Services\{GUID}\Parameters\Tcpip`
+  2. **NDIS Driver Fallback Restoration:** `helper.exe` sebelumnya hanya menimpa `Tcpip\Parameters\Interfaces\{GUID}`. Ketika NDIS memuat driver adapter, NDIS membaca `Services\{GUID}\Parameters\Tcpip` yang belum ditimpa dan masih berisi `192.168.180.10`, lalu mengembalikan nilai tersebut sebagai IP utama adapter (Row 1).
+  3. **Ketiadaan `NtFlushKey`:** Modifikasi registri di kernel phase tanpa pemanggilan `NtFlushKey` berisiko tidak langsung ter-commit sebelum NDIS menginisialisasi stack jaringan.
+- **Hasil & Rencana Aksi:**
+  - Dokumentasi plan lengkap disusun di `docs/superpowers/plans/2026-10-04-boot-helper-double-ip-root-cause-fix-plan.md`.
+  - Penambahan Kasus 6 pada Playbook Debugging Section 3 dan Pilar 7 pada Section 7.1.
+  - Siap dieksekusi task-by-task dengan TDD dan verifikasi bukti.
+
+---
+
+### [2026-10-04] - C++ Native Boot Helper: Sinkronisasi Hostname & Penimpaan Mutlak IP (Eliminasi Dobel IP)
+- **Tujuan:** Menghilangkan masalah timbulnya dua IP (misal IP master image Super User `10.10.10.21` dan IP DHCP baru `10.10.10.25`) pada Windows client diskless saat boot, serta menyinkronkan Hostname Windows persis sesuai konfigurasi DHCP Option 12 / iBFT di fase `BootExecute`.
+- **Modul Terdampak:**
+  - [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp)
+  - [`helper/test_ip_cleaner.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/test_ip_cleaner.cpp)
+  - [`helper/compile.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/compile.bat)
+  - [`helper/install_client.bat`](file:///c:/Project%20GIT/Simple-Iscsi/helper/install_client.bat)
+  - [`helper/BOOTEXECUTE_HELPER.reg`](file:///c:/Project%20GIT/Simple-Iscsi/helper/BOOTEXECUTE_HELPER.reg) (Baru)
+  - [`docs/superpowers/plans/2026-10-04-boot-helper-hostname-and-ip-override-plan.md`](file:///c:/Project%20GIT/Simple-Iscsi/docs/superpowers/plans/2026-10-04-boot-helper-hostname-and-ip-override-plan.md) (Baru)
+- **Rincian Perubahan:**
+  1. **Single-Entry `REG_MULTI_SZ` & Penghapusan Residual Lease:** Menimpa nilai `IPAddress`, `SubnetMask`, dan `DefaultGateway` dengan tepat satu entri string (`<IP>\0\0`) di bawah `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}`. Menambahkan fungsi native `NtDeleteValueKey` untuk menghapus total cache binary `DhcpInterfaceOptions` dan residual DHCP values (`DhcpIPAddress`, `DhcpServer`, dll).
+  2. **Pembersihan Adapter Phantom / Non-Aktif:** Menghapus static IP lama pada subkey interface lain yang tidak aktif agar sisa IP super user (`10.10.10.21`) tidak tersimpan di adapter manapun.
+  3. **Preservasi Hostname Murni:** Menghilangkan penambahan suffix paksa `TM` dari implementasi lama, dan menyinkronkan nama asli dari DHCP Option 12 / iBFT ke 4 lokasi registri (`ComputerName\ComputerName`, `ComputerName\ActiveComputerName`, `Tcpip\Parameters\Hostname`, `Tcpip\Parameters\NV Hostname`).
+  4. **Pendaftaran `BootExecute`:** Menyediakan template registri `BOOTEXECUTE_HELPER.reg` dan skrip `install_client.bat` untuk mendaftarkan `helper.exe` ke `Session Manager\BootExecute`.
+- **Hasil & Verifikasi:**
+  - Unit test `test_ip_cleaner.exe` lulus 100% (19 Passed, 0 Failed).
+  - Kompilasi MSVC Native Subsystem `helper.exe` sukses 100% (Exit Code 0).
 
 ---
 
@@ -755,6 +1012,34 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
   2. Menyusun Playbook Kasus Nyata Proyek: Solusi baku panic Tokio runtime pada foreign thread Win32 (`runtime_handle.spawn`), penanganan socket reuse WSAEADDRINUSE 10048, penanganan missing icon resource Win32 1812, dan audit registri BSOD 0x7B Native Driverless.
   3. Mengintegrasikan alur cabang debugging ke dalam diagram alur kerja SOP harian AI Agent (Section 4).
 - **Hasil & Verifikasi:** Dokumen `ANTIGRAVITY.md` memiliki panduan troubleshooting yang lengkap, mencegah AI melakukan tindakan tebak-menebak (*guess-and-check*) yang berisiko merusak kestabilan kode.
+
+---
+
+### [2026-10-04] - Perbaikan Menyeluruh Super Client Lifecycle (Enable, Disable, Commit, & Discard)
+- **Tujuan:** Mengatasi kegagalan disable Super Client di mana Web UI menampilkan "berhasil" namun badge super tetap bertahan dan server tetap melayani VHD differencing, serta menyelaraskan sinkronisasi state in-memory `SharedConfig` dan persistensi disk `config.toml`.
+- **Modul Terdampak:**
+  - `src/config.rs` (`WindowsConfig` struct, serde attributes, & unit tests)
+  - `src/config_manager.rs` (`SharedConfig` methods, `update_super_client_config_file`, & unit tests)
+  - `src/api/routes_client.rs` (`post_superclient_set`, `post_superclient_commit`, `post_superclient_discard`)
+  - `src/server_api.rs` (`/api/superclient/set` route argument)
+  - `ui/index.html` & `ui/index.js` (Context Menu action buttons, status handling, auto-closing)
+  - `config.toml` (Initial clean default state)
+- **Rincian Perubahan:**
+  1. **Root Cause #1 - Missing Serde Default:** `WindowsConfig` sebelumnya mewajibkan field `super_client_ip` dan `super_client_action`. Jika field ini belum tercatat di `config.toml`, deserializer TOML crash / mengembalikan error `missing field super_client_ip`, menyebabkan endpoint GET `/api/config/json` mengembalikan status 500 dan UI menyimpan state lama (stale cache). Ditambahkan `#[serde(default)]` pada kedua field.
+  2. **Root Cause #2 - Logic Disable Super Client:** Pada `post_superclient_set`, saat request `action == "disable"`, handler sebelumnya tetap menulis `super_client_ip = ip` ke file `config.toml` dan tidak mengosongkannya. Logika diperbaiki: jika `action` adalah "disable", "none", atau kosong, maka `super_client_ip = ""` dan `super_client_action = ""`.
+  3. **Root Cause #3 - Injeksi & Penggantian File config.toml:** Implementasi fungsi `update_super_client_config_file` yang tangguh: jika baris `super_client_ip` sudah ada maka di-replace; jika belum ada, otomatis di-inject di bawah section `[windows]`.
+  4. **Root Cause #4 - Sinkronisasi Instan In-Memory `SharedConfig`:** Handler `post_superclient_set` kini menerima `config: &SharedConfig` dan langsung memanggil `config.set_super_client(target_ip, target_action)`. Sesi iSCSI yang baru/berjalan langsung mendeteksi perubahan seketika tanpa perlu restart daemon atau menunggu interval file watcher.
+  5. **Root Cause #5 - Web UI Context Menu & Dedicated Super Client Disable Modal:**
+     - Menu konteks dirapikan kembali menjadi ringkas: hanya opsi toggle `⚡ Enable Super Client` / `⚡ Disable Super Client`, `🧹 Clear Writeback Cache`, dan `✏️ Edit Data Klien`.
+     - Saat memilih **Disable Super Client**, sistem otomatis memunculkan modal dialog terpadu (`#superclient-disable-modal`) dengan 2 pilihan aksi yang rapi:
+       1. **💾 Commit (Simpan ke Master VHD):** Menjalankan background task merge differencing VHD ke Base VHD dan melepaskan mode super.
+       2. **🗑️ Discard (Buang Perubahan & Nonaktifkan):** Menghapus file differencing VHD Super Client, membatalkan semua perubahan, dan mengembalikan klien ke mode normal.
+     - Menambahkan handler menu konteks klik kanan pada tabel dashboard klien dan tabel daftar klien.
+     - Menyinkronkan DOM badge `⚡ Super` seketika saat toggle enable/disable dilakukan.
+- **Hasil & Verifikasi:**
+  - `cargo test -- --nocapture` sukses 100% (6/6 tests passing, termasuk unit test lifecycle file dan SharedConfig).
+  - `cargo build` sukses tanpa error.
+  - Re-indexing MCP `codebase-memory` (`index_repository`) berhasil 100% (1298 nodes, 4035 edges).
 
 ---
 
@@ -813,16 +1098,16 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 - **Rincian Perubahan:**
   1. Menambahkan Sub-bab 9.7 pada dokumentasi teknis mengenai `ServiceGroupOrder`.
   2. Menjelaskan posisi driver `SimpleISCSI` di antara stack jaringan (`PNP_TDI`) dan storage miniport (`SCSI miniport`).
-  3. Mendokumentasikan isolasi driver pihak ketiga dan penghapusan total dependensi `CCBootPNPX.sys`.
+  3. Mendokumentasikan arsitektur driverless murni dan penghapusan total dependensi driver filter pihak ketiga.
 - **Hasil & Verifikasi:** Dokumentasi tersinkronisasi dan di-commit ke Git (`afd749a`).
 
 ---
 
-### [2026-10-01] - Eliminasi Dependensi EXTF & Finalisasi Driverless Registry
-- **Tujuan:** Membersihkan registri dari sisa konfigurasi EXTF lama yang sudah tidak dibutuhkan pada arsitektur native driverless.
+### [2026-10-01] - Finalisasi Native Driverless Registry Windows Client
+- **Tujuan:** Menyempurnakan konfigurasi registri client agar sepenuhnya native driverless tanpa layer filter tambahan.
 - **Modul Terdampak:** Registri client, template konfigurasi, dan dokumentasi terkait.
 - **Rincian Perubahan:**
-  1. Menghapus referensi parameter EXTF dari alur booting client.
-  2. Menyempurnakan skrip injeksi registri untuk menyasar langsung slot `0000` tanpa perantara layer filter tambahan.
+  1. Menyederhanakan dan membersihkan parameter registri booting client.
+  2. Menyempurnakan skrip injeksi registri untuk menyasar langsung slot `0000` tanpa perantara layer filter pihak ketiga.
   3. Memvalidasi kestabilan boot Windows 10/11 pada chip Realtek RTL8111/8168/8125 dan Intel I219/I225.
-- **Hasil & Verifikasi:** Sistem client terbukti boot stabil tanpa driver pihak ketiga.
+- **Hasil & Verifikasi:** Sistem client terbukti boot stabil secara native tanpa driver pihak ketiga.

@@ -11,8 +11,24 @@ pub struct VhdBackend {
     pub sector_bitmap_size: u32,
     pub current_size: u64,
     pub disk_type: u32,
+    pub table_offset: u64,
+    pub max_table_entries: u32,
     pub parent_path: Option<String>,
     pub parent_uuid: Option<[u8; 16]>,
+}
+
+/// Menghitung VHD checksum sesuai spesifikasi resmi Microsoft VHD:
+/// One's complement dari penjumlahan seluruh byte (u8 sebagai u32) dalam struktur header/footer,
+/// dengan field checksum (4 byte) dianggap 0.
+pub fn calculate_vhd_checksum(data: &[u8], checksum_offset: usize) -> u32 {
+    let mut sum: u32 = 0;
+    for (i, &b) in data.iter().enumerate() {
+        if i >= checksum_offset && i < checksum_offset + 4 {
+            continue;
+        }
+        sum = sum.wrapping_add(b as u32);
+    }
+    !sum
 }
 
 impl VhdBackend {
@@ -99,6 +115,8 @@ impl VhdBackend {
             sector_bitmap_size,
             current_size,
             disk_type,
+            table_offset,
+            max_table_entries,
             parent_path,
             parent_uuid,
         })
@@ -184,16 +202,8 @@ impl VhdBackend {
         header[588..592].copy_from_slice(&0u32.to_be_bytes());        // reserved
         header[592..600].copy_from_slice(&locator_offset.to_be_bytes()); // platform_data_offset (u64)
 
-        // Compute header checksum (sum of 256 u32 BE words → complement → write to header[12..16])
-        // Header[12..16] is currently zero (not yet set)
-        let mut header_sum: u32 = 0;
-        for chunk in header.chunks(4) {
-            let val = u32::from_be_bytes([chunk[0], chunk.get(1).copied().unwrap_or(0),
-                chunk.get(2).copied().unwrap_or(0), chunk.get(3).copied().unwrap_or(0)]);
-            header_sum = header_sum.wrapping_add(val);
-        }
-        let header_checksum = !header_sum;
-        // Write checksum into header — total sum of header becomes 0xFFFFFFFF
+        // Compute header checksum (sum of all bytes with checksum field 12..16 = 0, then one's complement)
+        let header_checksum = calculate_vhd_checksum(&header, 12);
         header[12..16].copy_from_slice(&header_checksum.to_be_bytes());
 
         // 5. Build footer (512 bytes)
@@ -215,15 +225,9 @@ impl VhdBackend {
         footer[76..80].copy_from_slice(&child_uuid[8..12]);
         footer[80..84].copy_from_slice(&child_uuid[12..16]);
 
-        // Compute footer checksum
-        let mut footer_sum: u32 = 0;
-        for chunk in footer.chunks(4) {
-            let val = u32::from_be_bytes([chunk[0], chunk.get(1).copied().unwrap_or(0),
-                chunk.get(2).copied().unwrap_or(0), chunk.get(3).copied().unwrap_or(0)]);
-            footer_sum = footer_sum.wrapping_add(val);
-        }
-        let footer_checksum = !footer_sum;
-        footer[64..68].copy_from_slice(&footer_checksum.to_be_bytes()); // checksum field
+        // Compute footer checksum (sum of all bytes with checksum field 64..68 = 0, then one's complement)
+        let footer_checksum = calculate_vhd_checksum(&footer, 64);
+        footer[64..68].copy_from_slice(&footer_checksum.to_be_bytes());
 
         // 6. Write child VHD file
         let mut child_options = std::fs::OpenOptions::new();
@@ -363,8 +367,8 @@ impl VhdBackend {
             let start_block = (lba * block_size) / vhd_block_size;
             let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
     
-            // Pre-allocate reusable zero buffers ONCE (no per-block heap alloc)
-            let zero_bitmap = vec![0u8; bitmap_size as usize];
+            // Bitmap 0xFF = semua sektor pada 2MB blok terisi data valid
+            let full_bitmap = vec![0xFFu8; bitmap_size as usize];
             let mut block_data = vec![0u8; vhd_block_size as usize];
             let mut bat_updates: Vec<(u64, u32)> = Vec::new();
     
@@ -374,9 +378,9 @@ impl VhdBackend {
                     let mut eof = self.file.metadata()?.len();
                     let bat_entry = (eof / 512) as u32;
     
-                    // Write sector bitmap (reuse zero buffer)
-                    file_write_all_at(&self.file, eof, &zero_bitmap)?;
-                    eof += zero_bitmap.len() as u64;
+                    // Write sector bitmap (0xFF = valid sectors)
+                    file_write_all_at(&self.file, eof, &full_bitmap)?;
+                    eof += full_bitmap.len() as u64;
     
                     // COPY-ON-WRITE: read full block from parent
                     if let Some(ref p) = parent {
@@ -399,13 +403,10 @@ impl VhdBackend {
                 }
             }
     
-            // Batch write all BAT updates in one sequential pass
-            if !bat_updates.is_empty() {
-                let mut first_off = 1536 + (bat_updates[0].0 * 4) as u64;
-                for (_, entry) in &bat_updates {
-                    file_write_all_at(&self.file, first_off, &entry.to_be_bytes())?;
-                    first_off += 4;
-                }
+            // Batch write all BAT updates at exact table_offset
+            for (blk_idx, entry) in &bat_updates {
+                let off = self.table_offset + (*blk_idx * 4) as u64;
+                file_write_all_at(&self.file, off, &entry.to_be_bytes())?;
             }
     
             // Phase 2: Overlay write data — contiguous blocks = 1 seek
@@ -424,7 +425,6 @@ impl VhdBackend {
                 buf_offset += chunk;
                 current_byte_offset += chunk as u64;
             }
-    
             
             Ok(())
         }
@@ -436,8 +436,7 @@ impl VhdBackend {
             let start_block = (lba * block_size) / vhd_block_size;
             let end_block = ((lba * block_size + buf.len() as u64 - 1) / vhd_block_size) + 1;
     
-            // Pre-allocate reusable zero buffers ONCE
-            let zero_bitmap = vec![0u8; bitmap_size as usize];
+            let full_bitmap = vec![0xFFu8; bitmap_size as usize];
             let zero_data = vec![0u8; vhd_block_size as usize];
             let mut bat_updates: Vec<(u64, u32)> = Vec::new();
     
@@ -447,9 +446,9 @@ impl VhdBackend {
                     let mut eof = self.file.metadata()?.len();
                     let bat_entry = (eof / 512) as u32;
     
-                    // Write bitmap + zero data (reuse buffers)
-                    file_write_all_at(&self.file, eof, &zero_bitmap)?;
-                    eof += zero_bitmap.len() as u64;
+                    // Write bitmap + zero data
+                    file_write_all_at(&self.file, eof, &full_bitmap)?;
+                    eof += full_bitmap.len() as u64;
                     
                     file_write_all_at(&self.file, eof, &zero_data)?;
     
@@ -458,13 +457,10 @@ impl VhdBackend {
                 }
             }
     
-            // Batch write all BAT updates sequentially
-            if !bat_updates.is_empty() {
-                let mut first_off = 1536 + (bat_updates[0].0 * 4) as u64;
-                for (_, entry) in &bat_updates {
-                    file_write_all_at(&self.file, first_off, &entry.to_be_bytes())?;
-                    first_off += 4;
-                }
+            // Batch write all BAT updates at exact table_offset
+            for (blk_idx, entry) in &bat_updates {
+                let off = self.table_offset + (*blk_idx * 4) as u64;
+                file_write_all_at(&self.file, off, &entry.to_be_bytes())?;
             }
     
             // Phase 2: Write data — contiguous per VHD block = 1 seek per VHD block

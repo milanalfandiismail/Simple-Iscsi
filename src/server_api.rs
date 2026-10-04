@@ -344,16 +344,20 @@ async fn handle_request(
             crate::api::routes_vhd::post_vhd_merge(&body)
         }
 
+        ("GET", "/api/vhd/merge_status") | ("GET", "/api/superclient/status") => {
+            crate::api::routes_vhd::get_merge_status(config)
+        }
+
         ("POST", "/api/superclient/set") => {
-            crate::api::routes_client::post_superclient_set(&body)
+            crate::api::routes_client::post_superclient_set(config, stats, &body)
         }
 
         ("POST", "/api/superclient/commit") => {
-            crate::api::routes_client::post_superclient_commit(config, &body)
+            crate::api::routes_client::post_superclient_commit(config, stats, &body)
         }
 
         ("POST", "/api/superclient/discard") => {
-            crate::api::routes_client::post_superclient_discard(config, &body)
+            crate::api::routes_client::post_superclient_discard(config, stats, &body)
         }
 
         ("GET", "/api/dhcp/leases") => {

@@ -659,21 +659,96 @@
         </div>
     </div>
 
+    <!-- MODAL SUPER CLIENT DISABLE ACTION SELECTION -->
+    <div id="superclient-disable-modal" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto" style="display: none;">
+        <div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl my-auto transition-colors">
+            <div class="flex items-center justify-between pb-3.5 border-b border-stone-100 dark:border-stone-800 mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-base border border-amber-200/60 dark:border-amber-800/60">
+                        ⚡
+                    </div>
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-stone-900 dark:text-white font-['General_Sans','Outfit',sans-serif]">Nonaktifkan Super Client</h2>
+                        <p class="text-[11px] text-stone-500 dark:text-stone-400 font-mono" id="superclient-modal-target">Klien: -</p>
+                    </div>
+                </div>
+                <button type="button" class="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 text-lg p-1" onclick="closeSuperClientDisableModal()">✕</button>
+            </div>
+
+            <p class="text-xs text-stone-600 dark:text-stone-300 mb-4 leading-relaxed">
+                Pilih tindakan yang ingin dilakukan terhadap perubahan image OS yang dibuat selama sesi Super Client:
+            </p>
+
+            <div class="space-y-3 mb-5">
+                <!-- Option 1: Commit -->
+                <button type="button" class="w-full group p-4 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/40 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-left transition-all active:scale-[0.99] cursor-pointer" onclick="handleSuperClientDisableChoice('commit')">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">💾</span>
+                            <span class="font-bold text-xs sm:text-sm text-emerald-900 dark:text-emerald-200 font-['General_Sans','Outfit',sans-serif]">Commit (Simpan ke Master VHD)</span>
+                        </div>
+                        <span class="text-xs text-emerald-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                    </div>
+                    <p class="text-[11px] text-emerald-700 dark:text-emerald-400 leading-normal pl-7">
+                        Gabungkan semua perubahan secara permanen ke Master VHD di background dan nonaktifkan mode Super Client.
+                    </p>
+                </button>
+
+                <!-- Option 2: Discard -->
+                <button type="button" class="w-full group p-4 rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/40 hover:bg-rose-50 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-left transition-all active:scale-[0.99] cursor-pointer" onclick="handleSuperClientDisableChoice('discard')">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">🗑️</span>
+                            <span class="font-bold text-xs sm:text-sm text-rose-900 dark:text-rose-200 font-['General_Sans','Outfit',sans-serif]">Discard (Buang Perubahan & Nonaktifkan)</span>
+                        </div>
+                        <span class="text-xs text-rose-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                    </div>
+                    <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-normal pl-7">
+                        Hapus differencing VHD, batalkan seluruh perubahan sementara, dan kembalikan klien ke mode normal.
+                    </p>
+                </button>
+            </div>
+
+            <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100 dark:border-stone-800">
+                <button type="button" class="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-semibold rounded-md bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-700 transition-all cursor-pointer" onclick="closeSuperClientDisableModal()">Batal</button>
+            </div>
+        </div>
+    </div>
+
     <!-- CONTEXT MENU FOR CLIENT ROWS -->
     <div id="context-menu" class="context-menu bg-white border border-stone-200 rounded-lg p-1.5 shadow-xl text-xs font-medium w-52">
-        <button type="button" class="context-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-stone-700 hover:bg-stone-100 hover:text-stone-900 text-left transition-colors" onclick="ctxEnableSuperClient()">
+        <button type="button" class="context-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-stone-700 hover:bg-stone-100 hover:text-stone-900 text-left transition-colors cursor-pointer" onclick="ctxToggleSuperClient()">
             <span>⚡</span>
             <span id="ctx-super-client-label">Enable Super Client</span>
         </button>
-        <button type="button" class="context-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-stone-700 hover:bg-stone-100 hover:text-stone-900 text-left transition-colors" onclick="ctxClearWriteback()">
+        <button type="button" class="context-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-stone-700 hover:bg-stone-100 hover:text-stone-900 text-left transition-colors cursor-pointer" onclick="ctxClearWriteback()">
             <span>🧹</span>
             <span>Clear Writeback Cache</span>
         </button>
         <div class="h-px bg-stone-100 my-1"></div>
-        <button type="button" class="context-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-stone-700 hover:bg-stone-100 hover:text-stone-900 text-left transition-colors" onclick="ctxEditClient()">
+        <button type="button" class="context-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-stone-700 hover:bg-stone-100 hover:text-stone-900 text-left transition-colors cursor-pointer" onclick="ctxEditClient()">
             <span>✏️</span>
             <span>Edit Data Klien</span>
         </button>
+    </div>
+
+    <!-- FLOATING ASYNC MERGE PROGRESS WIDGET -->
+    <div id="vhd-merge-progress-widget" class="fixed bottom-6 right-6 z-50 max-w-md w-[calc(100vw-3rem)] sm:w-96 bg-white dark:bg-stone-900 border border-amber-300 dark:border-amber-700/80 rounded-2xl shadow-2xl p-4 transition-all duration-300 transform translate-y-32 opacity-0 pointer-events-none" style="display: none;">
+        <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 animate-pulse">
+                <span class="text-lg">⚡</span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <h4 class="text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-100 font-['General_Sans','Outfit',sans-serif] truncate">Merging Super Client VHD</h4>
+                    <span id="vhd-merge-progress-pct" class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">0%</span>
+                </div>
+                <p id="vhd-merge-progress-msg" class="text-[11px] text-stone-500 dark:text-stone-400 truncate mb-2">Mempersiapkan merge...</p>
+                <div class="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-2 overflow-hidden border border-stone-200/50 dark:border-stone-700/50">
+                    <div id="vhd-merge-progress-bar" class="bg-gradient-to-r from-amber-500 to-emerald-500 h-2 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- TOAST NOTIFICATION CONTAINER -->

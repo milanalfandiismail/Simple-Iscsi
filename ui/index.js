@@ -117,6 +117,12 @@ async function loadInitialData() {
     } catch (err) {
         console.error('loadWritebackFiles error:', err);
     }
+
+    try {
+        await checkInitialMergeStatus();
+    } catch (err) {
+        console.error('checkInitialMergeStatus error:', err);
+    }
 }
 
 function initAutoSyncIntervals() {
@@ -155,21 +161,27 @@ async function apiPost(url, body = {}, timeoutMs = 4500) {
             body: typeof body === 'string' ? body : JSON.stringify(body),
             signal: controller.signal
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const contentType = res.headers.get('content-type');
         let result;
         if (contentType && contentType.includes('application/json')) {
-            result = await res.json(); // AbortController still active here
+            result = await res.json();
         } else {
             const text = await res.text();
-            result = { status: 'ok', message: text };
+            result = { status: res.ok ? 'ok' : 'error', message: text };
         }
         clearTimeout(timeoutId);
+        if (!res.ok) {
+            console.error(`POST ${url} returned ${res.status}:`, result);
+            return {
+                status: 'error',
+                message: (result && result.message) ? result.message : `HTTP ${res.status}`
+            };
+        }
         return result;
     } catch (err) {
         clearTimeout(timeoutId);
         console.error(`POST ${url} failed:`, err);
-        return null;
+        return { status: 'error', message: err.message || 'Network error' };
     }
 }
 
@@ -542,7 +554,7 @@ function renderDashboardClientsTable() {
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
-        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
+        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
         row.innerHTML = `
             <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
                 <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
@@ -576,6 +588,13 @@ function renderDashboardClientsTable() {
                 <div class="text-[10px] lg:text-[9px] xl:text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
+
+        // Right-click context menu
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showContextMenu(e, { ip: c.ip, active: statsInfo.active, image_manager: c.image_manager, clientObj: c });
+        });
+
         tbody.appendChild(row);
     });
 
@@ -821,6 +840,7 @@ function renderVhdTable() {
     Object.entries(configObj.image_manager).forEach(([key, path]) => {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
+        const safeKey = key.replace(/'/g, "\\'");
         row.innerHTML = `
             <td class="py-3 px-3.5 sm:py-3.5 sm:px-5">
                 <div class="flex items-center gap-2">
@@ -835,8 +855,8 @@ function renderVhdTable() {
             </td>
             <td class="py-3 px-3.5 sm:py-3.5 sm:px-5" style="text-align: right;">
                 <div class="inline-flex items-center gap-2 justify-end">
-                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all" onclick="openVhdCrudModal('${key}', '${path}')">Edit</button>
-                    <button class="btn-primary inline-flex items-center justify-center px-3 py-1.5 text-xs shadow-xs" onclick="showVhdSnapshots('${key}')">Snapshots</button>
+                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all cursor-pointer" onclick="openVhdCrudModal('${safeKey}')">Edit</button>
+                    <button class="btn-primary inline-flex items-center justify-center px-3 py-1.5 text-xs shadow-xs cursor-pointer" onclick="showVhdSnapshots('${safeKey}')">Snapshots</button>
                 </div>
             </td>
         `;
@@ -848,23 +868,24 @@ function renderVhdTable() {
 
 async function fetchSnapshotsCount(key) {
     const el = document.getElementById(`snapshots-count-${key}`);
-    const data = await apiGet(`/api/vhd/backups?image_key=${key}`);
-    if (data && el) {
+    const data = await apiGet(`/api/vhd/backups?image_key=${encodeURIComponent(key)}`);
+    if (data && Array.isArray(data) && el) {
         el.textContent = `${data.length} snapshots`;
     } else if (el) {
         el.textContent = '0 snapshots';
     }
 }
 
-function openVhdCrudModal(key = null, path = null) {
+function openVhdCrudModal(key = null) {
     const modal = document.getElementById('vhd-crud-modal');
     modal.style.display = 'flex';
 
-    if (key) {
+    if (key && configObj && configObj.image_manager && configObj.image_manager[key] !== undefined) {
+        const path = configObj.image_manager[key] || '';
         document.getElementById('vhd-modal-title').textContent = 'Edit VHD Mapping';
         document.getElementById('vhd-old-key').value = key;
         document.getElementById('vhd-key').value = key;
-        document.getElementById('vhd-path').value = path || '';
+        document.getElementById('vhd-path').value = path;
         document.getElementById('btn-vhd-delete').style.display = 'inline-flex';
     } else {
         document.getElementById('vhd-modal-title').textContent = 'Tambah VHD Mapping';
@@ -890,6 +911,32 @@ async function saveVhdAction(e) {
     const oldKey = document.getElementById('vhd-old-key').value.trim();
     const newKey = document.getElementById('vhd-key').value.trim();
     const path = document.getElementById('vhd-path').value.trim();
+
+    if (!newKey) {
+        showToast('Alias / Image Key wajib diisi!', 'error');
+        return;
+    }
+
+    if (!path) {
+        showToast('Path file VHD wajib diisi!', 'error');
+        return;
+    }
+
+    // Validasi format path VHD
+    const lowerPath = path.toLowerCase();
+    const hasVhdExt = lowerPath.endsWith('.vhd') || lowerPath.endsWith('.vhdx');
+    const hasPathSep = path.includes('\\') || path.includes('/');
+    const hasDriveOrAbsolute = /^[a-zA-Z]:[\\\/]/.test(path) || path.startsWith('\\\\') || path.startsWith('/');
+
+    if (!hasVhdExt) {
+        showToast('File VHD harus berakhiran .vhd atau .vhdx!', 'error');
+        return;
+    }
+
+    if (!hasPathSep && !hasDriveOrAbsolute) {
+        showToast('Format path tidak valid! Masukkan path lengkap file VHD (contoh: D:\\Images\\Windows10.vhd)', 'error');
+        return;
+    }
 
     if (!configObj) configObj = {};
     if (!configObj.image_manager) configObj.image_manager = {};
@@ -927,8 +974,8 @@ async function showVhdSnapshots(imageKey) {
     const tbody = document.getElementById('snapshots-tbody');
     tbody.innerHTML = `<tr><td colspan="3" class="py-6 px-4 text-center text-stone-500">Memuat snapshot...</td></tr>`;
 
-    const data = await apiGet(`/api/vhd/backups?image_key=${imageKey}`);
-    if (!data || data.length === 0) {
+    const data = await apiGet(`/api/vhd/backups?image_key=${encodeURIComponent(imageKey)}`);
+    if (!data || !Array.isArray(data) || data.length === 0) {
         tbody.innerHTML = `<tr><td colspan="3" class="py-6 px-4 text-center text-stone-500">Belum ada file snapshot backup untuk image ini.</td></tr>`;
         return;
     }
@@ -937,11 +984,27 @@ async function showVhdSnapshots(imageKey) {
     data.forEach(snap => {
         const row = document.createElement('tr');
         row.className = "hover:bg-stone-50 border-b border-stone-100";
+        const displayName = snap.name || (snap.path ? snap.path.split(/[\\/]/).pop() : `Snapshot #${snap.index}`);
+        const displaySize = snap.size ? formatBytes(snap.size) : 'Auto Meta';
+        const dateDisplay = snap.date ? `<span class="text-[10px] text-stone-400 block">${snap.date}</span>` : '';
+        const safeImgKey = imageKey.replace(/'/g, "\\'");
+        const safeName = displayName.replace(/'/g, "\\'");
+
         row.innerHTML = `
-            <td class="py-2.5 px-3.5 font-mono text-xs font-semibold text-stone-900">${snap.path || snap.name}</td>
-            <td class="py-2.5 px-3.5 font-mono text-xs text-stone-500">${snap.index !== undefined ? '#' + snap.index : ''}</td>
+            <td class="py-2.5 px-3.5">
+                <div class="font-mono text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                    <span>💾</span>
+                    <span>${displayName}</span>
+                    <span class="text-[10px] text-stone-400 font-normal">#${snap.index}</span>
+                </div>
+                <div class="text-[11px] font-mono text-stone-400 truncate max-w-xs mt-0.5" title="${snap.path}">${snap.path}</div>
+                ${dateDisplay}
+            </td>
+            <td class="py-2.5 px-3.5 font-mono text-xs text-stone-600 font-medium">
+                <span class="inline-flex items-center px-2 py-0.5 rounded bg-stone-100 border border-stone-200/60 text-stone-700 text-[11px]">${displaySize}</span>
+            </td>
             <td class="py-2.5 px-3.5 text-right">
-                <button class="inline-flex items-center justify-center px-3 py-1 text-xs font-semibold rounded-md bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all" onclick="restoreSnapshotAction('${imageKey}', '${snap.path || snap.name}')">⏪ Restore</button>
+                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all cursor-pointer" onclick="restoreSnapshotAction('${safeImgKey}', ${snap.index}, '${safeName}')">⏪ Restore</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -952,14 +1015,23 @@ function closeSnapshotsModal() {
     document.getElementById('snapshots-modal').style.display = 'none';
 }
 
-async function restoreSnapshotAction(imageKey, snapshotName) {
-    showConfirmModal('Restore Snapshot', `Apakah Anda yakin ingin me-restore master VHD ${imageKey} ke snapshot ${snapshotName}?`, async () => {
-        const res = await apiPost('/api/vhd/restore', { image_key: imageKey, snapshot_name: snapshotName });
-        if (res && res.status === 'ok') {
-            showToast('VHD berhasil di-restore ke snapshot', 'success');
+async function restoreSnapshotAction(imageKey, index, displayName) {
+    showConfirmModal('Restore Snapshot', `Apakah Anda yakin ingin me-restore master VHD (${imageKey}) ke snapshot "${displayName}"? Master VHD akan dikembalikan ke titik snapshot ini dan differencing snapshot terkait akan dibersihkan.`, async () => {
+        showToast(`Memproses restore ${displayName}...`, 'info');
+        const res = await apiPost('/api/vhd/restore', { image_key: imageKey, index: Number(index) });
+        if (res && (res.status === 'ok' || res.status === 'success')) {
+            showToast(res.message || 'Master VHD berhasil di-restore ke snapshot!', 'success');
             closeSnapshotsModal();
+            if (configObj && configObj.windows) {
+                configObj.windows.super_client_ip = '';
+                configObj.windows.super_client_action = '';
+            }
+            await loadConfigJson();
+            renderVhdTable();
+            renderClientsManagerTable();
+            renderDashboardClientsTable();
         } else {
-            showToast('Gagal me-restore snapshot', 'error');
+            showToast((res && res.message) ? res.message : 'Gagal me-restore snapshot', 'error');
         }
     });
 }
@@ -1517,6 +1589,8 @@ function initContextMenus() {
     window.addEventListener('blur', () => hideContextMenu());
 }
 
+let superClientTarget = null;
+
 function showContextMenu(e, clientData) {
     selectedContextClient = clientData;
     const menu = document.getElementById('context-menu');
@@ -1530,7 +1604,7 @@ function showContextMenu(e, clientData) {
 
     menu.style.display = 'block';
     menu.style.left = `${Math.min(e.pageX, window.innerWidth - 220)}px`;
-    menu.style.top = `${Math.min(e.pageY, window.innerHeight - 150)}px`;
+    menu.style.top = `${Math.min(e.pageY, window.innerHeight - 160)}px`;
 }
 
 function hideContextMenu() {
@@ -1538,19 +1612,205 @@ function hideContextMenu() {
     if (menu) menu.style.display = 'none';
 }
 
-async function ctxEnableSuperClient() {
+async function ctxToggleSuperClient() {
     if (!selectedContextClient) return;
     const ip = selectedContextClient.ip;
     const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === ip;
+    hideContextMenu();
 
-    const action = isSuper ? 'disable' : 'enable';
-    const res = await apiPost('/api/superclient/set', { ip, action });
+    if (isSuper) {
+        openSuperClientDisableModal(selectedContextClient);
+    } else {
+        // 1. Cek apakah client sedang online (active === true)
+        const sessionInfo = activeSessionsMap.get(ip);
+        const isOnline = (sessionInfo && sessionInfo.active === true) || 
+                         (selectedContextClient && selectedContextClient.active === true);
+        if (isOnline) {
+            showToast(`Klien ${ip} sedang ONLINE! Matikan / shutdown PC klien terlebih dahulu sebelum mengaktifkan mode Super Client.`, 'error');
+            return;
+        }
 
-    if (res) {
-        showToast(isSuper ? `Super Client dinonaktifkan untuk IP ${ip}` : `Super Client diaktifkan untuk IP ${ip}`, 'success');
-        await loadConfigJson();
-        renderClientsManagerTable();
-        renderDashboardClientsTable();
+        // 2. Cek apakah sudah ada PC lain yang sedang menjadi Super Client
+        const activeSuperIp = configObj && configObj.windows && configObj.windows.super_client_ip;
+        if (activeSuperIp && activeSuperIp !== ip && activeSuperIp !== '') {
+            showToast(`Hanya 1 PC yang dapat menjadi Super Client. IP ${activeSuperIp} saat ini masih aktif sebagai Super Client!`, 'error');
+            return;
+        }
+
+        const res = await apiPost('/api/superclient/set', { ip, action: 'enable' });
+        if (res && res.status === 'ok') {
+            if (!configObj) configObj = {};
+            if (!configObj.windows) configObj.windows = {};
+            configObj.windows.super_client_ip = ip;
+            configObj.windows.super_client_action = 'enable';
+
+            showToast(res.message || `Super Client diaktifkan untuk IP ${ip}`, 'success');
+            await loadConfigJson();
+            renderClientsManagerTable();
+            renderDashboardClientsTable();
+        } else {
+            showToast((res && res.message) ? res.message : 'Gagal mengaktifkan Super Client', 'error');
+        }
+    }
+}
+
+function ctxEnableSuperClient() {
+    ctxToggleSuperClient();
+}
+
+// Super Client Disable Modal Handlers
+function openSuperClientDisableModal(clientData) {
+    if (!clientData) return;
+
+    // Validasi: klien harus dalam keadaan OFFLINE sebelum Commit / Discard
+    // — Commit/Discard saat klien masih aktif dapat menyebabkan korupsi VHD differencing.
+    const ip = clientData.ip;
+    const sessionInfo = activeSessionsMap.get(ip);
+    const isOnline = (sessionInfo && sessionInfo.active === true) ||
+                     (clientData.active === true);
+    if (isOnline) {
+        const name = (clientData.clientObj && clientData.clientObj.hostname) || ip;
+        showToast(
+            `Klien ${name} (${ip}) sedang ONLINE! Matikan / shutdown PC klien terlebih dahulu sebelum melakukan Commit atau Discard. Operasi pada VHD yang sedang aktif dapat menyebabkan korupsi data.`,
+            'error'
+        );
+        return;
+    }
+
+    superClientTarget = clientData;
+    const modal = document.getElementById('superclient-disable-modal');
+    const targetLabel = document.getElementById('superclient-modal-target');
+    if (targetLabel) {
+        const name = (clientData.clientObj && clientData.clientObj.hostname) || ip;
+        targetLabel.textContent = `Klien: ${name} (${ip})`;
+    }
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeSuperClientDisableModal() {
+    const modal = document.getElementById('superclient-disable-modal');
+    if (modal) modal.style.display = 'none';
+    superClientTarget = null;
+}
+
+// VHD Merge Progress Widget Controller
+let mergePollingTimer = null;
+
+function showMergeProgressWidget(pct = 0, msg = 'Mempersiapkan merge...') {
+    const widget = document.getElementById('vhd-merge-progress-widget');
+    if (!widget) return;
+    widget.style.display = 'block';
+    setTimeout(() => {
+        widget.classList.remove('translate-y-32', 'opacity-0', 'pointer-events-none');
+        widget.classList.add('translate-y-0', 'opacity-100', 'pointer-events-auto');
+    }, 20);
+
+    updateMergeProgressWidget(pct, msg);
+}
+
+function updateMergeProgressWidget(pct, msg) {
+    const pctEl = document.getElementById('vhd-merge-progress-pct');
+    const msgEl = document.getElementById('vhd-merge-progress-msg');
+    const barEl = document.getElementById('vhd-merge-progress-bar');
+    
+    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (msgEl) msgEl.textContent = msg;
+    if (barEl) barEl.style.width = `${pct}%`;
+}
+
+function hideMergeProgressWidget() {
+    const widget = document.getElementById('vhd-merge-progress-widget');
+    if (!widget) return;
+    widget.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto');
+    widget.classList.add('translate-y-32', 'opacity-0', 'pointer-events-none');
+    setTimeout(() => {
+        widget.style.display = 'none';
+    }, 350);
+}
+
+function startMergeProgressPolling() {
+    if (mergePollingTimer) {
+        clearInterval(mergePollingTimer);
+        mergePollingTimer = null;
+    }
+
+    showMergeProgressWidget(0, 'Memulai proses merge VHD di background...');
+
+    mergePollingTimer = setInterval(async () => {
+        const data = await apiGet('/api/vhd/merge_status');
+        if (!data) return;
+
+        if (data.is_merging) {
+            updateMergeProgressWidget(data.progress || 0, data.message || 'Menggabungkan differencing VHD...');
+        } else {
+            // Selesai atau Error
+            clearInterval(mergePollingTimer);
+            mergePollingTimer = null;
+
+            if (data.error) {
+                updateMergeProgressWidget(data.progress || 0, `Gagal: ${data.error}`);
+                showToast(`Gagal merge VHD Super Client: ${data.error}`, 'error');
+                setTimeout(() => hideMergeProgressWidget(), 5000);
+            } else {
+                updateMergeProgressWidget(100, 'Merge Selesai! Mode Super Client dinonaktifkan.');
+                showToast('Commit Super Client berhasil! Master VHD telah diperbarui.', 'success');
+                
+                // Pastikan status config & tabel di-refresh secara penuh
+                if (configObj && configObj.windows) {
+                    configObj.windows.super_client_ip = '';
+                    configObj.windows.super_client_action = '';
+                }
+                await loadConfigJson();
+                renderClientsManagerTable();
+                renderDashboardClientsTable();
+                renderVhdTable();
+
+                setTimeout(() => hideMergeProgressWidget(), 3000);
+            }
+        }
+    }, 750);
+}
+
+async function checkInitialMergeStatus() {
+    const data = await apiGet('/api/vhd/merge_status');
+    if (data && data.is_merging) {
+        startMergeProgressPolling();
+    }
+}
+
+async function handleSuperClientDisableChoice(choice) {
+    if (!superClientTarget) {
+        closeSuperClientDisableModal();
+        return;
+    }
+
+    const ip = superClientTarget.ip;
+    const hostname = (superClientTarget.clientObj && superClientTarget.clientObj.hostname) || ip;
+    closeSuperClientDisableModal();
+
+    if (choice === 'commit') {
+        showToast(`Memproses Commit Super Client (${hostname})...`, 'info');
+        const res = await apiPost('/api/superclient/commit', { ip, hostname });
+        if (res && res.status === 'ok') {
+            startMergeProgressPolling();
+        } else {
+            showToast((res && res.message) ? res.message : 'Gagal memproses commit Super Client', 'error');
+        }
+    } else if (choice === 'discard') {
+        showToast(`Membatalkan perubahan Super Client (${hostname})...`, 'info');
+        const res = await apiPost('/api/superclient/discard', { ip, hostname });
+        if (res && res.status === 'ok') {
+            if (configObj && configObj.windows) {
+                configObj.windows.super_client_ip = '';
+                configObj.windows.super_client_action = '';
+            }
+            showToast(res.message || 'Perubahan Super Client berhasil dibatalkan (differencing dihapus)', 'success');
+            await loadConfigJson();
+            renderClientsManagerTable();
+            renderDashboardClientsTable();
+        } else {
+            showToast((res && res.message) ? res.message : 'Gagal membatalkan perubahan Super Client', 'error');
+        }
     }
 }
 
