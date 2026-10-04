@@ -4,6 +4,7 @@ use tracing::{info, warn, error, debug};
 use std::net::{SocketAddrV4, SocketAddr};
 use std::path::Path;
 use bytes::{BytesMut, BufMut, Buf};
+use socket2::{Socket, Domain, Type, Protocol};
 
 use crate::config_manager::SharedConfig;
 
@@ -21,8 +22,12 @@ pub struct TftpServer {
 
 impl TftpServer {
     pub async fn new(config: SharedConfig) -> std::io::Result<Arc<Self>> {
-        let addr = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, TFTP_PORT);
-        let socket = UdpSocket::bind(addr).await?;
+        let addr: std::net::SocketAddr = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, TFTP_PORT).into();
+        let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        sock.set_reuse_address(true)?;
+        sock.bind(&addr.into())?;
+        sock.set_nonblocking(true)?;
+        let socket = UdpSocket::from_std(sock.into())?;
         
         Ok(Arc::new(TftpServer {
             config,
@@ -30,22 +35,33 @@ impl TftpServer {
         }))
     }
 
-    pub async fn run(self: Arc<Self>) {
-        info!("Memulai TFTP Server di 0.0.0.0:69 (dir: {})...", self.config.read().dhcp.as_ref().unwrap().tftp_dir);
+    pub async fn run(self: Arc<Self>, mut shutdown_rx: tokio::sync::broadcast::Receiver<()>) {
+        let tftp_dir = self.config.read().dhcp.as_ref()
+            .map(|d| d.tftp_dir.clone())
+            .unwrap_or_else(|| "pxe".to_string());
+        info!("Memulai TFTP Server listener di 0.0.0.0:69 (dir: {})...", tftp_dir);
         let mut buf = [0u8; 2048];
         
         loop {
-            match self.socket.recv_from(&mut buf).await {
-                Ok((len, addr)) => {
-                    let data = buf[..len].to_vec();
-                    let server = Arc::clone(&self);
-                    
-                    tokio::spawn(async move {
-                        server.handle_request(data, addr).await;
-                    });
+            tokio::select! {
+                res = self.socket.recv_from(&mut buf) => {
+                    match res {
+                        Ok((len, addr)) => {
+                            let data = buf[..len].to_vec();
+                            let server = Arc::clone(&self);
+                            
+                            tokio::spawn(async move {
+                                server.handle_request(data, addr).await;
+                            });
+                        }
+                        Err(e) => {
+                            error!("Error menerima TFTP packet: {}", e);
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!("Error menerima TFTP packet: {}", e);
+                _ = shutdown_rx.recv() => {
+                    info!("TFTP Server loop menerima sinyal shutdown, listener port 69 ditutup.");
+                    break;
                 }
             }
         }
