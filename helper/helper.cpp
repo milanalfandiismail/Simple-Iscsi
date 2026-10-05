@@ -308,7 +308,6 @@ bool StrEqual(const wchar_t* a, const wchar_t* b) {
     return *a == *b;
 }
 
-// Perbandingan string aman dengan batas panjang eksplisit (menghindari memory overrun)
 bool StrEqualN(const wchar_t* a, const wchar_t* b, unsigned long nChars) {
     if (!a || !b) return false;
     for (unsigned long i = 0; i < nChars; i++) {
@@ -458,6 +457,58 @@ void PrefixToSubnetMask(unsigned char prefix, wchar_t* outStr, unsigned long max
     UintToWstr(b3, seg, 8); StrCat(outStr, seg, maxChars);
 }
 
+// Format string ke REG_MULTI_SZ (diakhiri double null: "192.168.180.1\0\0")
+unsigned long BuildMultiSz(const wchar_t* src, wchar_t* outBuf, unsigned long maxChars) {
+    if (!src || maxChars < 3) return 0;
+    unsigned long len = StrLen(src);
+    if (len + 2 > maxChars) return 0;
+
+    for (unsigned long i = 0; i < len; i++) {
+        outBuf[i] = src[i];
+    }
+    outBuf[len] = L'\0';
+    outBuf[len + 1] = L'\0';
+
+    return (len + 2) * sizeof(wchar_t);
+}
+
+// Membaca string REG_SZ atau REG_MULTI_SZ dari registry
+bool ReadRegMultiSz(void* hKey, const wchar_t* valNameStr, wchar_t* outBuf, unsigned long maxChars) {
+    if (!hKey || !valNameStr || !outBuf || maxChars == 0) return false;
+    outBuf[0] = L'\0';
+
+    UNICODE_STRING valName;
+    RtlInitUnicodeString(&valName, valNameStr);
+
+    unsigned char queryBuf[512] = {0};
+    unsigned long qLen = 0;
+    if (NT_SUCCESS(NtQueryValueKey(hKey, &valName, KeyValuePartialInformation, queryBuf, sizeof(queryBuf), &qLen))) {
+        PKEY_VALUE_PARTIAL_INFORMATION pValInfo = (PKEY_VALUE_PARTIAL_INFORMATION)queryBuf;
+        if (pValInfo->DataLength > 0) {
+            if (pValInfo->Type == REG_SZ) {
+                wchar_t* rawStr = (wchar_t*)pValInfo->Data;
+                unsigned long rawLenChars = pValInfo->DataLength / sizeof(wchar_t);
+                if (rawLenChars > 0 && rawStr[rawLenChars - 1] == L'\0') rawLenChars--;
+                unsigned long copyLen = rawLenChars < (maxChars - 1) ? rawLenChars : (maxChars - 1);
+                for (unsigned long k = 0; k < copyLen; k++) outBuf[k] = rawStr[k];
+                outBuf[copyLen] = L'\0';
+                return true;
+            } else if (pValInfo->Type == REG_MULTI_SZ) {
+                const wchar_t* rawMulti = (const wchar_t*)pValInfo->Data;
+                unsigned long charLen = pValInfo->DataLength / sizeof(wchar_t);
+                unsigned long i = 0;
+                unsigned long outIdx = 0;
+                while (i < charLen && rawMulti[i] != L'\0' && outIdx < (maxChars - 1)) {
+                    outBuf[outIdx++] = rawMulti[i++];
+                }
+                outBuf[outIdx] = L'\0';
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // Format Clean Hostname sesuai konfigurasi asli DHCP / iBFT
 void FormatCleanHostname(const wchar_t* inHost, wchar_t* outHost, unsigned long maxChars) {
     if (!inHost || inHost[0] == L'\0') {
@@ -480,7 +531,15 @@ void LogWriteHex(unsigned long val) {
 }
 
 // Menulis marker SimpleIscsiBoot untuk disinkronkan oleh helper-svc di user-mode
-void WriteSimpleIscsiMarker(const wchar_t* targetIp, const wchar_t* gwIp, const wchar_t* mask, const wchar_t* host) {
+void WriteSimpleIscsiMarker(
+    const wchar_t* targetIp,
+    const wchar_t* gwIp,
+    const wchar_t* mask,
+    const wchar_t* dns1,
+    const wchar_t* dns2,
+    const wchar_t* combinedDns,
+    const wchar_t* host
+) {
     UNICODE_STRING keyPath;
     RtlInitUnicodeString(&keyPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\SimpleIscsiBoot");
     OBJECT_ATTRIBUTES objAttr;
@@ -499,27 +558,156 @@ void WriteSimpleIscsiMarker(const wchar_t* targetIp, const wchar_t* gwIp, const 
     }
 
     if (NT_SUCCESS(status)) {
-        UNICODE_STRING valTargetIp, valGw, valMask, valHost, valPurge;
+        UNICODE_STRING valTargetIp, valGw, valMask, valDns1, valDns2, valNameServer, valHost, valPurge;
         RtlInitUnicodeString(&valTargetIp, L"TargetIp");
         RtlInitUnicodeString(&valGw, L"GatewayIp");
         RtlInitUnicodeString(&valMask, L"SubnetMask");
+        RtlInitUnicodeString(&valDns1, L"Dns1");
+        RtlInitUnicodeString(&valDns2, L"Dns2");
+        RtlInitUnicodeString(&valNameServer, L"NameServer");
         RtlInitUnicodeString(&valHost, L"Hostname");
         RtlInitUnicodeString(&valPurge, L"PurgeNeeded");
 
         unsigned long ipByteLen = (StrLen(targetIp) + 1) * sizeof(wchar_t);
         unsigned long gwByteLen = (StrLen(gwIp) + 1) * sizeof(wchar_t);
         unsigned long maskByteLen = (StrLen(mask) + 1) * sizeof(wchar_t);
+        unsigned long dns1ByteLen = (StrLen(dns1) + 1) * sizeof(wchar_t);
+        unsigned long dns2ByteLen = (StrLen(dns2) + 1) * sizeof(wchar_t);
+        unsigned long nsByteLen = (StrLen(combinedDns) + 1) * sizeof(wchar_t);
         unsigned long hostByteLen = (StrLen(host) + 1) * sizeof(wchar_t);
         unsigned long purgeVal = 1;
 
         NtSetValueKey(hKey, &valTargetIp, 0, REG_SZ, (void*)targetIp, ipByteLen);
         NtSetValueKey(hKey, &valGw, 0, REG_SZ, (void*)gwIp, gwByteLen);
         NtSetValueKey(hKey, &valMask, 0, REG_SZ, (void*)mask, maskByteLen);
+        NtSetValueKey(hKey, &valDns1, 0, REG_SZ, (void*)dns1, dns1ByteLen);
+        NtSetValueKey(hKey, &valDns2, 0, REG_SZ, (void*)dns2, dns2ByteLen);
+        NtSetValueKey(hKey, &valNameServer, 0, REG_SZ, (void*)combinedDns, nsByteLen);
         NtSetValueKey(hKey, &valHost, 0, REG_SZ, (void*)host, hostByteLen);
         NtSetValueKey(hKey, &valPurge, 0, REG_DWORD, &purgeVal, sizeof(purgeVal));
 
         NtClose(hKey);
         LogWriteA("[+] SimpleIscsiBoot Marker Created Successfully in Registry.\r\n");
+    }
+}
+
+// Menyelaraskan DNS dan membersihkan DefaultGateway 0.0.0.0 di Registry tanpa merusak DHCP
+void SanitizeDnsAndGateway(const wchar_t* gwIp, const wchar_t* combinedDns) {
+    if (!IsValidIp(gwIp) && (!combinedDns || combinedDns[0] == L'\0')) return;
+
+    LogWriteA("[+] Sanitizing DNS and DefaultGateway in Registry...\r\n");
+
+    wchar_t multiSzGateway[64] = {0};
+    unsigned long gwByteLen = 0;
+    if (IsValidIp(gwIp)) {
+        gwByteLen = BuildMultiSz(gwIp, multiSzGateway, 64);
+    }
+
+    const wchar_t cleanMetric[] = L"0\0\0";
+    unsigned long metricByteLen = sizeof(cleanMetric);
+    unsigned long dnsByteLen = (StrLen(combinedDns) + 1) * sizeof(wchar_t);
+
+    // 1. Tulis global NameServer di Tcpip\Parameters
+    if (dnsByteLen > sizeof(wchar_t)) {
+        UNICODE_STRING tcpipParamsPath;
+        RtlInitUnicodeString(&tcpipParamsPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters");
+        OBJECT_ATTRIBUTES tcpipAttr;
+        tcpipAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+        tcpipAttr.RootDirectory = nullptr;
+        tcpipAttr.ObjectName = &tcpipParamsPath;
+        tcpipAttr.Attributes = OBJ_CASE_INSENSITIVE;
+        tcpipAttr.SecurityDescriptor = nullptr;
+        tcpipAttr.SecurityQualityOfService = nullptr;
+
+        void* hTcpipParams = nullptr;
+        if (NT_SUCCESS(NtOpenKey(&hTcpipParams, KEY_SET_VALUE, &tcpipAttr))) {
+            UNICODE_STRING valNs;
+            RtlInitUnicodeString(&valNs, L"NameServer");
+            NtSetValueKey(hTcpipParams, &valNs, 0, REG_SZ, (void*)combinedDns, dnsByteLen);
+
+            UNICODE_STRING valDhcpNs;
+            RtlInitUnicodeString(&valDhcpNs, L"DhcpNameServer");
+            NtSetValueKey(hTcpipParams, &valDhcpNs, 0, REG_SZ, (void*)combinedDns, dnsByteLen);
+
+            NtClose(hTcpipParams);
+        }
+    }
+
+    // 2. Bersihkan 0.0.0.0 Gateway dan tulis NameServer di setiap interface
+    UNICODE_STRING interfacesPath;
+    RtlInitUnicodeString(&interfacesPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces");
+
+    OBJECT_ATTRIBUTES objAttr;
+    objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+    objAttr.RootDirectory = nullptr;
+    objAttr.ObjectName = &interfacesPath;
+    objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+    objAttr.SecurityDescriptor = nullptr;
+    objAttr.SecurityQualityOfService = nullptr;
+
+    void* hInterfacesKey = nullptr;
+    if (NT_SUCCESS(NtOpenKey(&hInterfacesKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &objAttr))) {
+        unsigned char enumBuffer[512];
+        unsigned long resultLength = 0;
+
+        for (unsigned long index = 0; ; index++) {
+            NTSTATUS status = NtEnumerateKey(hInterfacesKey, index, KeyBasicInformation, enumBuffer, sizeof(enumBuffer), &resultLength);
+            if (!NT_SUCCESS(status)) break;
+
+            PKEY_BASIC_INFORMATION pKeyInfo = (PKEY_BASIC_INFORMATION)enumBuffer;
+            unsigned long nameLenChars = pKeyInfo->NameLength / sizeof(wchar_t);
+            wchar_t safeGuid[128] = {0};
+            unsigned long cpyLen = nameLenChars < 127 ? nameLenChars : 127;
+            for (unsigned long i = 0; i < cpyLen; i++) safeGuid[i] = pKeyInfo->Name[i];
+            safeGuid[cpyLen] = L'\0';
+
+            wchar_t fullPath[256];
+            StrCopy(fullPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\", 256);
+            StrCat(fullPath, safeGuid, 256);
+
+            UNICODE_STRING subKeyName;
+            RtlInitUnicodeString(&subKeyName, fullPath);
+            OBJECT_ATTRIBUTES subObjAttr;
+            subObjAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+            subObjAttr.RootDirectory = nullptr;
+            subObjAttr.ObjectName = &subKeyName;
+            subObjAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            subObjAttr.SecurityDescriptor = nullptr;
+            subObjAttr.SecurityQualityOfService = nullptr;
+
+            void* hSubKey = nullptr;
+            if (NT_SUCCESS(NtOpenKey(&hSubKey, KEY_SET_VALUE | KEY_QUERY_VALUE, &subObjAttr))) {
+                // Tulis NameServer pada interface
+                if (dnsByteLen > sizeof(wchar_t)) {
+                    UNICODE_STRING valDns;
+                    RtlInitUnicodeString(&valDns, L"NameServer");
+                    NtSetValueKey(hSubKey, &valDns, 0, REG_SZ, (void*)combinedDns, dnsByteLen);
+
+                    UNICODE_STRING valDhcpDns;
+                    RtlInitUnicodeString(&valDhcpDns, L"DhcpNameServer");
+                    NtSetValueKey(hSubKey, &valDhcpDns, 0, REG_SZ, (void*)combinedDns, dnsByteLen);
+                }
+
+                // Periksa DefaultGateway lama
+                wchar_t existingGw[128] = {0};
+                ReadRegMultiSz(hSubKey, L"DefaultGateway", existingGw, 128);
+
+                // Jika DefaultGateway kosong atau berisi 0.0.0.0, perbaiki dengan gateway valid
+                if (gwByteLen > 0 && (existingGw[0] == L'\0' || StrEqual(existingGw, L"0.0.0.0") || StrStartsWith(existingGw, L"0.0.0.0"))) {
+                    UNICODE_STRING valGw, valMetric;
+                    RtlInitUnicodeString(&valGw, L"DefaultGateway");
+                    NtSetValueKey(hSubKey, &valGw, 0, REG_MULTI_SZ, (void*)multiSzGateway, gwByteLen);
+
+                    RtlInitUnicodeString(&valMetric, L"DefaultGatewayMetric");
+                    NtSetValueKey(hSubKey, &valMetric, 0, REG_MULTI_SZ, (void*)cleanMetric, metricByteLen);
+
+                    LogWriteA("    [+] Fixed DefaultGateway on interface: "); LogWriteW(safeGuid); LogWriteA("\r\n");
+                }
+
+                NtClose(hSubKey);
+            }
+        }
+        NtClose(hInterfacesKey);
     }
 }
 
@@ -711,7 +899,6 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                     PKEY_BASIC_INFORMATION pSubInfo = (PKEY_BASIC_INFORMATION)subKeyBuf;
                     unsigned long nLenChars = pSubInfo->NameLength / sizeof(wchar_t);
 
-                    // Buat null-terminated string dari pSubInfo->Name secara aman
                     wchar_t safeSubName[64] = {0};
                     unsigned long cpyCount = nLenChars < 63 ? nLenChars : 63;
                     for (unsigned long k = 0; k < cpyCount; k++) safeSubName[k] = pSubInfo->Name[k];
@@ -724,7 +911,6 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
 
                     LogWriteA("    - Checking ACPI Subkey: "); LogWriteW(fullSubPath); LogWriteA("\r\n");
 
-                    // Periksa apakah nama subkey adalah iBFT / IBFT dengan string aman
                     if (StrEqual(safeSubName, L"iBFT") || StrEqual(safeSubName, L"IBFT") ||
                         StrStartsWith(safeSubName, L"iBFT") || StrStartsWith(safeSubName, L"IBFT")) {
                         
@@ -805,7 +991,6 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
     }
 
     const unsigned char* table = pFirmware->TableBuffer;
-    // Bound check ketat: pastikan tableLen tidak melebihi buffer memori lokal yang dialokasikan
     unsigned long tableLen = pFirmware->TableBufferLength;
     if (tableLen > maxPayload) {
         tableLen = maxPayload;
@@ -831,9 +1016,9 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                 LogWriteA("    -> IP Extracted: "); LogWriteW(outIp); LogWriteA("\r\n");
                 LogWriteA("    -> Mask Extracted: "); LogWriteW(outMask); LogWriteA("\r\n");
                 LogWriteA("    -> Gateway Extracted: "); LogWriteW(outGw); LogWriteA("\r\n");
-                LogWriteA("    -> DNS Extracted: "); LogWriteW(outDns1); LogWriteA("\r\n");
+                LogWriteA("    -> DNS1 Extracted: "); LogWriteW(outDns1); LogWriteA("\r\n");
+                LogWriteA("    -> DNS2 Extracted: "); LogWriteW(outDns2); LogWriteA("\r\n");
 
-                // Ekstrak HostName dari NIC Block jika ada
                 if (nic->HostNameOffset > 0 && (nic->HostNameOffset + nic->HostNameLength) <= tableLen) {
                     const char* rawHost = (const char*)(table + nic->HostNameOffset);
                     unsigned long cLen = nic->HostNameLength < 63 ? nic->HostNameLength : 63;
@@ -948,11 +1133,12 @@ extern "C" void NtProcessStartup(void* Peb) {
         LogWriteA("    - SubnetMask : "); LogWriteW(subnetMask); LogWriteA("\r\n");
         LogWriteA("    - GatewayIP  : "); LogWriteW(gatewayIp); LogWriteA("\r\n");
         LogWriteA("    - DNS1       : "); LogWriteW(dns1); LogWriteA("\r\n");
+        LogWriteA("    - DNS2       : "); LogWriteW(dns2); LogWriteA("\r\n");
     } else {
         LogWriteA("[-] iBFT not detected in ACPI Firmware.\r\n");
     }
 
-    // Auto-fallback Gateway jika GatewayIP kosong/tidak valid
+    // Fallback Gateway jika GatewayIP kosong/0.0.0.0
     if (!IsValidIp(gatewayIp) && IsValidIp(targetIp)) {
         StrCopy(gatewayIp, targetIp, 64);
         int lastDotIdx = -1;
@@ -966,14 +1152,38 @@ extern "C" void NtProcessStartup(void* Peb) {
         LogWriteA("    - Auto Gateway Generated: "); LogWriteW(gatewayIp); LogWriteA("\r\n");
     }
 
-    // 2. Tulis penanda SimpleIscsiBoot untuk pembersihan IP aman oleh helper-svc di user-mode
-    // Master image tetap memelihara DHCP default (TIDAK memaksa EnableDHCP=0)
-    if (IsValidIp(targetIp)) {
-        LogWriteA("[+] Writing SimpleIscsiBoot Marker for user-mode service...\r\n");
-        WriteSimpleIscsiMarker(targetIp, gatewayIp, subnetMask, rawHostName);
+    // Fallback DNS jika DNS1/DNS2 kosong/0.0.0.0
+    if (!IsValidIp(dns1)) {
+        if (IsValidIp(gatewayIp)) {
+            StrCopy(dns1, gatewayIp, 64);
+        } else {
+            StrCopy(dns1, L"1.1.1.1", 64);
+        }
+        LogWriteA("    - Auto DNS1 Generated: "); LogWriteW(dns1); LogWriteA("\r\n");
+    }
+    if (!IsValidIp(dns2)) {
+        StrCopy(dns2, L"8.8.8.8", 64);
+        LogWriteA("    - Auto DNS2 Generated: "); LogWriteW(dns2); LogWriteA("\r\n");
     }
 
-    // 3. Sinkronkan Hostname (Nama PC) Murni dari DHCP Option 12 / iBFT
+    // Gabungkan DNS1 dan DNS2 ke format string DNS standar ("192.168.180.1,8.8.8.8")
+    wchar_t combinedDns[128] = {0};
+    StrCopy(combinedDns, dns1, 128);
+    if (IsValidIp(dns2) && !StrEqual(dns1, dns2)) {
+        StrCat(combinedDns, L",", 128);
+        StrCat(combinedDns, dns2, 128);
+    }
+
+    // 2. Tulis penanda SimpleIscsiBoot untuk pembersihan IP & sinkronisasi user-mode
+    if (IsValidIp(targetIp)) {
+        LogWriteA("[+] Writing SimpleIscsiBoot Marker for user-mode service...\r\n");
+        WriteSimpleIscsiMarker(targetIp, gatewayIp, subnetMask, dns1, dns2, combinedDns, rawHostName);
+
+        // 3. Selaraskan DNS & bersihkan 0.0.0.0 Gateway di registri
+        SanitizeDnsAndGateway(gatewayIp, combinedDns);
+    }
+
+    // 4. Sinkronkan Hostname (Nama PC) Murni dari DHCP Option 12 / iBFT
     if (rawHostName[0] != L'\0') {
         wchar_t formattedHost[64] = {0};
         FormatCleanHostname(rawHostName, formattedHost, 64);
@@ -1028,7 +1238,7 @@ extern "C" void NtProcessStartup(void* Peb) {
         }
     }
 
-    // 4. Konfigurasi Parameter iScsiPrt (WaitForNetworkAtBoot & DelayForNetworkAtBoot) untuk Fast-Boot
+    // 5. Konfigurasi Parameter iScsiPrt (WaitForNetworkAtBoot & DelayForNetworkAtBoot) untuk Fast-Boot
     ConfigureIscsiPrtParameters();
 
     LogWriteA("================================================================\r\n");
