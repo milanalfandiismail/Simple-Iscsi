@@ -131,13 +131,13 @@ bool ReadTargetIpFromFirmware(char* outIp, size_t maxLen, char* outGw, size_t ma
     return false;
 }
 
-// Menyelaraskan DNS dan membersihkan DefaultGateway 0.0.0.0 di Registry
+// Menyelaraskan DNS dan memastikan DefaultGateway TUNGGAL di Registry
 void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
     if ((!gwIp || gwIp[0] == '\0' || strcmp(gwIp, "0.0.0.0") == 0) && (!dnsStr || dnsStr[0] == '\0')) {
         return;
     }
 
-    LogA("[+] Aligning DNS and Gateway in Registry...\n");
+    LogA("[+] Aligning DNS and Gateway in Registry (Enforcing Single Gateway)...\n");
 
     // 1. Tulis global DNS ke Tcpip\Parameters
     if (dnsStr && dnsStr[0] != '\0') {
@@ -170,25 +170,18 @@ void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
                     RegSetValueExA(hSub, "DhcpNameServer", 0, REG_SZ, (const BYTE*)dnsStr, (DWORD)strlen(dnsStr) + 1);
                 }
 
-                // Cek DefaultGateway lama
-                char existingGw[128] = {0};
-                DWORD gwSize = sizeof(existingGw);
-                DWORD type = 0;
-                if (RegQueryValueExA(hSub, "DefaultGateway", nullptr, &type, (LPBYTE)existingGw, &gwSize) == ERROR_SUCCESS) {
-                    if (strcmp(existingGw, "0.0.0.0") == 0 || strncmp(existingGw, "0.0.0.0", 7) == 0 || existingGw[0] == '\0') {
-                        if (gwIp && gwIp[0] != '\0' && strcmp(gwIp, "0.0.0.0") != 0) {
-                            char multiSzGw[64] = {0};
-                            size_t gLen = strlen(gwIp);
-                            memcpy(multiSzGw, gwIp, gLen);
-                            multiSzGw[gLen] = '\0';
-                            multiSzGw[gLen + 1] = '\0';
+                // Pastikan DefaultGateway adalah nilai TUNGGAL (REG_MULTI_SZ tunggal)
+                if (gwIp && gwIp[0] != '\0' && strcmp(gwIp, "0.0.0.0") != 0) {
+                    char multiSzGw[64] = {0};
+                    size_t gLen = strlen(gwIp);
+                    memcpy(multiSzGw, gwIp, gLen);
+                    multiSzGw[gLen] = '\0';
+                    multiSzGw[gLen + 1] = '\0';
 
-                            RegSetValueExA(hSub, "DefaultGateway", 0, REG_MULTI_SZ, (const BYTE*)multiSzGw, (DWORD)gLen + 2);
-                            const char cleanMetric[] = "0\0\0";
-                            RegSetValueExA(hSub, "DefaultGatewayMetric", 0, REG_MULTI_SZ, (const BYTE*)cleanMetric, sizeof(cleanMetric));
-                            LogA("    [+] Fixed DefaultGateway on %s -> %s\n", guidName, gwIp);
-                        }
-                    }
+                    RegSetValueExA(hSub, "DefaultGateway", 0, REG_MULTI_SZ, (const BYTE*)multiSzGw, (DWORD)gLen + 2);
+                    const char cleanMetric[] = "0\0\0";
+                    RegSetValueExA(hSub, "DefaultGatewayMetric", 0, REG_MULTI_SZ, (const BYTE*)cleanMetric, sizeof(cleanMetric));
+                    LogA("    [+] Enforced Single DefaultGateway on %s -> %s\n", guidName, gwIp);
                 }
                 RegCloseKey(hSub);
             }
@@ -197,22 +190,41 @@ void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
     }
 }
 
-// Membersihkan rute bogus 0.0.0.0 di Kernel Routing Table
-void CleanBogusDefaultRoutes() {
+// Menegakkan Default Gateway TUNGGAL di Kernel Routing Table (Menghapus rute duplikat / 0.0.0.0)
+void EnforceSingleDefaultGateway(const char* gwIp) {
+    if (!gwIp || gwIp[0] == '\0' || strcmp(gwIp, "0.0.0.0") == 0) return;
+
+    LogA("[+] Enforcing SINGLE Default Gateway in Kernel Routing Table: %s\n", gwIp);
+
     PMIB_IPFORWARD_TABLE2 pTable = nullptr;
     if (GetIpForwardTable2(AF_INET, &pTable) == NO_ERROR && pTable) {
+        int validRouteCount = 0;
+
         for (ULONG i = 0; i < pTable->NumEntries; i++) {
             MIB_IPFORWARD_ROW2 row = pTable->Table[i];
             if (row.DestinationPrefix.Prefix.si_family == AF_INET && row.DestinationPrefix.PrefixLength == 0) {
+                // Ini adalah Default Route (0.0.0.0/0)
                 char nhStr[64] = {0};
                 FormatIpv4(&row.NextHop.Ipv4.sin_addr, nhStr, sizeof(nhStr));
 
-                // Jika NextHop adalah 0.0.0.0, hapus rute palsu ini
-                if (strcmp(nhStr, "0.0.0.0") == 0) {
-                    LogA("    [!] DETECTED BOGUS DEFAULT ROUTE via 0.0.0.0 (Interface: %lu). Deleting...\n", row.InterfaceIndex);
+                if (strcmp(nhStr, gwIp) == 0) {
+                    validRouteCount++;
+                    if (validRouteCount > 1) {
+                        // Rute duplikat ke gateway yang sama -> Hapus kelebihan
+                        LogA("    [*] Removing duplicate default route to %s (Interface: %lu, Metric: %lu)\n",
+                             nhStr, row.InterfaceIndex, row.Metric);
+                        DeleteIpForwardEntry2(&row);
+                    } else {
+                        LogA("    [+] Retaining single valid default route to %s (Interface: %lu, Metric: %lu)\n",
+                             nhStr, row.InterfaceIndex, row.Metric);
+                    }
+                } else {
+                    // Gateway lain (0.0.0.0 atau IP lama) -> Hapus seketika
+                    LogA("    [!] DETECTED INVALID/DUPLICATE DEFAULT ROUTE to %s (Interface: %lu). Deleting...\n",
+                         nhStr, row.InterfaceIndex);
                     DWORD delRes = DeleteIpForwardEntry2(&row);
                     if (delRes == NO_ERROR) {
-                        LogA("        [SUCCESS] Deleted bogus 0.0.0.0 route from kernel table.\n");
+                        LogA("        [SUCCESS] Deleted invalid default route via %s from kernel table.\n", nhStr);
                     } else {
                         LogA("        [-] DeleteIpForwardEntry2 returned %lu\n", delRes);
                     }
@@ -267,11 +279,11 @@ int ExecuteIpPurge() {
         }
     }
 
-    // 1. Selaraskan DNS dan Gateway di Registry
+    // 1. Selaraskan DNS dan tegakkan Gateway TUNGGAL di Registry
     AlignDnsAndGatewayInRegistry(gatewayIp, nameServer);
 
-    // 2. Bersihkan rute bogus 0.0.0.0 dari Kernel Routing Table
-    CleanBogusDefaultRoutes();
+    // 2. Tegakkan Default Gateway TUNGGAL di Kernel Routing Table (hapus rute duplikat / 0.0.0.0)
+    EnforceSingleDefaultGateway(gatewayIp);
 
     // 3. Sinkronisasi Hostname di User-Mode jika ada
     if (hostName[0] != L'\0') {
