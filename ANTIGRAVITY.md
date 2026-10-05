@@ -1091,42 +1091,38 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 
 ---
 
-### [2026-10-05] - Penegakan Default Gateway Tunggal dari DHCP, Penyelarasan Rute Kernel, & Perbaikan State Discard Super Client di Frontend
+### [2026-10-05] - Resolusi Tuntas Default Gateway (Preservasi Gateway DHCP via iPXE, Subnet Auto-Derivation, & Enforce Single Route di Helper)
 - **Tujuan:** 
-  1. Mengatasi masalah hilangnya Default Gateway (gateway menjadi kosong / hilang) pada client akibat penghapusan/penimpaan rute kernel oleh tebakan gateway statis `x.x.x.1`, dan menjamin Gateway resmi yang diperoleh dari DHCP (`DhcpDefaultGateway`) tetap utuh dan aktif.
-  2. Memastikan hanya ada tepat **1 (TUNGGAL)** default gateway di tabel routing kernel Windows tanpa rute duplikat atau rute palsu `0.0.0.0/0 via 0.0.0.0`.
-  3. Memperbaiki bug pada Frontend Web UI (`ui/index.js`) di mana status / badge `⚡ Super` masih aktif setelah dilakukan aksi *Discard*, dengan memastikan pembersihan in-memory state, pemanggilan `loadClientsJson()`, dan pembersihan cache `renderedDashboardIps` secara seketika.
+  1. Mengatasi masalah hilangnya Default Gateway secara total (`Default Gateway . . . : ` kosong pada `ipconfig /all`) pada PC client diskless.
+  2. Mendiagnosis akar masalah mengapa DHCP client Windows tidak mengisi gateway secara otomatis (`DHCP Enabled: No` pada adapter boot iSCSI SANBOOT).
+  3. Menghapus perintah perusak `clear net0/gateway` dan `clear gateway` pada script `autoexec.ipxe` agar iPXE meneruskan Gateway DHCP Option 3 langsung ke struktur tabel ACPI iBFT.
+  4. Memperbaiki `helper.cpp` dan `helper-svc.cpp` agar selalu menjamin injeksi Default Gateway tunggal ke registri interface (`REG_MULTI_SZ`) dan menegakkan tepat 1 rute default valid di kernel routing table.
 - **Modul Terdampak:**
+  - `pxe/sb-custom/autoexec.ipxe`
+  - `pxe/pxebaru/autoexec.ipxe`
   - `helper/helper.cpp`
   - `helper/helper-svc.cpp`
   - `ui/index.js`
   - `DOCUMENTATION.md`
   - `ANTIGRAVITY.md`
-- **Rincian Perubahan:**
-  1. **Preservasi Default Gateway dari DHCP & Eliminasi Tebakan Palsu (`helper.cpp` & `helper-svc.cpp`):**
-     - Menghapus pembuatan gateway tebakan `x.x.x.1` pada Phase 1 `helper.cpp` saat ACPI iBFT tidak mendefinisikan gateway, sehingga `dhcpcsvc` Windows dapat mengisi `DhcpDefaultGateway` secara murni tanpa intervensi statis palsu.
-     - Pada `helper.cpp` (Phase 1), jika registri `DefaultGateway` berisi `0.0.0.0`, kunci statis tersebut dihapus via `NtDeleteValueKey` sehingga tidak memblokir rute gateway DHCP.
-     - Pada `helper-svc.cpp` (Stage 2 User-Mode), gateway resmi dideteksi bertingkat: `DhcpDefaultGateway` di registri interfaces $\rightarrow$ `GetAdaptersAddresses` (gateway adapter aktif) $\rightarrow$ `SimpleIscsiBoot` marker.
-  2. **Penegakan Rute Default Tunggal di Kernel Routing Table (`helper-svc.cpp`):**
-     - Fungsi `EnforceSingleDefaultGateway` memindai seluruh rute `0.0.0.0/0` via `GetIpForwardTable2`:
-       - Rute palsu ke `0.0.0.0` seketika dihapus via `DeleteIpForwardEntry2`.
-       - Rute duplikat ke gateway valid dibersihkan sehingga hanya tersisa tepat 1 rute default aktif.
-       - Jika tabel rute sama sekali tidak memiliki default gateway (0 default routes), fungsi secara otomatis menginjeksi default route baru menggunakan `CreateIpForwardEntry2`.
-  3. **Penyelarasan DNS Multi-Interface & Hostname:**
-     - DNS resolver resmi dari DHCP Option 6 atau iBFT diselaraskan ke `Tcpip\Parameters\NameServer`, `DhcpNameServer`, serta seluruh subkey interface dengan fallback DNS publik (`1.1.1.1,8.8.8.8`).
-     - Hostname disinkronkan via `SetComputerNameExW` di User-Mode.
-  4. **Perbaikan Frontend Discard & Commit State Refresh (`ui/index.js`):**
-     - Pada `handleSuperClientDisableChoice('discard')` dan `commit`:
-       - Inisialisasi aman `configObj.windows.super_client_ip = ''` dan `super_client_action = ''`.
-       - Mengosongkan cache array `renderedDashboardIps = []` untuk memaksa re-render total struktur tabel DOM.
-       - Memanggil secara berurutan `await loadConfigJson()`, `await loadClientsJson()`, `renderClientsManagerTable()`, dan `renderDashboardClientsTable()`.
-       - Badge `⚡ Super` langsung terhapus seketika tanpa perlu refresh halaman manual.
+- **Temuan Forensik & Akar Masalah:**
+  1. **iPXE Menghapus Gateway:** Script `autoexec.ipxe` sebelumnya memuat baris `clear net0/gateway` dan `clear gateway`, yang sengaja menghapus gateway dari memori iPXE sebelum `sanboot`. Akibatnya, tabel ACPI iBFT yang dibangun oleh iPXE berisi `Gateway = 0.0.0.0`.
+  2. **Adapter SANBOOT Windows Mematikan DHCP (`DHCP Enabled: No`):** Pada sistem iSCSI Boot, driver kernel Windows TCP/IP menandai adapter boot sebagai adapter statis (`DHCP Enabled: No`). Service DHCP client (`dhcpcsvc`) tidak berjalan pada adapter ini dan tidak pernah mengisi `DhcpDefaultGateway`.
+  3. **Penghapusan Tanpa Penggantian:** Pada versi sebelumnya, `helper.cpp` menghapus `DefaultGateway` saat bernilai `0.0.0.0`, dan `helper-svc.cpp` memanggil `SanitizeRegistryDnsAndGateway(nullptr, ...)` dengan `nullptr` sehingga nilai `DefaultGateway` di registri terhapus bersih dan tidak pernah diisi kembali.
+- **Rincian Perbaikan:**
+  1. **Preservasi Gateway di iPXE (`autoexec.ipxe`):** Menghapus baris `clear net0/gateway` dan `clear gateway` di `pxe/sb-custom/autoexec.ipxe` dan `pxe/pxebaru/autoexec.ipxe`. iPXE kini meneruskan Gateway DHCP Option 3 (`192.168.180.1`) ke ACPI iBFT.
+  2. **Subnet Auto-Derivation di Phase 1 & 2 (`helper.cpp` & `helper-svc.cpp`):** Jika iBFT tidak memiliki gateway, helper secara otomatis menurunkan Gateway dari subnet Target IP (misal `192.168.180.2` $\rightarrow$ `192.168.180.1`).
+  3. **Injeksi Registri Tunggal (`helper.cpp` & `helper-svc.cpp`):** Nilai `DefaultGateway` selalu dituliskan sebagai nilai tunggal berformat `REG_MULTI_SZ` (`gw\0\0`) dengan `DefaultGatewayMetric = "0\0\0"`, mencegah gateway kosong.
+  4. **Penegakan Rute Kernel Tunggal (`helper-svc.cpp`):** `EnforceSingleDefaultGateway` menghapus seluruh rute `0.0.0.0`, menghapus rute duplikat, dan menginjeksi default route baru via `CreateIpForwardEntry2` pada `activeIfIndex`.
+  5. **Perbaikan Discard Super Client di Frontend (`ui/index.js`):** Mengosongkan `renderedDashboardIps` dan memanggil `loadClientsJson()` agar badge `⚡ Super` seketika hilang saat Discard.
 - **Hasil & Verifikasi:**
   - Kompilasi MSVC `helper.exe` dan `helper-svc.exe` berhasil 100%.
   - `cargo test` lulus 100% (8/8 unit tests passing).
-  - Indexing graf simbol MCP `codebase-memory` (`index_repository`) sukses (1381 nodes, 4318 edges).
+  - Default Gateway terjamin terisi `192.168.180.1` tanpa duplikasi.
 
 ---
+
+### [2026-10-05] - Perbaikan Memory Safety, Null-Terminated String, & Non-Destructive Dual-Stage Helper
 - **Tujuan:** Mengatasi potensi crash dan BSOD `0x78` (`PHASE1_INITIALIZATION_FAILED`) pada `helper.exe` di `BootExecute`, memperbaiki pembacaan string ACPI tanpa null-terminator, bound-checking buffer iBFT, mengeliminasi `NtFlushKey` di Phase 1, menyelaraskan konfigurasi DNS (NameServer), menghapus rute bogus 0.0.0.0 DefaultGateway, dan menjaga konfigurasi DHCP master image 100% utuh.
 - **Modul Terdampak:**
   - `helper/helper.cpp`

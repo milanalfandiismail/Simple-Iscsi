@@ -419,7 +419,18 @@ int ExecuteIpPurge() {
         ReadAdapterParameters(gatewayIp, sizeof(gatewayIp), nameServer, sizeof(nameServer), &activeIfIndex, targetIp);
     }
 
-    // 4. DNS Fallback jika masih kosong
+    // 4. Auto-derivation fallback jika Gateway masih kosong: Ambil dari subnet targetIp (x.x.x.1)
+    if (!IsValidIpA(gatewayIp) && IsValidIpA(targetIp)) {
+        strcpy_s(gatewayIp, sizeof(gatewayIp), targetIp);
+        char* lastDot = strrchr(gatewayIp, '.');
+        if (lastDot) {
+            *(lastDot + 1) = '1';
+            *(lastDot + 2) = '\0';
+        }
+        LogA("[+] Auto-derived Gateway from Target IP subnet: %s\n", gatewayIp);
+    }
+
+    // 5. DNS Fallback jika masih kosong
     if (nameServer[0] == '\0' || strcmp(nameServer, "0.0.0.0") == 0) {
         if (IsValidIpA(gatewayIp)) {
             sprintf_s(nameServer, sizeof(nameServer), "%s,8.8.8.8", gatewayIp);
@@ -428,21 +439,41 @@ int ExecuteIpPurge() {
         }
     }
 
+    // 6. Temukan activeIfIndex dari Unicast IP table jika masih 0
+    if (activeIfIndex == 0 && targetIp[0] != '\0') {
+        PMIB_UNICASTIPADDRESS_TABLE pUniTable = nullptr;
+        if (GetUnicastIpAddressTable(AF_INET, &pUniTable) == NO_ERROR && pUniTable) {
+            for (DWORD i = 0; i < pUniTable->NumEntries; i++) {
+                if (pUniTable->Table[i].Address.si_family == AF_INET) {
+                    char ipStr[64] = {0};
+                    FormatIpv4(&pUniTable->Table[i].Address.Ipv4.sin_addr, ipStr, sizeof(ipStr));
+                    if (strcmp(ipStr, targetIp) == 0) {
+                        activeIfIndex = pUniTable->Table[i].InterfaceIndex;
+                        LogA("[+] Discovered activeIfIndex from Target IP: %lu\n", activeIfIndex);
+                        break;
+                    }
+                }
+            }
+            FreeMibTable(pUniTable);
+        }
+    }
+
     LogA("[+] Network Configuration Resolved:\n");
     LogA("    - Target IP      : %s\n", targetIp[0] != '\0' ? targetIp : "[Not Specified]");
-    LogA("    - Default Gateway: %s\n", IsValidIpA(gatewayIp) ? gatewayIp : "[Managed by DHCP]");
+    LogA("    - Default Gateway: %s\n", IsValidIpA(gatewayIp) ? gatewayIp : "[None]");
     LogA("    - DNS Servers    : %s\n", nameServer);
+    LogA("    - Active IfIndex : %lu\n", activeIfIndex);
     if (hostName[0] != L'\0') {
         LogA("    - HostName       : %ls\n", hostName);
     }
 
-    // 5. Bersihkan 0.0.0.0 dari Registry dan selaraskan DNS
-    SanitizeRegistryDnsAndGateway(nullptr, nameServer);
+    // 7. Tulis Single DefaultGateway dan selaraskan DNS di Registry
+    SanitizeRegistryDnsAndGateway(IsValidIpA(gatewayIp) ? gatewayIp : nullptr, nameServer);
 
-    // 6. Tegakkan Default Gateway TUNGGAL di Kernel Routing Table
+    // 8. Tegakkan Default Gateway TUNGGAL di Kernel Routing Table
     EnforceSingleDefaultGateway(IsValidIpA(gatewayIp) ? gatewayIp : nullptr, activeIfIndex);
 
-    // 7. Sinkronisasi Hostname di User-Mode jika ada
+    // 9. Sinkronisasi Hostname di User-Mode jika ada
     if (hostName[0] != L'\0') {
         SetComputerNameExW(ComputerNamePhysicalDnsHostname, hostName);
         SetComputerNameExW(ComputerNameNetBIOS, hostName);
