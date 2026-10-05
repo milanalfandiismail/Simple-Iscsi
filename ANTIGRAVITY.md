@@ -1091,7 +1091,42 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 
 ---
 
-### [2026-10-05] - Perbaikan Memory Safety, Null-Terminated String, & Non-Destructive Dual-Stage Helper
+### [2026-10-05] - Penegakan Default Gateway Tunggal dari DHCP, Penyelarasan Rute Kernel, & Perbaikan State Discard Super Client di Frontend
+- **Tujuan:** 
+  1. Mengatasi masalah hilangnya Default Gateway (gateway menjadi kosong / hilang) pada client akibat penghapusan/penimpaan rute kernel oleh tebakan gateway statis `x.x.x.1`, dan menjamin Gateway resmi yang diperoleh dari DHCP (`DhcpDefaultGateway`) tetap utuh dan aktif.
+  2. Memastikan hanya ada tepat **1 (TUNGGAL)** default gateway di tabel routing kernel Windows tanpa rute duplikat atau rute palsu `0.0.0.0/0 via 0.0.0.0`.
+  3. Memperbaiki bug pada Frontend Web UI (`ui/index.js`) di mana status / badge `⚡ Super` masih aktif setelah dilakukan aksi *Discard*, dengan memastikan pembersihan in-memory state, pemanggilan `loadClientsJson()`, dan pembersihan cache `renderedDashboardIps` secara seketika.
+- **Modul Terdampak:**
+  - `helper/helper.cpp`
+  - `helper/helper-svc.cpp`
+  - `ui/index.js`
+  - `DOCUMENTATION.md`
+  - `ANTIGRAVITY.md`
+- **Rincian Perubahan:**
+  1. **Preservasi Default Gateway dari DHCP & Eliminasi Tebakan Palsu (`helper.cpp` & `helper-svc.cpp`):**
+     - Menghapus pembuatan gateway tebakan `x.x.x.1` pada Phase 1 `helper.cpp` saat ACPI iBFT tidak mendefinisikan gateway, sehingga `dhcpcsvc` Windows dapat mengisi `DhcpDefaultGateway` secara murni tanpa intervensi statis palsu.
+     - Pada `helper.cpp` (Phase 1), jika registri `DefaultGateway` berisi `0.0.0.0`, kunci statis tersebut dihapus via `NtDeleteValueKey` sehingga tidak memblokir rute gateway DHCP.
+     - Pada `helper-svc.cpp` (Stage 2 User-Mode), gateway resmi dideteksi bertingkat: `DhcpDefaultGateway` di registri interfaces $\rightarrow$ `GetAdaptersAddresses` (gateway adapter aktif) $\rightarrow$ `SimpleIscsiBoot` marker.
+  2. **Penegakan Rute Default Tunggal di Kernel Routing Table (`helper-svc.cpp`):**
+     - Fungsi `EnforceSingleDefaultGateway` memindai seluruh rute `0.0.0.0/0` via `GetIpForwardTable2`:
+       - Rute palsu ke `0.0.0.0` seketika dihapus via `DeleteIpForwardEntry2`.
+       - Rute duplikat ke gateway valid dibersihkan sehingga hanya tersisa tepat 1 rute default aktif.
+       - Jika tabel rute sama sekali tidak memiliki default gateway (0 default routes), fungsi secara otomatis menginjeksi default route baru menggunakan `CreateIpForwardEntry2`.
+  3. **Penyelarasan DNS Multi-Interface & Hostname:**
+     - DNS resolver resmi dari DHCP Option 6 atau iBFT diselaraskan ke `Tcpip\Parameters\NameServer`, `DhcpNameServer`, serta seluruh subkey interface dengan fallback DNS publik (`1.1.1.1,8.8.8.8`).
+     - Hostname disinkronkan via `SetComputerNameExW` di User-Mode.
+  4. **Perbaikan Frontend Discard & Commit State Refresh (`ui/index.js`):**
+     - Pada `handleSuperClientDisableChoice('discard')` dan `commit`:
+       - Inisialisasi aman `configObj.windows.super_client_ip = ''` dan `super_client_action = ''`.
+       - Mengosongkan cache array `renderedDashboardIps = []` untuk memaksa re-render total struktur tabel DOM.
+       - Memanggil secara berurutan `await loadConfigJson()`, `await loadClientsJson()`, `renderClientsManagerTable()`, dan `renderDashboardClientsTable()`.
+       - Badge `⚡ Super` langsung terhapus seketika tanpa perlu refresh halaman manual.
+- **Hasil & Verifikasi:**
+  - Kompilasi MSVC `helper.exe` dan `helper-svc.exe` berhasil 100%.
+  - `cargo test` lulus 100% (8/8 unit tests passing).
+  - Indexing graf simbol MCP `codebase-memory` (`index_repository`) sukses (1381 nodes, 4318 edges).
+
+---
 - **Tujuan:** Mengatasi potensi crash dan BSOD `0x78` (`PHASE1_INITIALIZATION_FAILED`) pada `helper.exe` di `BootExecute`, memperbaiki pembacaan string ACPI tanpa null-terminator, bound-checking buffer iBFT, mengeliminasi `NtFlushKey` di Phase 1, menyelaraskan konfigurasi DNS (NameServer), menghapus rute bogus 0.0.0.0 DefaultGateway, dan menjaga konfigurasi DHCP master image 100% utuh.
 - **Modul Terdampak:**
   - `helper/helper.cpp`

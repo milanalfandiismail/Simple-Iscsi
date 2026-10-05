@@ -1756,11 +1756,13 @@ function startMergeProgressPolling() {
                 showToast('Commit Super Client berhasil! Master VHD telah diperbarui.', 'success');
                 
                 // Pastikan status config & tabel di-refresh secara penuh
-                if (configObj && configObj.windows) {
-                    configObj.windows.super_client_ip = '';
-                    configObj.windows.super_client_action = '';
-                }
+                if (!configObj) configObj = {};
+                if (!configObj.windows) configObj.windows = {};
+                configObj.windows.super_client_ip = '';
+                configObj.windows.super_client_action = '';
+                renderedDashboardIps = [];
                 await loadConfigJson();
+                await loadClientsJson();
                 renderClientsManagerTable();
                 renderDashboardClientsTable();
                 renderVhdTable();
@@ -1800,12 +1802,14 @@ async function handleSuperClientDisableChoice(choice) {
         showToast(`Membatalkan perubahan Super Client (${hostname})...`, 'info');
         const res = await apiPost('/api/superclient/discard', { ip, hostname });
         if (res && res.status === 'ok') {
-            if (configObj && configObj.windows) {
-                configObj.windows.super_client_ip = '';
-                configObj.windows.super_client_action = '';
-            }
+            if (!configObj) configObj = {};
+            if (!configObj.windows) configObj.windows = {};
+            configObj.windows.super_client_ip = '';
+            configObj.windows.super_client_action = '';
+            renderedDashboardIps = [];
             showToast(res.message || 'Perubahan Super Client berhasil dibatalkan (differencing dihapus)', 'success');
             await loadConfigJson();
+            await loadClientsJson();
             renderClientsManagerTable();
             renderDashboardClientsTable();
         } else {

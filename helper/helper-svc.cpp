@@ -37,6 +37,33 @@ void FormatIpv4(const IN_ADDR* addr, char* outBuf, size_t bufSize) {
     sprintf_s(outBuf, bufSize, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
 }
 
+bool IsValidIpA(const char* ipStr) {
+    if (!ipStr || ipStr[0] == '\0') return false;
+    if (strcmp(ipStr, "0.0.0.0") == 0) return false;
+    if (strncmp(ipStr, "169.254.", 8) == 0) return false;
+
+    int dots = 0;
+    int currentVal = 0;
+    bool hasDigits = false;
+
+    for (int i = 0; ipStr[i] != '\0'; i++) {
+        char c = ipStr[i];
+        if (c >= '0' && c <= '9') {
+            currentVal = currentVal * 10 + (c - '0');
+            if (currentVal > 255) return false;
+            hasDigits = true;
+        } else if (c == '.') {
+            if (!hasDigits) return false;
+            dots++;
+            currentVal = 0;
+            hasDigits = false;
+        } else {
+            return false;
+        }
+    }
+    return (dots == 3 && hasDigits);
+}
+
 // Baca Parameter Booting dari HKLM\SYSTEM\CurrentControlSet\Services\SimpleIscsiBoot
 bool ReadBootParameters(
     char* outIp, size_t maxIpLen,
@@ -50,7 +77,7 @@ bool ReadBootParameters(
             char buf[64] = {0};
             DWORD bufSize = sizeof(buf);
             DWORD type = REG_SZ;
-            if (RegQueryValueExA(hKey, "TargetIp", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && buf[0] != '\0') {
+            if (RegQueryValueExA(hKey, "TargetIp", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && IsValidIpA(buf)) {
                 strcpy_s(outIp, maxIpLen, buf);
             }
         }
@@ -58,7 +85,7 @@ bool ReadBootParameters(
             char buf[64] = {0};
             DWORD bufSize = sizeof(buf);
             DWORD type = REG_SZ;
-            if (RegQueryValueExA(hKey, "GatewayIp", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && buf[0] != '\0') {
+            if (RegQueryValueExA(hKey, "GatewayIp", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && IsValidIpA(buf)) {
                 strcpy_s(outGw, maxGwLen, buf);
             }
         }
@@ -84,60 +111,134 @@ bool ReadBootParameters(
     return false;
 }
 
-// Fallback: Baca Target IP dari ACPI iBFT Firmware Table
-bool ReadTargetIpFromFirmware(char* outIp, size_t maxLen, char* outGw, size_t maxGwLen, char* outDns, size_t maxDnsLen) {
-    DWORD sig = 'TFBi'; // 'iBFT'
-    DWORD bufSize = GetSystemFirmwareTable('ACPI', sig, nullptr, 0);
-    if (bufSize == 0) return false;
+// Baca Parameter DHCP dari Registry (DhcpDefaultGateway, DhcpNameServer)
+bool ReadDhcpParametersFromRegistry(char* outGw, size_t maxGwLen, char* outDns, size_t maxDnsLen) {
+    HKEY hInterfaces = nullptr;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces", 0, KEY_READ, &hInterfaces) == ERROR_SUCCESS) {
+        char guidName[128];
+        DWORD guidLen = sizeof(guidName);
 
-    BYTE* pBuf = (BYTE*)malloc(bufSize);
-    if (!pBuf) return false;
+        for (DWORD idx = 0; RegEnumKeyExA(hInterfaces, idx, guidName, &guidLen, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; idx++) {
+            guidLen = sizeof(guidName);
 
-    if (GetSystemFirmwareTable('ACPI', sig, pBuf, bufSize) == bufSize) {
-        // Cari block NIC di iBFT (StructureId = 3)
-        for (DWORD offset = 32; offset + 48 <= bufSize; offset += 2) {
-            if (pBuf[offset] == 0x03) { // NIC structure ID
-                BYTE* ipBytes = &pBuf[offset + 4];
-                BYTE* gwBytes = &pBuf[offset + 20];
-                BYTE* dns1Bytes = &pBuf[offset + 36];
-                
-                // Periksa Target IPv4
-                if (ipBytes[12] != 0 && ipBytes[12] != 127) {
-                    sprintf_s(outIp, maxLen, "%u.%u.%u.%u", ipBytes[12], ipBytes[13], ipBytes[14], ipBytes[15]);
-                } else if (ipBytes[0] != 0 && ipBytes[0] != 127) {
-                    sprintf_s(outIp, maxLen, "%u.%u.%u.%u", ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]);
+            char subPath[256];
+            sprintf_s(subPath, sizeof(subPath), "SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\%s", guidName);
+
+            HKEY hSub = nullptr;
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subPath, 0, KEY_READ, &hSub) == ERROR_SUCCESS) {
+                // 1. Coba baca DhcpDefaultGateway
+                if (outGw && (outGw[0] == '\0' || !IsValidIpA(outGw))) {
+                    char dhcpGwBuf[128] = {0};
+                    DWORD dhcpGwSize = sizeof(dhcpGwBuf);
+                    DWORD type = 0;
+                    if (RegQueryValueExA(hSub, "DhcpDefaultGateway", nullptr, &type, (LPBYTE)dhcpGwBuf, &dhcpGwSize) == ERROR_SUCCESS) {
+                        if (IsValidIpA(dhcpGwBuf)) {
+                            strcpy_s(outGw, maxGwLen, dhcpGwBuf);
+                            LogA("[+] Found DHCP Gateway in Registry (%s): %s\n", guidName, outGw);
+                        }
+                    }
                 }
 
-                // Periksa Gateway
-                if (gwBytes[12] != 0 && gwBytes[12] != 127) {
-                    sprintf_s(outGw, maxGwLen, "%u.%u.%u.%u", gwBytes[12], gwBytes[13], gwBytes[14], gwBytes[15]);
-                } else if (gwBytes[0] != 0 && gwBytes[0] != 127) {
-                    sprintf_s(outGw, maxGwLen, "%u.%u.%u.%u", gwBytes[0], gwBytes[1], gwBytes[2], gwBytes[3]);
+                // 2. Coba baca DhcpNameServer
+                if (outDns && (outDns[0] == '\0' || strcmp(outDns, "0.0.0.0") == 0)) {
+                    char dhcpDnsBuf[128] = {0};
+                    DWORD dhcpDnsSize = sizeof(dhcpDnsBuf);
+                    DWORD type = 0;
+                    if (RegQueryValueExA(hSub, "DhcpNameServer", nullptr, &type, (LPBYTE)dhcpDnsBuf, &dhcpDnsSize) == ERROR_SUCCESS) {
+                        if (dhcpDnsBuf[0] != '\0' && strcmp(dhcpDnsBuf, "0.0.0.0") != 0) {
+                            strcpy_s(outDns, maxDnsLen, dhcpDnsBuf);
+                            LogA("[+] Found DHCP NameServer in Registry (%s): %s\n", guidName, outDns);
+                        }
+                    }
                 }
 
-                // Periksa DNS1
-                if (dns1Bytes[12] != 0 && dns1Bytes[12] != 127) {
-                    sprintf_s(outDns, maxDnsLen, "%u.%u.%u.%u", dns1Bytes[12], dns1Bytes[13], dns1Bytes[14], dns1Bytes[15]);
-                } else if (dns1Bytes[0] != 0 && dns1Bytes[0] != 127) {
-                    sprintf_s(outDns, maxDnsLen, "%u.%u.%u.%u", dns1Bytes[0], dns1Bytes[1], dns1Bytes[2], dns1Bytes[3]);
-                }
-
-                free(pBuf);
-                return (outIp[0] != '\0');
+                RegCloseKey(hSub);
             }
         }
+        RegCloseKey(hInterfaces);
     }
-    free(pBuf);
-    return false;
+    return (outGw && IsValidIpA(outGw));
 }
 
-// Menyelaraskan DNS dan memastikan DefaultGateway TUNGGAL di Registry
-void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
-    if ((!gwIp || gwIp[0] == '\0' || strcmp(gwIp, "0.0.0.0") == 0) && (!dnsStr || dnsStr[0] == '\0')) {
-        return;
+// Baca Gateway & DNS aktif dari Network Adapter (GetAdaptersAddresses)
+bool ReadAdapterParameters(char* outGw, size_t maxGwLen, char* outDns, size_t maxDnsLen, ULONG* pIfIndex, const char* targetIp) {
+    ULONG outBufLen = 15000;
+    IP_ADAPTER_ADDRESSES* pAddresses = (IP_ADAPTER_ADDRESSES*)malloc(outBufLen);
+    if (!pAddresses) return false;
+
+    DWORD dwRet = GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_INCLUDE_ALL_INTERFACES, NULL, pAddresses, &outBufLen);
+    if (dwRet == ERROR_BUFFER_OVERFLOW) {
+        free(pAddresses);
+        pAddresses = (IP_ADAPTER_ADDRESSES*)malloc(outBufLen);
+        if (!pAddresses) return false;
+        dwRet = GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_INCLUDE_ALL_INTERFACES, NULL, pAddresses, &outBufLen);
     }
 
-    LogA("[+] Aligning DNS and Gateway in Registry (Enforcing Single Gateway)...\n");
+    bool foundGw = false;
+    if (dwRet == NO_ERROR) {
+        for (IP_ADAPTER_ADDRESSES* pCurr = pAddresses; pCurr; pCurr = pCurr->Next) {
+            if (pCurr->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+
+            bool matchesTarget = false;
+            if (targetIp && targetIp[0] != '\0') {
+                for (IP_ADAPTER_UNICAST_ADDRESS* pUni = pCurr->FirstUnicastAddress; pUni; pUni = pUni->Next) {
+                    if (pUni->Address.lpSockaddr->sa_family == AF_INET) {
+                        char uIp[64] = {0};
+                        FormatIpv4(&((struct sockaddr_in*)pUni->Address.lpSockaddr)->sin_addr, uIp, sizeof(uIp));
+                        if (strcmp(uIp, targetIp) == 0) {
+                            matchesTarget = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Ekstraksi Gateway
+            for (IP_ADAPTER_GATEWAY_ADDRESS* pGw = pCurr->FirstGatewayAddress; pGw; pGw = pGw->Next) {
+                if (pGw->Address.lpSockaddr->sa_family == AF_INET) {
+                    char gwBuf[64] = {0};
+                    FormatIpv4(&((struct sockaddr_in*)pGw->Address.lpSockaddr)->sin_addr, gwBuf, sizeof(gwBuf));
+                    if (IsValidIpA(gwBuf)) {
+                        if (outGw && (outGw[0] == '\0' || matchesTarget)) {
+                            strcpy_s(outGw, maxGwLen, gwBuf);
+                            if (pIfIndex) *pIfIndex = pCurr->IfIndex;
+                            foundGw = true;
+                            LogA("[+] Detected Active Adapter Gateway (%s, IfIndex: %lu): %s\n",
+                                 pCurr->AdapterName, pCurr->IfIndex, gwBuf);
+                        }
+                    }
+                }
+            }
+
+            // Ekstraksi DNS jika belum ada
+            if (outDns && (outDns[0] == '\0' || strcmp(outDns, "0.0.0.0") == 0)) {
+                for (IP_ADAPTER_DNS_SERVER_ADDRESS* pDns = pCurr->FirstDnsServerAddress; pDns; pDns = pDns->Next) {
+                    if (pDns->Address.lpSockaddr->sa_family == AF_INET) {
+                        char dnsBuf[64] = {0};
+                        FormatIpv4(&((struct sockaddr_in*)pDns->Address.lpSockaddr)->sin_addr, dnsBuf, sizeof(dnsBuf));
+                        if (IsValidIpA(dnsBuf)) {
+                            if (outDns[0] == '\0') {
+                                strcpy_s(outDns, maxDnsLen, dnsBuf);
+                            } else {
+                                strcat_s(outDns, maxDnsLen, ",");
+                                strcat_s(outDns, maxDnsLen, dnsBuf);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (matchesTarget && foundGw) break;
+        }
+    }
+
+    free(pAddresses);
+    return foundGw;
+}
+
+// Menyelaraskan DNS dan membersihkan DefaultGateway 0.0.0.0 di Registry
+void SanitizeRegistryDnsAndGateway(const char* staticGw, const char* dnsStr) {
+    LogA("[+] Sanitizing DNS and DefaultGateway in Registry...\n");
 
     // 1. Tulis global DNS ke Tcpip\Parameters
     if (dnsStr && dnsStr[0] != '\0') {
@@ -146,7 +247,7 @@ void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
             RegSetValueExA(hTcpip, "NameServer", 0, REG_SZ, (const BYTE*)dnsStr, (DWORD)strlen(dnsStr) + 1);
             RegSetValueExA(hTcpip, "DhcpNameServer", 0, REG_SZ, (const BYTE*)dnsStr, (DWORD)strlen(dnsStr) + 1);
             RegCloseKey(hTcpip);
-            LogA("    [+] Global NameServer updated: %s\n", dnsStr);
+            LogA("    [+] Global NameServer synced: %s\n", dnsStr);
         }
     }
 
@@ -164,25 +265,39 @@ void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
 
             HKEY hSub = nullptr;
             if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subPath, 0, KEY_READ | KEY_SET_VALUE, &hSub) == ERROR_SUCCESS) {
-                // Tulis NameServer pada interface
+                // Tulis NameServer pada interface jika belum ada
                 if (dnsStr && dnsStr[0] != '\0') {
                     RegSetValueExA(hSub, "NameServer", 0, REG_SZ, (const BYTE*)dnsStr, (DWORD)strlen(dnsStr) + 1);
                     RegSetValueExA(hSub, "DhcpNameServer", 0, REG_SZ, (const BYTE*)dnsStr, (DWORD)strlen(dnsStr) + 1);
                 }
 
-                // Pastikan DefaultGateway adalah nilai TUNGGAL (REG_MULTI_SZ tunggal)
-                if (gwIp && gwIp[0] != '\0' && strcmp(gwIp, "0.0.0.0") != 0) {
+                // Cek static DefaultGateway
+                char gwBuf[128] = {0};
+                DWORD gwSize = sizeof(gwBuf);
+                DWORD type = 0;
+                if (RegQueryValueExA(hSub, "DefaultGateway", nullptr, &type, (LPBYTE)gwBuf, &gwSize) == ERROR_SUCCESS) {
+                    if (strcmp(gwBuf, "0.0.0.0") == 0 || strncmp(gwBuf, "0.0.0.0", 7) == 0) {
+                        // Hapus static 0.0.0.0 agar DHCP default gateway dapat bekerja secara murni
+                        RegDeleteValueA(hSub, "DefaultGateway");
+                        RegDeleteValueA(hSub, "DefaultGatewayMetric");
+                        LogA("    [+] Deleted bogus 0.0.0.0 DefaultGateway on %s (Preserving DHCP Gateway)\n", guidName);
+                    }
+                }
+
+                // Jika staticGw valid diberikan secara eksplisit, tegakkan single entry
+                if (staticGw && IsValidIpA(staticGw)) {
                     char multiSzGw[64] = {0};
-                    size_t gLen = strlen(gwIp);
-                    memcpy(multiSzGw, gwIp, gLen);
+                    size_t gLen = strlen(staticGw);
+                    memcpy(multiSzGw, staticGw, gLen);
                     multiSzGw[gLen] = '\0';
                     multiSzGw[gLen + 1] = '\0';
 
                     RegSetValueExA(hSub, "DefaultGateway", 0, REG_MULTI_SZ, (const BYTE*)multiSzGw, (DWORD)gLen + 2);
                     const char cleanMetric[] = "0\0\0";
                     RegSetValueExA(hSub, "DefaultGatewayMetric", 0, REG_MULTI_SZ, (const BYTE*)cleanMetric, sizeof(cleanMetric));
-                    LogA("    [+] Enforced Single DefaultGateway on %s -> %s\n", guidName, gwIp);
+                    LogA("    [+] Enforced Single Static DefaultGateway on %s -> %s\n", guidName, staticGw);
                 }
+
                 RegCloseKey(hSub);
             }
         }
@@ -190,49 +305,93 @@ void AlignDnsAndGatewayInRegistry(const char* gwIp, const char* dnsStr) {
     }
 }
 
-// Menegakkan Default Gateway TUNGGAL di Kernel Routing Table (Menghapus rute duplikat / 0.0.0.0)
-void EnforceSingleDefaultGateway(const char* gwIp) {
-    if (!gwIp || gwIp[0] == '\0' || strcmp(gwIp, "0.0.0.0") == 0) return;
-
-    LogA("[+] Enforcing SINGLE Default Gateway in Kernel Routing Table: %s\n", gwIp);
+// Menegakkan Default Gateway TUNGGAL di Kernel Routing Table
+void EnforceSingleDefaultGateway(const char* preferredGw, ULONG preferredIfIndex) {
+    LogA("[+] Enforcing SINGLE Default Gateway in Kernel Routing Table...\n");
 
     PMIB_IPFORWARD_TABLE2 pTable = nullptr;
-    if (GetIpForwardTable2(AF_INET, &pTable) == NO_ERROR && pTable) {
-        int validRouteCount = 0;
+    if (GetIpForwardTable2(AF_INET, &pTable) != NO_ERROR || !pTable) {
+        LogA("[-] GetIpForwardTable2 failed!\n");
+        return;
+    }
 
-        for (ULONG i = 0; i < pTable->NumEntries; i++) {
-            MIB_IPFORWARD_ROW2 row = pTable->Table[i];
-            if (row.DestinationPrefix.Prefix.si_family == AF_INET && row.DestinationPrefix.PrefixLength == 0) {
-                // Ini adalah Default Route (0.0.0.0/0)
-                char nhStr[64] = {0};
-                FormatIpv4(&row.NextHop.Ipv4.sin_addr, nhStr, sizeof(nhStr));
+    int keptRouteCount = 0;
+    char authoritativeGw[64] = {0};
+    if (preferredGw && IsValidIpA(preferredGw)) {
+        strcpy_s(authoritativeGw, sizeof(authoritativeGw), preferredGw);
+    }
 
-                if (strcmp(nhStr, gwIp) == 0) {
-                    validRouteCount++;
-                    if (validRouteCount > 1) {
-                        // Rute duplikat ke gateway yang sama -> Hapus kelebihan
-                        LogA("    [*] Removing duplicate default route to %s (Interface: %lu, Metric: %lu)\n",
+    for (ULONG i = 0; i < pTable->NumEntries; i++) {
+        MIB_IPFORWARD_ROW2 row = pTable->Table[i];
+        if (row.DestinationPrefix.Prefix.si_family == AF_INET && row.DestinationPrefix.PrefixLength == 0) {
+            // Ini adalah Default Route (0.0.0.0/0)
+            char nhStr[64] = {0};
+            FormatIpv4(&row.NextHop.Ipv4.sin_addr, nhStr, sizeof(nhStr));
+
+            if (!IsValidIpA(nhStr) || strcmp(nhStr, "0.0.0.0") == 0) {
+                // Hapus seketika rute 0.0.0.0 yang tidak valid
+                LogA("    [!] Deleting BOGUS default route via %s (Interface: %lu)\n", nhStr, row.InterfaceIndex);
+                DeleteIpForwardEntry2(&row);
+            } else {
+                // Rute default memiliki gateway valid
+                if (authoritativeGw[0] == '\0') {
+                    // Jika belum ada preferred gateway yang ditetapkan, gunakan rute valid pertama yang ditemukan
+                    strcpy_s(authoritativeGw, sizeof(authoritativeGw), nhStr);
+                    keptRouteCount++;
+                    LogA("    [+] Discovered & Retaining Active Default Gateway: %s (Interface: %lu, Metric: %lu)\n",
+                         nhStr, row.InterfaceIndex, row.Metric);
+                } else if (strcmp(nhStr, authoritativeGw) == 0) {
+                    keptRouteCount++;
+                    if (keptRouteCount > 1) {
+                        LogA("    [*] Removing DUPLICATE default route to %s (Interface: %lu, Metric: %lu)\n",
                              nhStr, row.InterfaceIndex, row.Metric);
                         DeleteIpForwardEntry2(&row);
                     } else {
-                        LogA("    [+] Retaining single valid default route to %s (Interface: %lu, Metric: %lu)\n",
+                        LogA("    [+] Retaining SINGLE valid default route to %s (Interface: %lu, Metric: %lu)\n",
                              nhStr, row.InterfaceIndex, row.Metric);
                     }
                 } else {
-                    // Gateway lain (0.0.0.0 atau IP lama) -> Hapus seketika
-                    LogA("    [!] DETECTED INVALID/DUPLICATE DEFAULT ROUTE to %s (Interface: %lu). Deleting...\n",
-                         nhStr, row.InterfaceIndex);
-                    DWORD delRes = DeleteIpForwardEntry2(&row);
-                    if (delRes == NO_ERROR) {
-                        LogA("        [SUCCESS] Deleted invalid default route via %s from kernel table.\n", nhStr);
+                    // Rute ke gateway lama/berbeda saat authoritative gateway sudah ada
+                    if (keptRouteCount > 0) {
+                        LogA("    [!] Removing stale default route to %s (Interface: %lu)\n", nhStr, row.InterfaceIndex);
+                        DeleteIpForwardEntry2(&row);
                     } else {
-                        LogA("        [-] DeleteIpForwardEntry2 returned %lu\n", delRes);
+                        // Jika rute authoritative belum ada di tabel, simpan rute ini agar internet tidak putus
+                        LogA("    [+] Retaining existing default route to %s as active fallback\n", nhStr);
+                        strcpy_s(authoritativeGw, sizeof(authoritativeGw), nhStr);
+                        keptRouteCount++;
                     }
                 }
             }
         }
-        FreeMibTable(pTable);
     }
+
+    // Jika tabel rute sama sekali tidak memiliki default gateway (0 default routes), tapi kita punya gateway valid
+    if (keptRouteCount == 0 && authoritativeGw[0] != '\0' && preferredIfIndex > 0) {
+        MIB_IPFORWARD_ROW2 newRow;
+        InitializeIpForwardEntry(&newRow);
+        newRow.InterfaceIndex = preferredIfIndex;
+        newRow.DestinationPrefix.Prefix.si_family = AF_INET;
+        newRow.DestinationPrefix.PrefixLength = 0;
+        newRow.NextHop.si_family = AF_INET;
+
+        unsigned char b[4] = {0};
+        sscanf_s(authoritativeGw, "%hhu.%hhu.%hhu.%hhu", &b[0], &b[1], &b[2], &b[3]);
+        newRow.NextHop.Ipv4.sin_addr.S_un.S_un_b.s_b1 = b[0];
+        newRow.NextHop.Ipv4.sin_addr.S_un.S_un_b.s_b2 = b[1];
+        newRow.NextHop.Ipv4.sin_addr.S_un.S_un_b.s_b3 = b[2];
+        newRow.NextHop.Ipv4.sin_addr.S_un.S_un_b.s_b4 = b[3];
+        newRow.Metric = 10;
+        newRow.Protocol = MIB_IPPROTO_NETMGMT;
+
+        DWORD addRes = CreateIpForwardEntry2(&newRow);
+        LogA("    [+] Created missing Default Route to %s on Interface %lu (Result: %lu)\n",
+             authoritativeGw, preferredIfIndex, addRes);
+    }
+
+    FreeMibTable(pTable);
+    LogA("[+] Single Default Gateway Enforcement Complete. Active Gateway: %s\n",
+         authoritativeGw[0] != '\0' ? authoritativeGw : "[None/Pending DHCP]");
 }
 
 // Pembersihan IP Unicast yang tidak sesuai Target IP
@@ -245,47 +404,45 @@ int ExecuteIpPurge() {
     char gatewayIp[64] = {0};
     char nameServer[128] = {0};
     wchar_t hostName[64] = {0};
+    ULONG activeIfIndex = 0;
 
-    if (ReadBootParameters(targetIp, sizeof(targetIp), gatewayIp, sizeof(gatewayIp), nameServer, sizeof(nameServer), hostName, 64)) {
-        LogA("[+] Retrieved Boot Parameters from SimpleIscsiBoot:\n");
-        LogA("    - Target IP : %s\n", targetIp);
-        LogA("    - Gateway IP: %s\n", gatewayIp);
-        LogA("    - DNS       : %s\n", nameServer);
-    } else if (ReadTargetIpFromFirmware(targetIp, sizeof(targetIp), gatewayIp, sizeof(gatewayIp), nameServer, sizeof(nameServer))) {
-        LogA("[+] Retrieved Boot Parameters from ACPI iBFT Firmware:\n");
-        LogA("    - Target IP : %s\n", targetIp);
-        LogA("    - Gateway IP: %s\n", gatewayIp);
-        LogA("    - DNS       : %s\n", nameServer);
-    } else {
-        LogA("[-] Warning: Target IP not defined in Registry or iBFT.\n");
+    // 1. Baca Parameter Booting dari SimpleIscsiBoot Marker
+    ReadBootParameters(targetIp, sizeof(targetIp), gatewayIp, sizeof(gatewayIp), nameServer, sizeof(nameServer), hostName, 64);
+
+    // 2. Baca Gateway & DNS aktual dari DHCP Registry jika belum tersedia
+    if (!IsValidIpA(gatewayIp) || nameServer[0] == '\0') {
+        ReadDhcpParametersFromRegistry(gatewayIp, sizeof(gatewayIp), nameServer, sizeof(nameServer));
     }
 
-    // Auto Gateway fallback jika gateway kosong/0.0.0.0
-    if ((gatewayIp[0] == '\0' || strcmp(gatewayIp, "0.0.0.0") == 0) && targetIp[0] != '\0') {
-        strcpy_s(gatewayIp, sizeof(gatewayIp), targetIp);
-        char* lastDot = strrchr(gatewayIp, '.');
-        if (lastDot) {
-            *(lastDot + 1) = '1';
-            *(lastDot + 2) = '\0';
-        }
+    // 3. Baca Gateway & DNS langsung dari Network Adapter (GetAdaptersAddresses)
+    if (!IsValidIpA(gatewayIp) || nameServer[0] == '\0' || activeIfIndex == 0) {
+        ReadAdapterParameters(gatewayIp, sizeof(gatewayIp), nameServer, sizeof(nameServer), &activeIfIndex, targetIp);
     }
 
-    // Auto DNS fallback jika DNS kosong/0.0.0.0
+    // 4. DNS Fallback jika masih kosong
     if (nameServer[0] == '\0' || strcmp(nameServer, "0.0.0.0") == 0) {
-        if (gatewayIp[0] != '\0') {
+        if (IsValidIpA(gatewayIp)) {
             sprintf_s(nameServer, sizeof(nameServer), "%s,8.8.8.8", gatewayIp);
         } else {
             strcpy_s(nameServer, sizeof(nameServer), "1.1.1.1,8.8.8.8");
         }
     }
 
-    // 1. Selaraskan DNS dan tegakkan Gateway TUNGGAL di Registry
-    AlignDnsAndGatewayInRegistry(gatewayIp, nameServer);
+    LogA("[+] Network Configuration Resolved:\n");
+    LogA("    - Target IP      : %s\n", targetIp[0] != '\0' ? targetIp : "[Not Specified]");
+    LogA("    - Default Gateway: %s\n", IsValidIpA(gatewayIp) ? gatewayIp : "[Managed by DHCP]");
+    LogA("    - DNS Servers    : %s\n", nameServer);
+    if (hostName[0] != L'\0') {
+        LogA("    - HostName       : %ls\n", hostName);
+    }
 
-    // 2. Tegakkan Default Gateway TUNGGAL di Kernel Routing Table (hapus rute duplikat / 0.0.0.0)
-    EnforceSingleDefaultGateway(gatewayIp);
+    // 5. Bersihkan 0.0.0.0 dari Registry dan selaraskan DNS
+    SanitizeRegistryDnsAndGateway(nullptr, nameServer);
 
-    // 3. Sinkronisasi Hostname di User-Mode jika ada
+    // 6. Tegakkan Default Gateway TUNGGAL di Kernel Routing Table
+    EnforceSingleDefaultGateway(IsValidIpA(gatewayIp) ? gatewayIp : nullptr, activeIfIndex);
+
+    // 7. Sinkronisasi Hostname di User-Mode jika ada
     if (hostName[0] != L'\0') {
         SetComputerNameExW(ComputerNamePhysicalDnsHostname, hostName);
         SetComputerNameExW(ComputerNameNetBIOS, hostName);
@@ -293,10 +450,14 @@ int ExecuteIpPurge() {
     }
 
     if (targetIp[0] == '\0') {
+        LogA("================================================================\n");
+        LogA(" [Simple-Iscsi Helper-Svc] Finished (No Target IP Filter)\n");
+        LogA("================================================================\n\n");
+        if (g_logFile) { fclose(g_logFile); g_logFile = nullptr; }
         return 0;
     }
 
-    // 4. Inisialisasi Winsock & Scan Unicast IPs
+    // 8. Inisialisasi Winsock & Scan Unicast IPs
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 
@@ -305,6 +466,7 @@ int ExecuteIpPurge() {
     if (status != NO_ERROR || !pTable) {
         LogA("[-] GetUnicastIpAddressTable failed (Error: %lu)\n", status);
         WSACleanup();
+        if (g_logFile) { fclose(g_logFile); g_logFile = nullptr; }
         return 1;
     }
 
