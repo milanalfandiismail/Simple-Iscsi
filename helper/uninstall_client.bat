@@ -7,7 +7,7 @@ cd /d "%~dp0"
 net session >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [!] Meminta hak akses Administrator via UAC...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/k cd /d \"%~dp0\" && \"%~nx0\"' -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
 
@@ -30,7 +30,10 @@ if exist "%SystemRoot%\System32\helper-svc.exe" del /F /Q "%SystemRoot%\System32
 
 :: 3. Kembalikan BootExecute ke default Windows
 echo [3/5] Mengembalikan BootExecute ke default...
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v BootExecute /t REG_MULTI_SZ /d "autocheck autochk *" /f >nul
+powershell -NoProfile -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'BootExecute' -Value @('autocheck autochk *')" >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v BootExecute /t REG_MULTI_SZ /d "autocheck autochk *" /f >nul
+)
 
 :: 4. Hapus Startup Run Key
 echo [4/5] Menghapus Startup Run Key...
@@ -45,10 +48,10 @@ reg delete "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "Link
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "MaxRequestHoldTime" /f >nul 2>&1
 reg delete "HKLM\SYSTEM\CurrentControlSet\Services\msiscsi\Parameters" /v "LinkDownTime" /f >nul 2>&1
 
+echo.
 echo ===================================================
 echo   [+] Helper Berhasil Di-Uninstall dari Sistem!
 echo ===================================================
+echo.
 
-if "%1" neq "nopause" (
-    pause
-)
+pause
