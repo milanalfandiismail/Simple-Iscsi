@@ -1091,6 +1091,31 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 
 ---
 
+### [2026-10-05] - Perbaikan Memory Safety, Null-Terminated String, & Non-Destructive Dual-Stage Helper
+- **Tujuan:** Mengatasi potensi crash dan BSOD `0x78` (`PHASE1_INITIALIZATION_FAILED`) pada `helper.exe` di `BootExecute`, memperbaiki pembacaan string ACPI tanpa null-terminator, bound-checking buffer iBFT, mengeliminasi `NtFlushKey` di Phase 1, dan menjaga konfigurasi DHCP master image 100% utuh.
+- **Modul Terdampak:**
+  - `helper/helper.cpp`
+  - `helper/helper-svc.cpp`
+  - `helper/install_client.bat`
+  - `helper/compile.bat`
+  - `docs/superpowers/plans/2026-10-05-client-helper-debugging-and-fix-plan.md`
+  - `ANTIGRAVITY.md`
+- **Rincian Perubahan:**
+  1. **Memory Safety & Null-Terminated String di `BootExecute` (`helper/helper.cpp`):**
+     - Mengganti pembacaan raw buffer `PKEY_BASIC_INFORMATION->Name` dengan `safeSubName` dan `safeChildName` ber-null-terminator pasti sebelum evaluasi `StrEqual` / `StrStartsWith`, mencegah Access Violation `0xC0000005` di `smss.exe` Phase 1.
+     - Menerapkan batasan ketat `tableLen = min(pFirmware->TableBufferLength, maxPayload)` untuk menjamin pemindaian struktur iBFT (NIC, Initiator, Target) tidak membaca melampaui memori lokal.
+  2. **Non-Destructive Dual-Stage Architecture:**
+     - Menghapus fungsi destruktif `ApplyStaticIpConfiguration` dari `helper.exe`. Master image VHD tetap mempertahankan konfigurasi `EnableDHCP = 1` default sehingga multi-client boot dapat memperoleh IP dinamis secara bersih.
+     - Menghapus pemanggilan berulang `NtFlushKey` di Phase 1 boot yang memicu `STATUS_REGISTRY_IO_FAILED` (`0xC000014D`).
+     - `helper-svc.exe` (User-Mode) diperkaya untuk menyinkronkan `SetComputerNameExW` dan membersihkan IP unicast residu superclient via `DeleteUnicastIpAddressEntry`.
+  3. **Installer Hardening (`helper/install_client.bat`):**
+     - Pendaftaran `BootExecute` menggunakan PowerShell `Set-ItemProperty` dengan array `@('autocheck autochk *', 'helper.exe')` untuk menjamin format biner `REG_MULTI_SZ` valid di semua edisi Windows.
+- **Hasil & Verifikasi:**
+  - Kompilasi MSVC `helper.exe` (Native Subsystem) dan `helper-svc.exe` (Win32 Service) sukses 100%.
+  - `cargo check` & `cargo test` lulus 100%.
+
+---
+
 ### [2026-10-05] - Implementasi Append-Only CoW VHD Snapshot Revert, Asynchronous Commit, & Proteksi Registri Boot Helper
 - **Tujuan:** 
   1. Menyelesaikan masalah restorasi snapshot VHD (revert) yang sebelumnya tidak membatalkan file baru (File A) akibat penulisan in-place pada blok parent.

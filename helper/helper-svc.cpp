@@ -36,19 +36,28 @@ void FormatIpv4(const IN_ADDR* addr, char* outBuf, size_t bufSize) {
     sprintf_s(outBuf, bufSize, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
 }
 
-// Baca Target IP dari HKLM\SYSTEM\CurrentControlSet\Services\SimpleIscsiBoot
-bool ReadTargetIpFromRegistry(char* outIp, size_t maxLen) {
+// Baca Target IP & Hostname dari HKLM\SYSTEM\CurrentControlSet\Services\SimpleIscsiBoot
+bool ReadBootParameters(char* outIp, size_t maxIpLen, wchar_t* outHost, size_t maxHostLen) {
     HKEY hKey = nullptr;
     if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\SimpleIscsiBoot", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-        char buf[64] = {0};
-        DWORD bufSize = sizeof(buf);
-        DWORD type = REG_SZ;
-        if (RegQueryValueExA(hKey, "TargetIp", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && buf[0] != '\0') {
-            strcpy_s(outIp, maxLen, buf);
-            RegCloseKey(hKey);
-            return true;
+        if (outIp && maxIpLen > 0) {
+            char buf[64] = {0};
+            DWORD bufSize = sizeof(buf);
+            DWORD type = REG_SZ;
+            if (RegQueryValueExA(hKey, "TargetIp", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && buf[0] != '\0') {
+                strcpy_s(outIp, maxIpLen, buf);
+            }
+        }
+        if (outHost && maxHostLen > 0) {
+            wchar_t wbuf[64] = {0};
+            DWORD wbufSize = sizeof(wbuf);
+            DWORD type = REG_SZ;
+            if (RegQueryValueExW(hKey, L"Hostname", nullptr, &type, (LPBYTE)wbuf, &wbufSize) == ERROR_SUCCESS && wbuf[0] != L'\0') {
+                wcscpy_s(outHost, maxHostLen, wbuf);
+            }
         }
         RegCloseKey(hKey);
+        return (outIp && outIp[0] != '\0');
     }
     return false;
 }
@@ -63,17 +72,19 @@ bool ReadTargetIpFromFirmware(char* outIp, size_t maxLen) {
     if (!pBuf) return false;
 
     if (GetSystemFirmwareTable('ACPI', sig, pBuf, bufSize) == bufSize) {
-        // Cari block NIC di iBFT
-        for (DWORD offset = 48; offset + 16 < bufSize; offset++) {
-            if (pBuf[offset] == 0x02) { // NIC structure ID
-                BYTE* ipBytes = &pBuf[offset + 12];
-                // Periksa apakah ini IPv4 yang dipetakan ke IPv6 (10 bytes 0x00, 2 bytes 0xFF)
-                bool isMapped = true;
-                for (int k = 0; k < 10; k++) {
-                    if (ipBytes[k] != 0x00) { isMapped = false; break; }
-                }
-                if (isMapped && ipBytes[10] == 0xFF && ipBytes[11] == 0xFF) {
+        // Cari block NIC di iBFT (StructureId = 3)
+        for (DWORD offset = 32; offset + 48 <= bufSize; offset += 2) {
+            if (pBuf[offset] == 0x03) { // NIC structure ID
+                BYTE* ipBytes = &pBuf[offset + 4];
+                // Periksa IPv4 (byte 12..15 pada mapped IPv6)
+                if (ipBytes[12] != 0 && ipBytes[12] != 127) {
                     sprintf_s(outIp, maxLen, "%u.%u.%u.%u", ipBytes[12], ipBytes[13], ipBytes[14], ipBytes[15]);
+                    free(pBuf);
+                    return true;
+                }
+                // Direct IPv4 di byte 0..3
+                if (ipBytes[0] != 0 && ipBytes[0] != 127) {
+                    sprintf_s(outIp, maxLen, "%u.%u.%u.%u", ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]);
                     free(pBuf);
                     return true;
                 }
@@ -91,16 +102,28 @@ int ExecuteIpPurge() {
     LogA("================================================================\n");
 
     char targetIp[64] = {0};
-    if (ReadTargetIpFromRegistry(targetIp, sizeof(targetIp))) {
-        LogA("[+] Retrieved Target IP from SimpleIscsiBoot Registry: %s\n", targetIp);
+    wchar_t hostName[64] = {0};
+
+    if (ReadBootParameters(targetIp, sizeof(targetIp), hostName, 64)) {
+        LogA("[+] Retrieved Target IP from SimpleIscsiBoot: %s\n", targetIp);
     } else if (ReadTargetIpFromFirmware(targetIp, sizeof(targetIp))) {
         LogA("[+] Retrieved Target IP from ACPI iBFT Firmware: %s\n", targetIp);
     } else {
-        LogA("[-] Error: Unable to determine Target IP from Registry or iBFT!\n");
-        return 1;
+        LogA("[-] Warning: Target IP not defined in Registry or iBFT. Skipping IP purge.\n");
     }
 
-    // Inisialisasi Winsock untuk resolusi
+    // Sinkronisasi Hostname di User-Mode jika ada
+    if (hostName[0] != L'\0') {
+        SetComputerNameExW(ComputerNamePhysicalDnsHostname, hostName);
+        SetComputerNameExW(ComputerNameNetBIOS, hostName);
+        LogA("[+] User-Mode ComputerName synced to: %ls\n", hostName);
+    }
+
+    if (targetIp[0] == '\0') {
+        return 0;
+    }
+
+    // Inisialisasi Winsock
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 

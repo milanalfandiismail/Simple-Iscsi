@@ -216,10 +216,6 @@ extern "C" {
         PUNICODE_STRING ValueName
     );
 
-    NTSYSAPI NTSTATUS NTAPI NtFlushKey(
-        void* KeyHandle
-    );
-
     NTSYSAPI NTSTATUS NTAPI NtClose(
         void* Handle
     );
@@ -233,8 +229,6 @@ extern "C" {
 #define KEY_QUERY_VALUE 0x0001
 #define KEY_SET_VALUE   0x0002
 #define KEY_ENUMERATE_SUB_KEYS 0x0008
-#define DELETE_ACCESS   0x00010000L
-#define KEY_WRITE_AND_DELETE (KEY_SET_VALUE | DELETE_ACCESS | KEY_QUERY_VALUE)
 
 // -------------------------------------------------------------
 // Native File Logger (Mencatat ke C:\Windows\helper.log)
@@ -301,7 +295,7 @@ void LogClose() {
 }
 
 // -------------------------------------------------------------
-// Helper String & Network Utilities (No CRT)
+// Helper String & Network Utilities (No CRT, Safe Bounds)
 // -------------------------------------------------------------
 
 bool StrEqual(const wchar_t* a, const wchar_t* b) {
@@ -312,6 +306,17 @@ bool StrEqual(const wchar_t* a, const wchar_t* b) {
         b++;
     }
     return *a == *b;
+}
+
+// Perbandingan string aman dengan batas panjang eksplisit (menghindari memory overrun)
+bool StrEqualN(const wchar_t* a, const wchar_t* b, unsigned long nChars) {
+    if (!a || !b) return false;
+    for (unsigned long i = 0; i < nChars; i++) {
+        if (a[i] == L'\0' && b[i] == L'\0') return true;
+        if (a[i] != b[i]) return false;
+        if (a[i] == L'\0' || b[i] == L'\0') return false;
+    }
+    return (b[nChars] == L'\0');
 }
 
 bool StrStartsWith(const wchar_t* str, const wchar_t* prefix) {
@@ -453,76 +458,6 @@ void PrefixToSubnetMask(unsigned char prefix, wchar_t* outStr, unsigned long max
     UintToWstr(b3, seg, 8); StrCat(outStr, seg, maxChars);
 }
 
-// Format string ke REG_MULTI_SZ (diakhiri double null: "192.168.180.3\0\0")
-unsigned long BuildMultiSz(const wchar_t* src, wchar_t* outBuf, unsigned long maxChars) {
-    if (!src || maxChars < 3) return 0;
-    unsigned long len = StrLen(src);
-    if (len + 2 > maxChars) return 0;
-
-    for (unsigned long i = 0; i < len; i++) {
-        outBuf[i] = src[i];
-    }
-    outBuf[len] = L'\0';
-    outBuf[len + 1] = L'\0';
-
-    return (len + 2) * sizeof(wchar_t);
-}
-
-// Membaca REG_SZ atau REG_MULTI_SZ dan memformat string ke outBuf
-bool ReadRegMultiSz(void* hKey, const wchar_t* valNameStr, wchar_t* outBuf, unsigned long maxChars) {
-    if (!hKey || !valNameStr || !outBuf || maxChars == 0) return false;
-    outBuf[0] = L'\0';
-
-    UNICODE_STRING valName;
-    RtlInitUnicodeString(&valName, valNameStr);
-
-    unsigned char queryBuf[512] = {0};
-    unsigned long qLen = 0;
-    if (NT_SUCCESS(NtQueryValueKey(hKey, &valName, KeyValuePartialInformation, queryBuf, sizeof(queryBuf), &qLen))) {
-        PKEY_VALUE_PARTIAL_INFORMATION pValInfo = (PKEY_VALUE_PARTIAL_INFORMATION)queryBuf;
-        if (pValInfo->DataLength > 0) {
-            if (pValInfo->Type == REG_SZ) {
-                wchar_t* rawStr = (wchar_t*)pValInfo->Data;
-                unsigned long rawLenChars = pValInfo->DataLength / sizeof(wchar_t);
-                if (rawLenChars > 0 && rawStr[rawLenChars - 1] == L'\0') rawLenChars--;
-
-                unsigned long copyLen = rawLenChars < (maxChars - 1) ? rawLenChars : (maxChars - 1);
-                for (unsigned long k = 0; k < copyLen; k++) {
-                    outBuf[k] = rawStr[k];
-                }
-                outBuf[copyLen] = L'\0';
-                return true;
-            } else if (pValInfo->Type == REG_MULTI_SZ) {
-                const wchar_t* rawMulti = (const wchar_t*)pValInfo->Data;
-                unsigned long charLen = pValInfo->DataLength / sizeof(wchar_t);
-                unsigned long i = 0;
-                unsigned long outIdx = 0;
-                bool first = true;
-
-                while (i < charLen && rawMulti[i] != L'\0' && outIdx < (maxChars - 4)) {
-                    if (!first) {
-                        outBuf[outIdx++] = L',';
-                        outBuf[outIdx++] = L' ';
-                    }
-                    while (i < charLen && rawMulti[i] != L'\0' && outIdx < (maxChars - 2)) {
-                        outBuf[outIdx++] = rawMulti[i++];
-                    }
-                    first = false;
-                    if (i < charLen && rawMulti[i] == L'\0') i++;
-                }
-                outBuf[outIdx] = L'\0';
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-// Wrapper kompatibilitas membaca string
-bool ReadRegString(void* hKey, const wchar_t* valNameStr, wchar_t* outBuf, unsigned long maxChars) {
-    return ReadRegMultiSz(hKey, valNameStr, outBuf, maxChars);
-}
-
 // Format Clean Hostname sesuai konfigurasi asli DHCP / iBFT
 void FormatCleanHostname(const wchar_t* inHost, wchar_t* outHost, unsigned long maxChars) {
     if (!inHost || inHost[0] == L'\0') {
@@ -543,68 +478,6 @@ void LogWriteHex(unsigned long val) {
     hexBuf[10] = '\0';
     LogWriteA(hexBuf);
 }
-
-// Helper untuk menghapus value registry secara aman
-bool DeleteRegValue(void* hKey, const wchar_t* valNameStr) {
-    if (!hKey || !valNameStr) return false;
-    UNICODE_STRING valName;
-    RtlInitUnicodeString(&valName, valNameStr);
-    return NT_SUCCESS(NtDeleteValueKey(hKey, &valName));
-}
-
-// Helper untuk menulis DWORD value di registry & flush ke disk
-bool WriteRegDword(const wchar_t* keyPathStr, const wchar_t* valNameStr, unsigned long dwordVal) {
-    UNICODE_STRING keyPath;
-    RtlInitUnicodeString(&keyPath, keyPathStr);
-
-    OBJECT_ATTRIBUTES objAttr;
-    objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-    objAttr.RootDirectory = nullptr;
-    objAttr.ObjectName = &keyPath;
-    objAttr.Attributes = OBJ_CASE_INSENSITIVE;
-    objAttr.SecurityDescriptor = nullptr;
-    objAttr.SecurityQualityOfService = nullptr;
-
-    void* hKey = nullptr;
-    if (NT_SUCCESS(NtOpenKey(&hKey, KEY_SET_VALUE, &objAttr))) {
-        UNICODE_STRING valName;
-        RtlInitUnicodeString(&valName, valNameStr);
-        NtSetValueKey(hKey, &valName, 0, REG_DWORD, &dwordVal, sizeof(dwordVal));
-        NtFlushKey(hKey);
-        NtClose(hKey);
-        return true;
-    }
-    return false;
-}
-
-// Mencatat nama koneksi adapter (misalnya "Ethernet0") berdasarkan GUID
-void LogAdapterName(const wchar_t* guidStr) {
-    wchar_t netConnPath[256];
-    StrCopy(netConnPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Network\\{4D36E972-E325-11CE-BFC1-08002BE10318}\\", 256);
-    StrCat(netConnPath, guidStr, 256);
-    StrCat(netConnPath, L"\\Connection", 256);
-
-    UNICODE_STRING keyName;
-    RtlInitUnicodeString(&keyName, netConnPath);
-    OBJECT_ATTRIBUTES objAttr;
-    objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-    objAttr.RootDirectory = nullptr;
-    objAttr.ObjectName = &keyName;
-    objAttr.Attributes = OBJ_CASE_INSENSITIVE;
-    objAttr.SecurityDescriptor = nullptr;
-    objAttr.SecurityQualityOfService = nullptr;
-
-    void* hKey = nullptr;
-    if (NT_SUCCESS(NtOpenKey(&hKey, KEY_QUERY_VALUE, &objAttr))) {
-        wchar_t connName[64] = {0};
-        if (ReadRegMultiSz(hKey, L"Name", connName, 64)) {
-            LogWriteA("    [NIC] Connection Name: \""); LogWriteW(connName); LogWriteA("\" (GUID: "); LogWriteW(guidStr); LogWriteA(")\r\n");
-        }
-        NtClose(hKey);
-    }
-}
-
-
 
 // Menulis marker SimpleIscsiBoot untuk disinkronkan oleh helper-svc di user-mode
 void WriteSimpleIscsiMarker(const wchar_t* targetIp, const wchar_t* gwIp, const wchar_t* mask, const wchar_t* host) {
@@ -645,150 +518,13 @@ void WriteSimpleIscsiMarker(const wchar_t* targetIp, const wchar_t* gwIp, const 
         NtSetValueKey(hKey, &valHost, 0, REG_SZ, (void*)host, hostByteLen);
         NtSetValueKey(hKey, &valPurge, 0, REG_DWORD, &purgeVal, sizeof(purgeVal));
 
-        NtFlushKey(hKey);
         NtClose(hKey);
         LogWriteA("[+] SimpleIscsiBoot Marker Created Successfully in Registry.\r\n");
     }
 }
 
-// Menulis konfigurasi IP Statis dari iBFT ke Tcpip\Parameters\Interfaces secara aman & non-destruktif
-// PENTING: Fungsi ini HANYA menulis / meng-override IPAddress, SubnetMask, DefaultGateway, NameServer, dan EnableDHCP=0
-// TANPA menghapus key/value lain (DhcpInterfaceOptions, dll) agar binding TCP/IP tetap utuh.
-void ApplyStaticIpConfiguration(
-    const wchar_t* targetIp,
-    const wchar_t* mask,
-    const wchar_t* gwIp,
-    const wchar_t* dns1,
-    const wchar_t* dns2
-) {
-    if (!IsValidIp(targetIp)) return;
-
-    LogWriteA("[+] Applying Static IP Configuration to Interfaces (Non-Destructive Overwrite)...\r\n");
-
-    wchar_t multiSzIp[64];
-    unsigned long ipByteLen = BuildMultiSz(targetIp, multiSzIp, 64);
-
-    wchar_t multiSzMask[64];
-    unsigned long maskByteLen = BuildMultiSz(mask, multiSzMask, 64);
-
-    wchar_t multiSzGateway[64];
-    unsigned long gwByteLen = 0;
-    if (IsValidIp(gwIp)) {
-        gwByteLen = BuildMultiSz(gwIp, multiSzGateway, 64);
-    }
-
-    const wchar_t cleanMetric[] = L"0\0\0";
-    unsigned long metricByteLen = sizeof(cleanMetric);
-
-    wchar_t combinedDns[128] = {0};
-    if (IsValidIp(dns1)) {
-        StrCopy(combinedDns, dns1, 128);
-        if (IsValidIp(dns2)) {
-            StrCat(combinedDns, L",", 128);
-            StrCat(combinedDns, dns2, 128);
-        }
-    } else if (IsValidIp(dns2)) {
-        StrCopy(combinedDns, dns2, 128);
-    }
-    unsigned long dnsByteLen = (StrLen(combinedDns) + 1) * sizeof(wchar_t);
-
-    UNICODE_STRING interfacesPath;
-    RtlInitUnicodeString(&interfacesPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces");
-
-    OBJECT_ATTRIBUTES objAttr;
-    objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-    objAttr.RootDirectory = nullptr;
-    objAttr.ObjectName = &interfacesPath;
-    objAttr.Attributes = OBJ_CASE_INSENSITIVE;
-    objAttr.SecurityDescriptor = nullptr;
-    objAttr.SecurityQualityOfService = nullptr;
-
-    void* hInterfacesKey = nullptr;
-    if (NT_SUCCESS(NtOpenKey(&hInterfacesKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &objAttr))) {
-        unsigned char enumBuffer[512];
-        unsigned long resultLength = 0;
-
-        for (unsigned long index = 0; ; index++) {
-            NTSTATUS status = NtEnumerateKey(hInterfacesKey, index, KeyBasicInformation, enumBuffer, sizeof(enumBuffer), &resultLength);
-            if (!NT_SUCCESS(status)) break;
-
-            PKEY_BASIC_INFORMATION pKeyInfo = (PKEY_BASIC_INFORMATION)enumBuffer;
-            unsigned long nameLenChars = pKeyInfo->NameLength / sizeof(wchar_t);
-
-            wchar_t guidStr[128];
-            unsigned long cpyLen = nameLenChars < 127 ? nameLenChars : 127;
-            for (unsigned long i = 0; i < cpyLen; i++) guidStr[i] = pKeyInfo->Name[i];
-            guidStr[cpyLen] = L'\0';
-            LogAdapterName(guidStr);
-
-            // Buka subkey interface: CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}
-            wchar_t fullPath[256];
-            StrCopy(fullPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\", 256);
-            StrCat(fullPath, guidStr, 256);
-
-            UNICODE_STRING subKeyName;
-            RtlInitUnicodeString(&subKeyName, fullPath);
-            OBJECT_ATTRIBUTES subObjAttr;
-            subObjAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-            subObjAttr.RootDirectory = nullptr;
-            subObjAttr.ObjectName = &subKeyName;
-            subObjAttr.Attributes = OBJ_CASE_INSENSITIVE;
-            subObjAttr.SecurityDescriptor = nullptr;
-            subObjAttr.SecurityQualityOfService = nullptr;
-
-            void* hSubKey = nullptr;
-            NTSTATUS subStatus = NtOpenKey(&hSubKey, 0xF003F, &subObjAttr);
-            if (!NT_SUCCESS(subStatus)) {
-                subStatus = NtOpenKey(&hSubKey, KEY_SET_VALUE | KEY_QUERY_VALUE, &subObjAttr);
-            }
-
-            if (NT_SUCCESS(subStatus)) {
-                // 1. EnableDHCP = 0
-                UNICODE_STRING valEnableDhcp;
-                RtlInitUnicodeString(&valEnableDhcp, L"EnableDHCP");
-                unsigned long enableDhcpVal = 0;
-                NtSetValueKey(hSubKey, &valEnableDhcp, 0, REG_DWORD, &enableDhcpVal, sizeof(enableDhcpVal));
-
-                // 2. IPAddress (Single-Entry REG_MULTI_SZ)
-                UNICODE_STRING valIp;
-                RtlInitUnicodeString(&valIp, L"IPAddress");
-                NtSetValueKey(hSubKey, &valIp, 0, REG_MULTI_SZ, (void*)multiSzIp, ipByteLen);
-
-                // 3. SubnetMask (Single-Entry REG_MULTI_SZ)
-                UNICODE_STRING valMask;
-                RtlInitUnicodeString(&valMask, L"SubnetMask");
-                NtSetValueKey(hSubKey, &valMask, 0, REG_MULTI_SZ, (void*)multiSzMask, maskByteLen);
-
-                // 4. DefaultGateway & Metric
-                if (gwByteLen > 0) {
-                    UNICODE_STRING valGw;
-                    RtlInitUnicodeString(&valGw, L"DefaultGateway");
-                    NtSetValueKey(hSubKey, &valGw, 0, REG_MULTI_SZ, (void*)multiSzGateway, gwByteLen);
-
-                    UNICODE_STRING valMetric;
-                    RtlInitUnicodeString(&valMetric, L"DefaultGatewayMetric");
-                    NtSetValueKey(hSubKey, &valMetric, 0, REG_MULTI_SZ, (void*)cleanMetric, metricByteLen);
-                }
-
-                // 5. NameServer / DNS
-                if (dnsByteLen > sizeof(wchar_t)) {
-                    UNICODE_STRING valDns;
-                    RtlInitUnicodeString(&valDns, L"NameServer");
-                    NtSetValueKey(hSubKey, &valDns, 0, REG_SZ, (void*)combinedDns, dnsByteLen);
-                }
-
-                NtFlushKey(hSubKey);
-                NtClose(hSubKey);
-                LogWriteA("    [+] Static IP assigned to: "); LogWriteW(guidStr); LogWriteA("\r\n");
-            }
-        }
-        NtClose(hInterfacesKey);
-    }
-}
-
 // Menulis parameter optimasi booting cepat ke Services\iScsiPrt\Parameters
 void ConfigureIscsiPrtParameters() {
-
     UNICODE_STRING keyPath;
     RtlInitUnicodeString(&keyPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\iScsiPrt\\Parameters");
     OBJECT_ATTRIBUTES objAttr;
@@ -823,12 +559,10 @@ void ConfigureIscsiPrtParameters() {
         NtSetValueKey(hKey, &valLink, 0, REG_DWORD, &linkVal, sizeof(linkVal));
         NtSetValueKey(hKey, &valHold, 0, REG_DWORD, &holdVal, sizeof(holdVal));
 
-        NtFlushKey(hKey);
         NtClose(hKey);
         LogWriteA("[+] Configured iScsiPrt Fast-Boot Parameters (WaitForNetworkAtBoot=1, DelayForNetworkAtBoot=5).\r\n");
     }
 }
-
 
 // -------------------------------------------------------------
 // iBFT Parser Structure (RFC 4173 Standard)
@@ -896,12 +630,13 @@ typedef struct _IBFT_TARGET {
     (((unsigned long)(unsigned char)(c)) << 16) | \
     (((unsigned long)(unsigned char)(d)) << 24))
 
-// Membaca dan mem-parse tabel iBFT dari ACPI Firmware
+// Membaca dan mem-parse tabel iBFT dari ACPI Firmware secara aman dengan bound-checking ketat
 bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, wchar_t* outGw, wchar_t* outDns1, wchar_t* outDns2) {
     LogWriteA("[+] Querying ACPI iBFT Firmware Table via NtQuerySystemInformation...\r\n");
 
     static unsigned char queryBuffer[4096];
     PSYSTEM_FIRMWARE_TABLE_INFORMATION pFirmware = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)queryBuffer;
+    const unsigned long maxPayload = sizeof(queryBuffer) - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
 
     unsigned long providers[] = {
         MAKE_FOURCC('A', 'C', 'P', 'I'),
@@ -925,7 +660,7 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                 pFirmware->ProviderSignature = providers[pr];
                 pFirmware->Action = act;
                 pFirmware->TableID = tableIds[tb];
-                pFirmware->TableBufferLength = sizeof(queryBuffer) - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+                pFirmware->TableBufferLength = maxPayload;
 
                 unsigned long returnLength = 0;
                 NTSTATUS status = NtQuerySystemInformation(SystemFirmwareTableInformation, pFirmware, sizeof(queryBuffer), &returnLength);
@@ -936,8 +671,6 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                     LogWriteHex(providers[pr]);
                     LogWriteA(" TableID=");
                     LogWriteHex(tableIds[tb]);
-                    LogWriteA(" Action=");
-                    LogWriteHex(act);
                     LogWriteA(" Len=");
                     LogWriteHex(pFirmware->TableBufferLength);
                     LogWriteA("\r\n");
@@ -976,21 +709,25 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                     if (!NT_SUCCESS(enumStatus)) break;
 
                     PKEY_BASIC_INFORMATION pSubInfo = (PKEY_BASIC_INFORMATION)subKeyBuf;
+                    unsigned long nLenChars = pSubInfo->NameLength / sizeof(wchar_t);
+
+                    // Buat null-terminated string dari pSubInfo->Name secara aman
+                    wchar_t safeSubName[64] = {0};
+                    unsigned long cpyCount = nLenChars < 63 ? nLenChars : 63;
+                    for (unsigned long k = 0; k < cpyCount; k++) safeSubName[k] = pSubInfo->Name[k];
+                    safeSubName[cpyCount] = L'\0';
+
                     wchar_t fullSubPath[256];
                     StrCopy(fullSubPath, acpiRoots[r], 256);
                     StrCat(fullSubPath, L"\\", 256);
-                    unsigned long bLen = StrLen(fullSubPath);
-                    unsigned long nLen = pSubInfo->NameLength / sizeof(wchar_t);
-                    for (unsigned long i = 0; i < nLen && (bLen + i + 1) < 256; i++) fullSubPath[bLen + i] = pSubInfo->Name[i];
-                    fullSubPath[bLen + nLen] = L'\0';
+                    StrCat(fullSubPath, safeSubName, 256);
 
                     LogWriteA("    - Checking ACPI Subkey: "); LogWriteW(fullSubPath); LogWriteA("\r\n");
 
-                    // Periksa apakah nama subkey adalah iBFT / IBFT
-                    if (StrEqual(pSubInfo->Name, L"iBFT") || StrEqual(pSubInfo->Name, L"IBFT") ||
-                        StrStartsWith(fullSubPath + bLen, L"iBFT") || StrStartsWith(fullSubPath + bLen, L"IBFT")) {
+                    // Periksa apakah nama subkey adalah iBFT / IBFT dengan string aman
+                    if (StrEqual(safeSubName, L"iBFT") || StrEqual(safeSubName, L"IBFT") ||
+                        StrStartsWith(safeSubName, L"iBFT") || StrStartsWith(safeSubName, L"IBFT")) {
                         
-                        // Buka subkey ini
                         UNICODE_STRING subKeyName;
                         RtlInitUnicodeString(&subKeyName, fullSubPath);
                         OBJECT_ATTRIBUTES subAttr;
@@ -1003,19 +740,21 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
 
                         void* hTableKey = nullptr;
                         if (NT_SUCCESS(NtOpenKey(&hTableKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &subAttr))) {
-                            // Cek subkey anak (OEM ID)
                             unsigned char childBuf[512];
                             unsigned long childResLen = 0;
                             for (unsigned long cIdx = 0; cIdx < 8 && !foundInReg; cIdx++) {
                                 if (NT_SUCCESS(NtEnumerateKey(hTableKey, cIdx, KeyBasicInformation, childBuf, sizeof(childBuf), &childResLen))) {
                                     PKEY_BASIC_INFORMATION pChildInfo = (PKEY_BASIC_INFORMATION)childBuf;
+                                    unsigned long cnLenChars = pChildInfo->NameLength / sizeof(wchar_t);
+                                    wchar_t safeChildName[64] = {0};
+                                    unsigned long cChildCount = cnLenChars < 63 ? cnLenChars : 63;
+                                    for (unsigned long ck = 0; ck < cChildCount; ck++) safeChildName[ck] = pChildInfo->Name[ck];
+                                    safeChildName[cChildCount] = L'\0';
+
                                     wchar_t childPath[256];
                                     StrCopy(childPath, fullSubPath, 256);
                                     StrCat(childPath, L"\\", 256);
-                                    unsigned long cbLen = StrLen(childPath);
-                                    unsigned long cnLen = pChildInfo->NameLength / sizeof(wchar_t);
-                                    for (unsigned long i = 0; i < cnLen && (cbLen + i + 1) < 256; i++) childPath[cbLen + i] = pChildInfo->Name[i];
-                                    childPath[cbLen + cnLen] = L'\0';
+                                    StrCat(childPath, safeChildName, 256);
 
                                     UNICODE_STRING childKeyName;
                                     RtlInitUnicodeString(&childKeyName, childPath);
@@ -1036,8 +775,9 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                                         if (NT_SUCCESS(NtQueryValueKey(hChild, &valName, KeyValuePartialInformation, tableValBuf, sizeof(tableValBuf), &qLen))) {
                                             PKEY_VALUE_PARTIAL_INFORMATION pPart = (PKEY_VALUE_PARTIAL_INFORMATION)tableValBuf;
                                             if (pPart->Type == REG_BINARY && pPart->DataLength >= 48) {
-                                                memcpy(pFirmware->TableBuffer, pPart->Data, pPart->DataLength);
-                                                pFirmware->TableBufferLength = pPart->DataLength;
+                                                unsigned long copyBytes = pPart->DataLength < maxPayload ? pPart->DataLength : maxPayload;
+                                                memcpy(pFirmware->TableBuffer, pPart->Data, copyBytes);
+                                                pFirmware->TableBufferLength = copyBytes;
                                                 foundInReg = true;
                                                 LogWriteA("[+] Found iBFT binary in Registry ACPI dump at: ");
                                                 LogWriteW(childPath);
@@ -1065,9 +805,13 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
     }
 
     const unsigned char* table = pFirmware->TableBuffer;
+    // Bound check ketat: pastikan tableLen tidak melebihi buffer memori lokal yang dialokasikan
     unsigned long tableLen = pFirmware->TableBufferLength;
+    if (tableLen > maxPayload) {
+        tableLen = maxPayload;
+    }
 
-    LogWriteA("[+] Scanning iBFT structures (Table Length: "); LogWriteHex(tableLen); LogWriteA(")...\r\n");
+    LogWriteA("[+] Scanning iBFT structures (Bounded Table Length: "); LogWriteHex(tableLen); LogWriteA(")...\r\n");
 
     // 1. Scan untuk NIC Block (StructureId = 3)
     bool nicFound = false;
@@ -1152,7 +896,6 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
                 LogWriteA("    -> Target IQN: "); LogWriteW(tgtIqnW); LogWriteA("\r\n");
 
                 if (outHost[0] == L'\0') {
-                    // Coba cari setelah "vhd-"
                     int vhdIdx = -1;
                     for (unsigned long k = 0; k + 4 <= tgtLen; k++) {
                         if (rawTgt[k] == 'v' && rawTgt[k+1] == 'h' && rawTgt[k+2] == 'd' && rawTgt[k+3] == '-') {
@@ -1182,6 +925,7 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
 // -------------------------------------------------------------
 
 extern "C" void NtProcessStartup(void* Peb) {
+    (void)Peb;
     LogOpen();
     LogWriteA("================================================================\r\n");
     LogWriteA(" [Simple-Iscsi BootHelper] Started in BootExecute (Safe Mode)\r\n");
@@ -1194,7 +938,7 @@ extern "C" void NtProcessStartup(void* Peb) {
     wchar_t dns1[64] = {0};
     wchar_t dns2[64] = {0};
 
-    // 1. PRIORITAS 1: Baca langsung dari iBFT (ACPI Firmware / Driverless)
+    // 1. Baca langsung dari iBFT (ACPI Firmware / Driverless) secara aman
     bool gotIbft = ReadParametersFromIBFT(rawHostName, targetIp, subnetMask, gatewayIp, dns1, dns2);
 
     if (gotIbft) {
@@ -1223,15 +967,11 @@ extern "C" void NtProcessStartup(void* Peb) {
     }
 
     // 2. Tulis penanda SimpleIscsiBoot untuk pembersihan IP aman oleh helper-svc di user-mode
-    // serta terapkan konfigurasi IP Statis (EnableDHCP=0) secara non-destruktif
+    // Master image tetap memelihara DHCP default (TIDAK memaksa EnableDHCP=0)
     if (IsValidIp(targetIp)) {
         LogWriteA("[+] Writing SimpleIscsiBoot Marker for user-mode service...\r\n");
         WriteSimpleIscsiMarker(targetIp, gatewayIp, subnetMask, rawHostName);
-
-        // Override ke IP Statis murni tanpa menghapus kunci DHCP/binding TCP/IP
-        ApplyStaticIpConfiguration(targetIp, subnetMask, gatewayIp, dns1, dns2);
     }
-
 
     // 3. Sinkronkan Hostname (Nama PC) Murni dari DHCP Option 12 / iBFT
     if (rawHostName[0] != L'\0') {
@@ -1257,7 +997,6 @@ extern "C" void NtProcessStartup(void* Peb) {
             UNICODE_STRING valName;
             RtlInitUnicodeString(&valName, L"ComputerName");
             NtSetValueKey(hKey, &valName, 0, REG_SZ, formattedHost, hostByteLen);
-            NtFlushKey(hKey);
             NtClose(hKey);
         }
 
@@ -1269,7 +1008,6 @@ extern "C" void NtProcessStartup(void* Peb) {
             UNICODE_STRING valName;
             RtlInitUnicodeString(&valName, L"ComputerName");
             NtSetValueKey(hKey, &valName, 0, REG_SZ, formattedHost, hostByteLen);
-            NtFlushKey(hKey);
             NtClose(hKey);
         }
 
@@ -1286,7 +1024,6 @@ extern "C" void NtProcessStartup(void* Peb) {
             RtlInitUnicodeString(&valNvHost, L"NV Hostname");
             NtSetValueKey(hKey, &valNvHost, 0, REG_SZ, formattedHost, hostByteLen);
 
-            NtFlushKey(hKey);
             NtClose(hKey);
         }
     }
@@ -1299,6 +1036,6 @@ extern "C" void NtProcessStartup(void* Peb) {
     LogWriteA("================================================================\r\n");
     LogClose();
 
-    // Keluar proses secara bersih
+    // Keluar proses secara bersih ke Session Manager
     NtTerminateProcess((void*)-1, 0);
 }

@@ -56,13 +56,14 @@ if exist "helper-svc.exe" (
     exit /b 1
 )
 
-:: 3. Daftarkan helper.exe ke BootExecute (Stage 1)
+:: 3. Daftarkan helper.exe ke BootExecute (Stage 1) secara aman via PowerShell
 echo [3/5] Mendaftarkan helper.exe ke BootExecute...
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v BootExecute /t REG_MULTI_SZ /d "autocheck autochk *\0helper.exe" /f >nul
+powershell -NoProfile -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'BootExecute' -Value @('autocheck autochk *', 'helper.exe')" >nul 2>&1
 if %ERRORLEVEL% equ 0 (
     echo       [+] helper.exe berhasil didaftarkan di BootExecute.
 ) else (
-    echo       [!] Gagal memperbarui kunci registri BootExecute!
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v BootExecute /t REG_MULTI_SZ /s "," /d "autocheck autochk *,helper.exe" /f >nul
+    echo       [+] helper.exe didaftarkan di BootExecute (via reg fallback).
 )
 
 :: 4. Daftarkan helper-svc.exe sebagai Windows Service dan Startup Run Key (Stage 2)
@@ -103,12 +104,10 @@ echo     1. Stage 1: BootExecute Native Helper
 echo     2. Stage 2: User-Mode IP Purge Companion
 echo     3. Fast-Boot: iScsiPrt WaitForNetworkAtBoot Tuning
 echo.
-echo   Saat client boot, hostname dan IP akan murni
-echo   mengikuti DHCP tanpa sisa static IP super client,
-echo   serta booting berlangsung cepat dan stabil!
+echo   Saat client boot, hostname dan IP akan disinkronkan
+echo   mengikuti DHCP/iBFT secara mulus dan aman!
 echo ===================================================
 
 if "%1" neq "nopause" (
     pause
 )
-
