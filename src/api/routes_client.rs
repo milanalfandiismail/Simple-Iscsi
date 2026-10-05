@@ -269,13 +269,20 @@ pub fn post_superclient_commit(
             let super_path = crate::writeback_super::get_super_path(&config_ref, &image_key);
 
             if crate::writeback_super::super_exists(&super_path) {
-                let _ = crate::vhd_merge::backup_before_merge(&base_path, &super_path);
                 let config_path = "config.toml".to_string();
                 let cfg_clone = config.clone();
                 let img_key_clone = image_key.clone();
                 crate::vhd_merge::set_merge_image(&img_key_clone);
 
                 tokio::spawn(async move {
+                    // 1. Buat snapshot metadata di background sebelum merge
+                    let _ = tokio::task::spawn_blocking({
+                        let b = base_path.clone();
+                        let s = super_path.clone();
+                        move || crate::vhd_merge::backup_before_merge(&b, &s)
+                    }).await;
+
+                    // 2. Jalankan merge differencing VHD ke Base VHD
                     match crate::vhd_merge::merge_vhd(super_path.clone(), base_path).await {
                         Ok(_) => {
                             let _ = crate::writeback_super::delete_super(&super_path);

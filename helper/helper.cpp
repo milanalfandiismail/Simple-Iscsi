@@ -651,135 +651,184 @@ void WriteSimpleIscsiMarker(const wchar_t* targetIp, const wchar_t* gwIp, const 
     }
 }
 
-// Menulis konfigurasi static IP tunggal (Single REG_MULTI_SZ), verifikasi read-back, & flush hive
-bool OverwriteTcpipRegistryBlock(
-    const wchar_t* fullKeyPath,
-    const wchar_t* multiSzIp, unsigned long ipByteLen,
-    const wchar_t* multiSzMask, unsigned long maskByteLen,
-    const wchar_t* multiSzGw, unsigned long gwByteLen,
-    const wchar_t* cleanMetric, unsigned long metricByteLen,
-    const wchar_t* combinedDns, unsigned long dnsByteLen,
-    bool isInterfaceKey
+// Menulis konfigurasi IP Statis dari iBFT ke Tcpip\Parameters\Interfaces secara aman & non-destruktif
+// PENTING: Fungsi ini HANYA menulis / meng-override IPAddress, SubnetMask, DefaultGateway, NameServer, dan EnableDHCP=0
+// TANPA menghapus key/value lain (DhcpInterfaceOptions, dll) agar binding TCP/IP tetap utuh.
+void ApplyStaticIpConfiguration(
+    const wchar_t* targetIp,
+    const wchar_t* mask,
+    const wchar_t* gwIp,
+    const wchar_t* dns1,
+    const wchar_t* dns2
 ) {
-    UNICODE_STRING keyName;
-    RtlInitUnicodeString(&keyName, fullKeyPath);
+    if (!IsValidIp(targetIp)) return;
+
+    LogWriteA("[+] Applying Static IP Configuration to Interfaces (Non-Destructive Overwrite)...\r\n");
+
+    wchar_t multiSzIp[64];
+    unsigned long ipByteLen = BuildMultiSz(targetIp, multiSzIp, 64);
+
+    wchar_t multiSzMask[64];
+    unsigned long maskByteLen = BuildMultiSz(mask, multiSzMask, 64);
+
+    wchar_t multiSzGateway[64];
+    unsigned long gwByteLen = 0;
+    if (IsValidIp(gwIp)) {
+        gwByteLen = BuildMultiSz(gwIp, multiSzGateway, 64);
+    }
+
+    const wchar_t cleanMetric[] = L"0\0\0";
+    unsigned long metricByteLen = sizeof(cleanMetric);
+
+    wchar_t combinedDns[128] = {0};
+    if (IsValidIp(dns1)) {
+        StrCopy(combinedDns, dns1, 128);
+        if (IsValidIp(dns2)) {
+            StrCat(combinedDns, L",", 128);
+            StrCat(combinedDns, dns2, 128);
+        }
+    } else if (IsValidIp(dns2)) {
+        StrCopy(combinedDns, dns2, 128);
+    }
+    unsigned long dnsByteLen = (StrLen(combinedDns) + 1) * sizeof(wchar_t);
+
+    UNICODE_STRING interfacesPath;
+    RtlInitUnicodeString(&interfacesPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces");
 
     OBJECT_ATTRIBUTES objAttr;
     objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
     objAttr.RootDirectory = nullptr;
-    objAttr.ObjectName = &keyName;
+    objAttr.ObjectName = &interfacesPath;
+    objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+    objAttr.SecurityDescriptor = nullptr;
+    objAttr.SecurityQualityOfService = nullptr;
+
+    void* hInterfacesKey = nullptr;
+    if (NT_SUCCESS(NtOpenKey(&hInterfacesKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &objAttr))) {
+        unsigned char enumBuffer[512];
+        unsigned long resultLength = 0;
+
+        for (unsigned long index = 0; ; index++) {
+            NTSTATUS status = NtEnumerateKey(hInterfacesKey, index, KeyBasicInformation, enumBuffer, sizeof(enumBuffer), &resultLength);
+            if (!NT_SUCCESS(status)) break;
+
+            PKEY_BASIC_INFORMATION pKeyInfo = (PKEY_BASIC_INFORMATION)enumBuffer;
+            unsigned long nameLenChars = pKeyInfo->NameLength / sizeof(wchar_t);
+
+            wchar_t guidStr[128];
+            unsigned long cpyLen = nameLenChars < 127 ? nameLenChars : 127;
+            for (unsigned long i = 0; i < cpyLen; i++) guidStr[i] = pKeyInfo->Name[i];
+            guidStr[cpyLen] = L'\0';
+            LogAdapterName(guidStr);
+
+            // Buka subkey interface: CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}
+            wchar_t fullPath[256];
+            StrCopy(fullPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\", 256);
+            StrCat(fullPath, guidStr, 256);
+
+            UNICODE_STRING subKeyName;
+            RtlInitUnicodeString(&subKeyName, fullPath);
+            OBJECT_ATTRIBUTES subObjAttr;
+            subObjAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+            subObjAttr.RootDirectory = nullptr;
+            subObjAttr.ObjectName = &subKeyName;
+            subObjAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            subObjAttr.SecurityDescriptor = nullptr;
+            subObjAttr.SecurityQualityOfService = nullptr;
+
+            void* hSubKey = nullptr;
+            NTSTATUS subStatus = NtOpenKey(&hSubKey, 0xF003F, &subObjAttr);
+            if (!NT_SUCCESS(subStatus)) {
+                subStatus = NtOpenKey(&hSubKey, KEY_SET_VALUE | KEY_QUERY_VALUE, &subObjAttr);
+            }
+
+            if (NT_SUCCESS(subStatus)) {
+                // 1. EnableDHCP = 0
+                UNICODE_STRING valEnableDhcp;
+                RtlInitUnicodeString(&valEnableDhcp, L"EnableDHCP");
+                unsigned long enableDhcpVal = 0;
+                NtSetValueKey(hSubKey, &valEnableDhcp, 0, REG_DWORD, &enableDhcpVal, sizeof(enableDhcpVal));
+
+                // 2. IPAddress (Single-Entry REG_MULTI_SZ)
+                UNICODE_STRING valIp;
+                RtlInitUnicodeString(&valIp, L"IPAddress");
+                NtSetValueKey(hSubKey, &valIp, 0, REG_MULTI_SZ, (void*)multiSzIp, ipByteLen);
+
+                // 3. SubnetMask (Single-Entry REG_MULTI_SZ)
+                UNICODE_STRING valMask;
+                RtlInitUnicodeString(&valMask, L"SubnetMask");
+                NtSetValueKey(hSubKey, &valMask, 0, REG_MULTI_SZ, (void*)multiSzMask, maskByteLen);
+
+                // 4. DefaultGateway & Metric
+                if (gwByteLen > 0) {
+                    UNICODE_STRING valGw;
+                    RtlInitUnicodeString(&valGw, L"DefaultGateway");
+                    NtSetValueKey(hSubKey, &valGw, 0, REG_MULTI_SZ, (void*)multiSzGateway, gwByteLen);
+
+                    UNICODE_STRING valMetric;
+                    RtlInitUnicodeString(&valMetric, L"DefaultGatewayMetric");
+                    NtSetValueKey(hSubKey, &valMetric, 0, REG_MULTI_SZ, (void*)cleanMetric, metricByteLen);
+                }
+
+                // 5. NameServer / DNS
+                if (dnsByteLen > sizeof(wchar_t)) {
+                    UNICODE_STRING valDns;
+                    RtlInitUnicodeString(&valDns, L"NameServer");
+                    NtSetValueKey(hSubKey, &valDns, 0, REG_SZ, (void*)combinedDns, dnsByteLen);
+                }
+
+                NtFlushKey(hSubKey);
+                NtClose(hSubKey);
+                LogWriteA("    [+] Static IP assigned to: "); LogWriteW(guidStr); LogWriteA("\r\n");
+            }
+        }
+        NtClose(hInterfacesKey);
+    }
+}
+
+// Menulis parameter optimasi booting cepat ke Services\iScsiPrt\Parameters
+void ConfigureIscsiPrtParameters() {
+
+    UNICODE_STRING keyPath;
+    RtlInitUnicodeString(&keyPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\iScsiPrt\\Parameters");
+    OBJECT_ATTRIBUTES objAttr;
+    objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
+    objAttr.RootDirectory = nullptr;
+    objAttr.ObjectName = &keyPath;
     objAttr.Attributes = OBJ_CASE_INSENSITIVE;
     objAttr.SecurityDescriptor = nullptr;
     objAttr.SecurityQualityOfService = nullptr;
 
     void* hKey = nullptr;
-    NTSTATUS openStatus = NtOpenKey(&hKey, 0xF003F, &objAttr); // KEY_ALL_ACCESS
-    if (!NT_SUCCESS(openStatus)) {
-        openStatus = NtOpenKey(&hKey, KEY_SET_VALUE | KEY_QUERY_VALUE | 0x00010000L, &objAttr);
-    }
-    if (!NT_SUCCESS(openStatus)) {
-        openStatus = NtOpenKey(&hKey, KEY_SET_VALUE | KEY_QUERY_VALUE, &objAttr);
+    unsigned long disposition = 0;
+    NTSTATUS status = NtCreateKey(&hKey, KEY_SET_VALUE, &objAttr, 0, nullptr, 0, &disposition);
+    if (!NT_SUCCESS(status)) {
+        status = NtOpenKey(&hKey, KEY_SET_VALUE, &objAttr);
     }
 
-    if (!NT_SUCCESS(openStatus)) {
-        LogWriteA("    [-] Skipped/Not found: "); LogWriteW(fullKeyPath); 
-        LogWriteA(" (Status: "); LogWriteHex(openStatus); LogWriteA(")\r\n");
-        return false;
+    if (NT_SUCCESS(status)) {
+        UNICODE_STRING valWait, valDelay, valLink, valHold;
+        RtlInitUnicodeString(&valWait, L"WaitForNetworkAtBoot");
+        RtlInitUnicodeString(&valDelay, L"DelayForNetworkAtBoot");
+        RtlInitUnicodeString(&valLink, L"LinkDownTime");
+        RtlInitUnicodeString(&valHold, L"MaxRequestHoldTime");
+
+        unsigned long waitVal = 1;
+        unsigned long delayVal = 5; // 5 detik max delay tunggu link PHY tanpa stall lama
+        unsigned long linkVal = 60;
+        unsigned long holdVal = 60;
+
+        NtSetValueKey(hKey, &valWait, 0, REG_DWORD, &waitVal, sizeof(waitVal));
+        NtSetValueKey(hKey, &valDelay, 0, REG_DWORD, &delayVal, sizeof(delayVal));
+        NtSetValueKey(hKey, &valLink, 0, REG_DWORD, &linkVal, sizeof(linkVal));
+        NtSetValueKey(hKey, &valHold, 0, REG_DWORD, &holdVal, sizeof(holdVal));
+
+        NtFlushKey(hKey);
+        NtClose(hKey);
+        LogWriteA("[+] Configured iScsiPrt Fast-Boot Parameters (WaitForNetworkAtBoot=1, DelayForNetworkAtBoot=5).\r\n");
     }
-
-    LogWriteA("    -> [OVERWRITE] Target: "); LogWriteW(fullKeyPath); LogWriteA("\r\n");
-
-    // 1. Log existing IPAddress sebelum overwrite
-    wchar_t oldIp[128] = {0};
-    if (ReadRegMultiSz(hKey, L"IPAddress", oldIp, 128)) {
-        LogWriteA("       - Existing IPAddress before edit: ["); LogWriteW(oldIp); LogWriteA("]\r\n");
-    } else {
-        LogWriteA("       - Existing IPAddress: [Not Present / Empty]\r\n");
-    }
-
-    // 2. EnableDHCP = 0
-    UNICODE_STRING valEnableDhcp;
-    RtlInitUnicodeString(&valEnableDhcp, L"EnableDHCP");
-    unsigned long enableDhcpVal = 0;
-    NtSetValueKey(hKey, &valEnableDhcp, 0, REG_DWORD, &enableDhcpVal, sizeof(enableDhcpVal));
-
-    // 3. Hapus & Timpa IPAddress (Single-Entry REG_MULTI_SZ)
-    DeleteRegValue(hKey, L"IPAddress");
-    UNICODE_STRING valIp;
-    RtlInitUnicodeString(&valIp, L"IPAddress");
-    NTSTATUS ipStatus = NtSetValueKey(hKey, &valIp, 0, REG_MULTI_SZ, multiSzIp, ipByteLen);
-    LogWriteA("       - Set IPAddress Status: "); LogWriteHex(ipStatus); LogWriteA("\r\n");
-
-    // 4. Hapus & Timpa SubnetMask (Single-Entry REG_MULTI_SZ)
-    DeleteRegValue(hKey, L"SubnetMask");
-    UNICODE_STRING valMask;
-    RtlInitUnicodeString(&valMask, L"SubnetMask");
-    NtSetValueKey(hKey, &valMask, 0, REG_MULTI_SZ, multiSzMask, maskByteLen);
-
-    // 5. DefaultGateway & Metric
-    if (gwByteLen > 0) {
-        DeleteRegValue(hKey, L"DefaultGateway");
-        UNICODE_STRING valGw;
-        RtlInitUnicodeString(&valGw, L"DefaultGateway");
-        NtSetValueKey(hKey, &valGw, 0, REG_MULTI_SZ, multiSzGw, gwByteLen);
-
-        UNICODE_STRING valMetric;
-        RtlInitUnicodeString(&valMetric, L"DefaultGatewayMetric");
-        NtSetValueKey(hKey, &valMetric, 0, REG_MULTI_SZ, cleanMetric, metricByteLen);
-    }
-
-    // 6. DNS / NameServer
-    if (dnsByteLen > sizeof(wchar_t)) {
-        UNICODE_STRING valDns;
-        RtlInitUnicodeString(&valDns, L"NameServer");
-        NtSetValueKey(hKey, &valDns, 0, REG_SZ, combinedDns, dnsByteLen);
-    }
-
-    // 7. Jika ini subkey Interfaces, bersihkan residual DHCP cache
-    if (isInterfaceKey) {
-        DeleteRegValue(hKey, L"DhcpInterfaceOptions");
-        DeleteRegValue(hKey, L"DhcpIPAddress");
-        DeleteRegValue(hKey, L"DhcpSubnetMask");
-        DeleteRegValue(hKey, L"DhcpServer");
-        DeleteRegValue(hKey, L"DhcpDefaultGateway");
-        DeleteRegValue(hKey, L"DhcpNameServer");
-        DeleteRegValue(hKey, L"DhcpSubnetMaskOpt");
-
-        const wchar_t zeroIp[] = L"0.0.0.0\0";
-        const wchar_t emptyMultiSz[] = L"\0\0";
-
-        UNICODE_STRING valDhcpIp;
-        RtlInitUnicodeString(&valDhcpIp, L"DhcpIPAddress");
-        NtSetValueKey(hKey, &valDhcpIp, 0, REG_SZ, zeroIp, sizeof(zeroIp));
-
-        UNICODE_STRING valDhcpMask;
-        RtlInitUnicodeString(&valDhcpMask, L"DhcpSubnetMask");
-        NtSetValueKey(hKey, &valDhcpMask, 0, REG_SZ, zeroIp, sizeof(zeroIp));
-
-        UNICODE_STRING valDhcpGw;
-        RtlInitUnicodeString(&valDhcpGw, L"DhcpDefaultGateway");
-        NtSetValueKey(hKey, &valDhcpGw, 0, REG_MULTI_SZ, emptyMultiSz, sizeof(emptyMultiSz));
-
-        UNICODE_STRING valDhcpSrv;
-        RtlInitUnicodeString(&valDhcpSrv, L"DhcpServer");
-        NtSetValueKey(hKey, &valDhcpSrv, 0, REG_SZ, zeroIp, sizeof(zeroIp));
-    }
-
-    // 8. Verifikasi Read-Back
-    wchar_t readBackIp[128] = {0};
-    if (ReadRegMultiSz(hKey, L"IPAddress", readBackIp, 128)) {
-        LogWriteA("       - [VERIFY] Read-Back IPAddress: ["); LogWriteW(readBackIp); LogWriteA("]\r\n");
-    } else {
-        LogWriteA("       - [VERIFY] Read-Back IPAddress: [FAILED TO READ]\r\n");
-    }
-
-    // 9. Flush Hive ke disk
-    NTSTATUS flushStatus = NtFlushKey(hKey);
-    LogWriteA("       - NtFlushKey Status: "); LogWriteHex(flushStatus); LogWriteA("\r\n");
-
-    NtClose(hKey);
-    return true;
 }
+
 
 // -------------------------------------------------------------
 // iBFT Parser Structure (RFC 4173 Standard)
@@ -1135,7 +1184,7 @@ bool ReadParametersFromIBFT(wchar_t* outHost, wchar_t* outIp, wchar_t* outMask, 
 extern "C" void NtProcessStartup(void* Peb) {
     LogOpen();
     LogWriteA("================================================================\r\n");
-    LogWriteA(" [Simple-Iscsi BootHelper] Started in BootExecute\r\n");
+    LogWriteA(" [Simple-Iscsi BootHelper] Started in BootExecute (Safe Mode)\r\n");
     LogWriteA("================================================================\r\n");
 
     wchar_t rawHostName[64] = {0};
@@ -1156,7 +1205,7 @@ extern "C" void NtProcessStartup(void* Peb) {
         LogWriteA("    - GatewayIP  : "); LogWriteW(gatewayIp); LogWriteA("\r\n");
         LogWriteA("    - DNS1       : "); LogWriteW(dns1); LogWriteA("\r\n");
     } else {
-        LogWriteA("[-] iBFT not detected. Skipping static IP alignment in BootExecute.\r\n");
+        LogWriteA("[-] iBFT not detected in ACPI Firmware.\r\n");
     }
 
     // Auto-fallback Gateway jika GatewayIP kosong/tidak valid
@@ -1173,98 +1222,16 @@ extern "C" void NtProcessStartup(void* Peb) {
         LogWriteA("    - Auto Gateway Generated: "); LogWriteW(gatewayIp); LogWriteA("\r\n");
     }
 
-    // 2. Jika IP Target valid, pasang konfigurasi IP Statis ke Network Interfaces aktif (Linkage & Driver intact)
+    // 2. Tulis penanda SimpleIscsiBoot untuk pembersihan IP aman oleh helper-svc di user-mode
+    // serta terapkan konfigurasi IP Statis (EnableDHCP=0) secara non-destruktif
     if (IsValidIp(targetIp)) {
-        LogWriteA("[+] Configuring Network Interfaces (Dual-Path Overwrite & NtFlushKey)...\r\n");
-
-        wchar_t multiSzIp[64];
-        unsigned long ipByteLen = BuildMultiSz(targetIp, multiSzIp, 64);
-
-        wchar_t multiSzMask[64];
-        unsigned long maskByteLen = BuildMultiSz(subnetMask, multiSzMask, 64);
-
-        wchar_t multiSzGateway[64];
-        unsigned long gwByteLen = 0;
-        if (IsValidIp(gatewayIp)) {
-            gwByteLen = BuildMultiSz(gatewayIp, multiSzGateway, 64);
-        }
-
-        const wchar_t cleanMetric[] = L"0\0\0";
-        unsigned long metricByteLen = sizeof(cleanMetric);
-
-        wchar_t combinedDns[128] = {0};
-        if (IsValidIp(dns1)) {
-            StrCopy(combinedDns, dns1, 128);
-            if (IsValidIp(dns2)) {
-                StrCat(combinedDns, L",", 128);
-                StrCat(combinedDns, dns2, 128);
-            }
-        } else if (IsValidIp(dns2)) {
-            StrCopy(combinedDns, dns2, 128);
-        }
-        unsigned long dnsByteLen = (StrLen(combinedDns) + 1) * sizeof(wchar_t);
-
-        UNICODE_STRING interfacesPath;
-        RtlInitUnicodeString(&interfacesPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces");
-
-        OBJECT_ATTRIBUTES objAttr;
-        objAttr.Length = sizeof(OBJECT_ATTRIBUTES);
-        objAttr.RootDirectory = nullptr;
-        objAttr.ObjectName = &interfacesPath;
-        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
-        objAttr.SecurityDescriptor = nullptr;
-        objAttr.SecurityQualityOfService = nullptr;
-
-        void* hInterfacesKey = nullptr;
-        if (NT_SUCCESS(NtOpenKey(&hInterfacesKey, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &objAttr))) {
-            unsigned char enumBuffer[512];
-            unsigned long resultLength = 0;
-
-            for (unsigned long index = 0; ; index++) {
-                NTSTATUS status = NtEnumerateKey(hInterfacesKey, index, KeyBasicInformation, enumBuffer, sizeof(enumBuffer), &resultLength);
-                if (!NT_SUCCESS(status)) break;
-
-                PKEY_BASIC_INFORMATION pKeyInfo = (PKEY_BASIC_INFORMATION)enumBuffer;
-                unsigned long nameLenChars = pKeyInfo->NameLength / sizeof(wchar_t);
-
-                wchar_t guidStr[128];
-                unsigned long cpyLen = nameLenChars < 127 ? nameLenChars : 127;
-                for (unsigned long i = 0; i < cpyLen; i++) guidStr[i] = pKeyInfo->Name[i];
-                guidStr[cpyLen] = L'\0';
-                LogAdapterName(guidStr);
-
-                // Target 1: CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}
-                wchar_t path1[256];
-                StrCopy(path1, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\", 256);
-                StrCat(path1, guidStr, 256);
-                OverwriteTcpipRegistryBlock(path1, multiSzIp, ipByteLen, multiSzMask, maskByteLen, multiSzGateway, gwByteLen, cleanMetric, metricByteLen, combinedDns, dnsByteLen, true);
-
-                // Target 2: CurrentControlSet\Services\{GUID}\Parameters\Tcpip
-                wchar_t path2[256];
-                StrCopy(path2, L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\", 256);
-                StrCat(path2, guidStr, 256);
-                StrCat(path2, L"\\Parameters\\Tcpip", 256);
-                OverwriteTcpipRegistryBlock(path2, multiSzIp, ipByteLen, multiSzMask, maskByteLen, multiSzGateway, gwByteLen, cleanMetric, metricByteLen, combinedDns, dnsByteLen, false);
-
-                // Target 3: ControlSet001\Services\Tcpip\Parameters\Interfaces\{GUID}
-                wchar_t path3[256];
-                StrCopy(path3, L"\\Registry\\Machine\\System\\ControlSet001\\Services\\Tcpip\\Parameters\\Interfaces\\", 256);
-                StrCat(path3, guidStr, 256);
-                OverwriteTcpipRegistryBlock(path3, multiSzIp, ipByteLen, multiSzMask, maskByteLen, multiSzGateway, gwByteLen, cleanMetric, metricByteLen, combinedDns, dnsByteLen, true);
-
-                // Target 4: ControlSet001\Services\{GUID}\Parameters\Tcpip
-                wchar_t path4[256];
-                StrCopy(path4, L"\\Registry\\Machine\\System\\ControlSet001\\Services\\", 256);
-                StrCat(path4, guidStr, 256);
-                StrCat(path4, L"\\Parameters\\Tcpip", 256);
-                OverwriteTcpipRegistryBlock(path4, multiSzIp, ipByteLen, multiSzMask, maskByteLen, multiSzGateway, gwByteLen, cleanMetric, metricByteLen, combinedDns, dnsByteLen, false);
-            }
-            NtClose(hInterfacesKey);
-        }
-
-        // Tulis penanda SimpleIscsiBoot untuk sinkronisasi di user-mode
+        LogWriteA("[+] Writing SimpleIscsiBoot Marker for user-mode service...\r\n");
         WriteSimpleIscsiMarker(targetIp, gatewayIp, subnetMask, rawHostName);
+
+        // Override ke IP Statis murni tanpa menghapus kunci DHCP/binding TCP/IP
+        ApplyStaticIpConfiguration(targetIp, subnetMask, gatewayIp, dns1, dns2);
     }
+
 
     // 3. Sinkronkan Hostname (Nama PC) Murni dari DHCP Option 12 / iBFT
     if (rawHostName[0] != L'\0') {
@@ -1324,23 +1291,11 @@ extern "C" void NtProcessStartup(void* Peb) {
         }
     }
 
-    // 4. Injeksi Parameter Tuning Performa iSCSI Initiator
-    LogWriteA("[+] Injecting iSCSI Performance Tuning Registry...\r\n");
-    const wchar_t* iscsiPaths[] = {
-        L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Class\\{4D36E97B-E325-11CE-BFC1-08002BE10318}\\0000\\Parameters",
-        L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Class\\{4D36E97B-E325-11CE-BFC1-08002BE10318}\\0001\\Parameters"
-    };
-
-    for (int i = 0; i < 2; i++) {
-        WriteRegDword(iscsiPaths[i], L"MaxRecvDataSegmentLength", 262144);
-        WriteRegDword(iscsiPaths[i], L"MaxTransferLength", 262144);
-        WriteRegDword(iscsiPaths[i], L"FirstBurstLength", 262144);
-        WriteRegDword(iscsiPaths[i], L"MaxBurstLength", 2097152);
-        WriteRegDword(iscsiPaths[i], L"MaxOutstandingR2T", 16);
-    }
+    // 4. Konfigurasi Parameter iScsiPrt (WaitForNetworkAtBoot & DelayForNetworkAtBoot) untuk Fast-Boot
+    ConfigureIscsiPrtParameters();
 
     LogWriteA("================================================================\r\n");
-    LogWriteA(" [Simple-Iscsi BootHelper] Completed Successfully\r\n");
+    LogWriteA(" [Simple-Iscsi BootHelper] Completed Safely\r\n");
     LogWriteA("================================================================\r\n");
     LogClose();
 
