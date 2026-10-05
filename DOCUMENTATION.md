@@ -429,52 +429,122 @@ if let Ok(meta) = file_write_handle.metadata() {
 
 ---
 
-# BAB 7: WINDOWS CLIENT BOOT HELPER (ACPI iBFT PARSER & DEEP IP CLEANER)
+---
 
-Program client [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp) berjalan pada tahap awal boot Windows sebagai *Native Early-Boot Process* / *Windows Service*.
+## 6.3 VHD Append-Only Copy-on-Write (CoW) Merge Engine & Snapshot Rollback
+
+Mekanisme commit dan rollback master VHD diimplementasikan secara asinkronus dan aman pada [`src/vhd_merge.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd_merge.rs):
 
 ```mermaid
 flowchart TD
-    START["helper.exe Dijalankan saat Boot Windows"]
-    
-    subgraph iBFT_Parsing ["1. Ekstraksi ACPI iBFT (Driverless)"]
-        FIRMWARE["GetSystemFirmwareTable('ACPI', 'TFBI')"]
-        PARSE_IP["Ekstraksi: IP Client, Subnet, Gateway, DNS"]
-        PARSE_NAME["Ekstraksi: Hostname and Initiator IQN"]
+    subgraph SuperClient_Commit ["Siklus Commit Super Client"]
+        SUPER_VHD["Differencing VHD (*.super.vhd)"]
+        BASE_VHD["Base Master VHD (*.vhd)"]
+        META_SNAP["Snapshot Metadata (*.meta) (Pre-Merge Block Map)"]
+        APPEND_MERGE["Append-Only Merge Engine (src/vhd_merge.rs)"]
+        
+        BASE_VHD -->|"1. Snapshot BAT & EOF (< 1ms)"| META_SNAP
+        SUPER_VHD -->|"2. Scan Dirty Blocks"| APPEND_MERGE
+        APPEND_MERGE -->|"3. Append Modified Blocks (at next_write_pos)"| BASE_VHD
+        APPEND_MERGE -->|"4. Update Master BAT Offset"| BASE_VHD
+        APPEND_MERGE -->|"5. Write Sector 0 Header & Trailing Footer"| BASE_VHD
     end
     
-    subgraph IP_Cleaning ["2. Deep IP Cleaner"]
-        REG_SCAN["Pindai Registry Tcpip Interfaces"]
-        FIND_GHOST["Temukan Network Adapter Virtual / Non-Aktif"]
-        CLEAR_OLD["Hapus IP Statis Lawas yang Menumpuk"]
+    subgraph Snapshot_Restore ["Siklus Instant Rollback Snapshot"]
+        RESTORE_REQ["Request Restore via REST API / Web UI"]
+        META_READ["Baca *.meta File"]
+        TRUNCATE["Truncate File ke original_eof"]
+        BAT_RESTORE["Restore BAT Table ke Kondisi Snapshot"]
+        
+        RESTORE_REQ --> META_READ
+        META_READ --> TRUNCATE
+        TRUNCATE --> BAT_RESTORE
+        BAT_RESTORE --> RESTORE_DONE["Master VHD Kembali ke State Snapshot (< 1 Detik)"]
     end
-    
-    subgraph IP_Injection ["3. Injeksi IP Statis Instan"]
-        SET_IP["Set Static IP and Subnet ke Active Physical NIC"]
-        SET_GW["Set Gateway and Primary/Secondary DNS"]
-        SET_HOST["Set ComputerName and Hostname"]
-    end
-    
-    subgraph REG_TUNE ["4. Penyetelan Kinerja iSCSI Windows"]
-        TUNE_LEN["Set MaxTransferLength = 262144 (256 KB)"]
-        TUNE_BURST["Set MaxBurstLength = 2097152 (2 MB)"]
-    end
-    
-    START --> FIRMWARE
-    FIRMWARE --> PARSE_IP
-    PARSE_IP --> PARSE_NAME
-    PARSE_NAME --> REG_SCAN
-    REG_SCAN --> FIND_GHOST
-    FIND_GHOST --> CLEAR_OLD
-    CLEAR_OLD --> SET_IP
-    SET_IP --> SET_GW
-    SET_GW --> SET_HOST
-    SET_HOST --> TUNE_LEN
-    TUNE_LEN --> TUNE_BURST
-    TUNE_BURST --> END_READY["Windows Masuk Desktop Mulus Tanpa Delay DHCP"]
 ```
 
-## 7.2 Status Arsitektur Driverless Windows Client
+### Keunggulan Arsitektur Append-Only CoW Merge:
+1. **Zero Data Corruption / Safe Overwrite:**
+   - Blok-blok asli parent pada rentang `0..original_eof` tidak pernah ditimpa in-place.
+   - Blok differencing baru selalu di-append pada akhir file master VHD (`next_write_pos = file_size - 512`), menjamin integritas data bila proses merge terputus di tengah jalan.
+2. **Kepatuhan Spesifikasi Format VHD Microsoft (Sector 0 Header & Trailing Footer):**
+   - VHD Dynamic memiliki salinan footer 512 byte di Sector 0 (`Data Offset = 0x200`) dan trailing footer di ujung file (`0xFFFFFFFFFFFFFFFF`) dengan checksum valid. Engine otomatis memperbarui kedua sektor ini secara sinkron.
+3. **Instant Multi-Level Rollback (< 1 Detik):**
+   - File snapshot metadata (`.meta`) hanya menyimpan salinan Block Allocation Table (BAT) dan `original_eof` (~10 KB).
+   - Rollback dilakukan dengan memotong file ke `original_eof` (`set_len(original_eof)`) dan menulis ulang BAT, membatalkan file/perubahan yang dibuat setelah snapshot secara deterministik.
+4. **Asynchronous Commit Non-Blocking:**
+   - Handler `POST /api/superclient/commit` merespons dalam 1 ms dengan status `200 OK` dan mendelegasikan merge ke background task Tokio (`tokio::spawn`), mencegah browser mengalami `AbortError` saat memproses file VHD berukuran gigabyte.
+
+---
+
+# BAB 7: WINDOWS CLIENT BOOT HELPER (DUAL-STAGE ARCHITECTURE & NETWORK ALIGNMENT)
+
+Untuk menjamin keandalan booting diskless dan kompatibilitas penuh dengan server DHCP serta iBFT firmware, Simple-Iscsi menerapkan arsitektur **Dual-Stage Boot Helper**:
+
+```mermaid
+flowchart TD
+    subgraph Stage1 ["Stage 1: helper.exe (BootExecute / Native Subsystem)"]
+        S1_START["smss.exe Memanggil helper.exe di Phase 1 Boot"]
+        S1_IBFT["Baca ACPI iBFT Firmware Table ('TFBi') secara Aman"]
+        S1_PARSE["Ekstraksi: Target IP, Subnet Mask, DNS, Hostname"]
+        S1_MARKER["Tulis Marker HKLM\\...\\Services\\SimpleIscsiBoot"]
+        S1_CLEAN_GW["Sanitasi 0.0.0.0 DefaultGateway di Registri Interfaces (Preserve DHCP)"]
+        S1_FAST_BOOT["Set iScsiPrt Fast-Boot Parameters (WaitForNetworkAtBoot)"]
+        S1_EXIT["NtTerminateProcess (Zero DLL Dependency)"]
+        
+        S1_START --> S1_IBFT
+        S1_IBFT --> S1_PARSE
+        S1_PARSE --> S1_MARKER
+        S1_MARKER --> S1_CLEAN_GW
+        S1_CLEAN_GW --> S1_FAST_BOOT
+        S1_FAST_BOOT --> S1_EXIT
+    end
+
+    subgraph Stage2 ["Stage 2: helper-svc.exe (User-Mode Service / Startup)"]
+        S2_START["helper-svc.exe Dijalankan di User Mode"]
+        S2_READ["Baca SimpleIscsiBoot / DHCP Interfaces / GetAdaptersAddresses"]
+        S2_GW["Deteksi Authoritative Gateway (DHCP / Adapter Aktif)"]
+        S2_KERNEL_RT["Enforce Single Default Gateway di Kernel Routing Table (GetIpForwardTable2)"]
+        S2_DEL_BOGUS["Hapus Rute Default Palsu (0.0.0.0/0 via 0.0.0.0 atau Duplikat)"]
+        S2_PURGE_IP["Pindai & Hapus IP Residu Stale (DeleteUnicastIpAddressEntry)"]
+        S2_HOSTNAME["Sinkronkan Hostname User-Mode (SetComputerNameExW)"]
+        S2_DONE["Service Berhenti Bersih (0 MB RAM Overhead)"]
+        
+        S2_START --> S2_READ
+        S2_READ --> S2_GW
+        S2_GW --> S2_KERNEL_RT
+        S2_KERNEL_RT --> S2_DEL_BOGUS
+        S2_DEL_BOGUS --> S2_PURGE_IP
+        S2_PURGE_IP --> S2_HOSTNAME
+        S2_HOSTNAME --> S2_DONE
+    end
+    
+    Stage1 -->|"Windows Kernel Inisialisasi Selesai"| Stage2
+```
+
+## 7.1 Rincian Tugas Stage 1: `helper.exe` (Native Subsystem)
+* **Kompilasi & Entry Point:** Dibuat tanpa CRT library (`cl /O2 /GS- /GR- /link /subsystem:native /entry:NtProcessStartup /NODEFAULTLIB ntdll.lib`), beroperasi langsung di atas `ntdll.dll`.
+* **Proteksi Memori & Registry:**
+  - Bound-checking ketat saat memindai buffer ACPI firmware untuk mencegah Access Violation `0xC0000005`.
+  - Menghapus nilai static `DefaultGateway` bernilai `0.0.0.0` dari registri `Tcpip\Parameters\Interfaces\{GUID}` agar layanan DHCP Windows client (`dhcpcsvc`) dapat mengisi gateway otomatis dari DHCP Option 3 tanpa terganggu rute `0.0.0.0` statis.
+  - Mempertahankan `EnableDHCP = 1` pada master image agar multi-client boot dapat mengambil IP unik.
+  - Menghapus pemanggilan `NtFlushKey` Phase 1 untuk mencegah error `0xC000014D`.
+
+## 7.2 Rincian Tugas Stage 2: `helper-svc.exe` (User-Mode Engine)
+* **Penyelarasan Gateway Tunggal (Single Default Gateway Enforcement):**
+  - Mengambil gateway resmi dari DHCP (`DhcpDefaultGateway`) dan adapter aktif (`GetAdaptersAddresses`).
+  - Memindai tabel routing kernel Windows via `GetIpForwardTable2`:
+    1. Menghapus rute default palsu dengan NextHop `0.0.0.0` (`DeleteIpForwardEntry2`).
+    2. Menghapus rute duplikat ke gateway yang sama, menyisakan tepat 1 rute default valid.
+    3. Jika tabel rute kehilangan default gateway (0 routes), otomatis menginjeksi default route baru (`CreateIpForwardEntry2`).
+* **Pembersihan IP Residu Stale (Unicast IP Purge):**
+  - Memindai alamat IPv4 aktif via `GetUnicastIpAddressTable`.
+  - Menghapus IP lama / IP master image yang tersisa via `DeleteUnicastIpAddressEntry` sehingga hanya Target IP client yang aktif.
+* **Sinkronisasi DNS & Identitas Mesin:**
+  - Menyelaraskan `NameServer` global dan per-interface dengan server DNS DHCP (Option 6) serta public DNS fallback.
+  - Memperbarui `SetComputerNameExW` (Physical DNS Hostname & NetBIOS) sesuai nama komputer yang diberikan DHCP Option 12 / iBFT.
+
+## 7.3 Status Arsitektur Driverless Windows Client
  
 Dalam arsitektur Simple-Iscsi modern, proses booting SANBOOT iSCSI Windows client berjalan secara **100% Native Driverless murni**:
  

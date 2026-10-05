@@ -692,16 +692,26 @@ void SanitizeDnsAndGateway(const wchar_t* gwIp, const wchar_t* combinedDns) {
                 wchar_t existingGw[128] = {0};
                 ReadRegMultiSz(hSubKey, L"DefaultGateway", existingGw, 128);
 
-                // Jika DefaultGateway kosong atau berisi 0.0.0.0, perbaiki dengan gateway valid
-                if (gwByteLen > 0 && (existingGw[0] == L'\0' || StrEqual(existingGw, L"0.0.0.0") || StrStartsWith(existingGw, L"0.0.0.0"))) {
-                    UNICODE_STRING valGw, valMetric;
-                    RtlInitUnicodeString(&valGw, L"DefaultGateway");
+                UNICODE_STRING valGw, valMetric;
+                RtlInitUnicodeString(&valGw, L"DefaultGateway");
+                RtlInitUnicodeString(&valMetric, L"DefaultGatewayMetric");
+
+                if (StrEqual(existingGw, L"0.0.0.0") || StrStartsWith(existingGw, L"0.0.0.0")) {
+                    if (gwByteLen > 0) {
+                        // Ganti 0.0.0.0 dengan Gateway valid dari iBFT
+                        NtSetValueKey(hSubKey, &valGw, 0, REG_MULTI_SZ, (void*)multiSzGateway, gwByteLen);
+                        NtSetValueKey(hSubKey, &valMetric, 0, REG_MULTI_SZ, (void*)cleanMetric, metricByteLen);
+                        LogWriteA("    [+] Replaced 0.0.0.0 with valid iBFT DefaultGateway on: "); LogWriteW(safeGuid); LogWriteA("\r\n");
+                    } else {
+                        // Hapus static 0.0.0.0 agar DHCP default gateway (DhcpDefaultGateway) dapat bekerja secara alami tanpa konflik
+                        NtDeleteValueKey(hSubKey, &valGw);
+                        NtDeleteValueKey(hSubKey, &valMetric);
+                        LogWriteA("    [+] Deleted bogus 0.0.0.0 DefaultGateway to allow DHCP Gateway on: "); LogWriteW(safeGuid); LogWriteA("\r\n");
+                    }
+                } else if (gwByteLen > 0 && existingGw[0] == L'\0') {
                     NtSetValueKey(hSubKey, &valGw, 0, REG_MULTI_SZ, (void*)multiSzGateway, gwByteLen);
-
-                    RtlInitUnicodeString(&valMetric, L"DefaultGatewayMetric");
                     NtSetValueKey(hSubKey, &valMetric, 0, REG_MULTI_SZ, (void*)cleanMetric, metricByteLen);
-
-                    LogWriteA("    [+] Fixed DefaultGateway on interface: "); LogWriteW(safeGuid); LogWriteA("\r\n");
+                    LogWriteA("    [+] Set iBFT DefaultGateway on: "); LogWriteW(safeGuid); LogWriteA("\r\n");
                 }
 
                 NtClose(hSubKey);
@@ -1138,18 +1148,10 @@ extern "C" void NtProcessStartup(void* Peb) {
         LogWriteA("[-] iBFT not detected in ACPI Firmware.\r\n");
     }
 
-    // Fallback Gateway jika GatewayIP kosong/0.0.0.0
-    if (!IsValidIp(gatewayIp) && IsValidIp(targetIp)) {
-        StrCopy(gatewayIp, targetIp, 64);
-        int lastDotIdx = -1;
-        for (int i = 0; gatewayIp[i] != L'\0'; i++) {
-            if (gatewayIp[i] == L'.') lastDotIdx = i;
-        }
-        if (lastDotIdx != -1) {
-            gatewayIp[lastDotIdx + 1] = L'1';
-            gatewayIp[lastDotIdx + 2] = L'\0';
-        }
-        LogWriteA("    - Auto Gateway Generated: "); LogWriteW(gatewayIp); LogWriteA("\r\n");
+    // Gateway: Gunakan Gateway dari iBFT jika valid; jika tidak ada, biarkan kosong agar DHCP Client mengisi DefaultGateway secara alami
+    if (!IsValidIp(gatewayIp)) {
+        gatewayIp[0] = L'\0';
+        LogWriteA("    - GatewayIP  : [DHCP Managed]\r\n");
     }
 
     // Fallback DNS jika DNS1/DNS2 kosong/0.0.0.0
