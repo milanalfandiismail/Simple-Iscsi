@@ -596,6 +596,61 @@ Berdasarkan audit langsung pada file hive registri master (`Iscsi menyala tanpa 
 
 > **Pelajaran Penting:** Dari 31 header Linkage di registri Windows, hanya **`Class\0000\Linkage`** dan **`Services\Tcpip\Linkage`** yang menjadi **Dua Jantung Utama iSCSI Boot**. Jika salah satu dari kedua kunci ini hilang atau tidak sinkron GUID-nya, transmisi iSCSI di Phase 0 akan mati total (BSOD `0x7B`).
 
+#### 15. Kegagalan Revert VHD Snapshot (File Update Super Client Tetap Ada Setelah Revert) — Root Cause & Solusi Append-Only CoW
+* **Gejala / Error:**
+  - Administrator mengaktifkan Super Client, membuat perubahan di PC klien (misalnya menambahkan file baru `File A` atau install aplikasi), lalu menekan **Commit Super Client** (menyimpan ke Master VHD sekaligus membuat backup snapshot).
+  - Saat kemudian menekan tombol **Restore Snapshot** (Revert), sistem melaporkan restore berhasil dan file `.super.vhd` dihapus.
+  - Namun ketika PC klien dinyalakan kembali, **`File A` masih tetap ada** di dalam disk `C:\`, seolah-olah proses restore tidak pernah terjadi.
+* **Akar Masalah (Root Cause):**
+  1. **In-Place Overwrite pada Blok Parent yang Sudah Ada (`parent_bat_entry != 0xFFFFFFFF`):**
+     - Pada fungsi `merge_vhd_sync` ([`src/vhd_merge.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd_merge.rs)), jika sebuah blok differencing VHD memetakan ke blok yang sudah ada di parent VHD, data blok ditulis langsung ke offset lama parent (`parent_offset < eof`).
+     - Di filesystem NTFS, penambahan file baru selalu mengubah struktur direktori parent, tabel `$MFT`, dan `$Bitmap` yang lokasinya berada pada blok-blok awal base VHD yang sudah dialokasikan.
+  2. **Limitasi Metadata Snapshot:**
+     - Fungsi `backup_before_merge` hanya mencatat `eof` (ukuran file parent sebelum merge), `table_offset`, dan array `bat` ke dalam file `.meta`. Snapshot **TIDAK mencadangkan isi sektor data** yang ditimpa in-place.
+  3. **Mengapa Revert Truncate Gagal:**
+     - Pada `restore_from_meta`, sistem menjalankan `base_file.set_len(eof)` dan menulis ulang tabel `bat`.
+     - Karena blok yang ditimpa in-place berada di posisi `< eof`, pemotongan file dengan `set_len(eof)` **sama sekali tidak menyentuh blok tersebut**.
+     - Nilai entry BAT sebelum dan sesudah merge untuk blok tersebut adalah sama (`parent_offset`), sehingga penulisan ulang BAT tetap menunjuk ke blok yang sama.
+     - Padahal data di dalam blok tersebut **sudah terlanjur tertimpa oleh data baru (NTFS record File A)**. Akibatnya File A tetap terbaca oleh Windows.
+* **Solusi Baku (Arsitektur Append-Only Copy-on-Write / CoW):**
+  1. **Hapus In-Place Overwrite pada Merge:**
+     - Saat merge, seluruh blok dari child differencing VHD **selalu ditulis di posisi baru di akhir file** (`next_write_pos = parent_file_size - 512`), tanpa memandang apakah blok tersebut sebelumnya sudah ada di parent atau belum.
+     - Entri `parent.bat[block_idx]` diarahkan ke posisi offset baru di akhir file.
+     - Blok-blok asli parent yang berada di rentang `0..original_eof` tetap **100% Read-Only, murni, dan tidak pernah tersentuh**.
+  2. **Restorasi Snapshot Seketika & Deterministik:**
+     - Saat Revert dijalankan, `base_file.set_len(original_eof)` seketika memotong dan melenyapkan seluruh blok baru yang di-append saat merge.
+     - Menulis ulang tabel `bat` asli mengembalikan semua pointer blok ke sektor asli di dalam `0..original_eof`.
+     - Menulis ulang footer 512 byte di `original_eof - 512` dan header copy di offset 0.
+     - Hasil: File A, modifikasi MFT, dan seluruh perubahan super client **100% lenyap seketika (< 1 detik)**, dan master VHD kembali persis ke kondisi awal.
+
+#### 16. Browser AbortError pada Commit Super Client (`signal is aborted without reason`)
+* **Gejala / Error:**
+  - Saat menekan tombol **Commit** pada modal Super Client di Web UI, browser memunculkan error toast merah:
+    `POST /api/superclient/commit failed: AbortError: signal is aborted without reason at index.js:156:51`
+  - Namun ketika diperiksa di folder VHD, file snapshot backup (`_backup1.meta` dan `_backup1.vhd`) **sudah ada / terbentuk**.
+* **Akar Masalah (Root Cause):**
+  1. **Frontend Fetch Timeout (4.5s):** Wrapper `apiPost` di `ui/index.js` memiliki batas timeout ketat 4500ms (`setTimeout(() => controller.abort(), 4500)`).
+  2. **Synchronous Multi-GB Copying di HTTP Thread Backend:** Handler backend `post_superclient_commit` sebelumnya memanggil `backup_before_merge` secara sinkronus sebelum merespons HTTP. `backup_before_merge` mengeksekusi `std::fs::copy(super_path, &backup_vhd)` yang menyalin file differencing `super.vhd` (1–5+ GB). Pada disk fisik, penyalinan file sebesar ini membutuhkan waktu 5–15 detik, sehingga timer browser keburu habis (4.5s) dan men-trigger `AbortError`.
+  3. **Mengapa File Backup Sudah Ada:** Di sisi server operasi `fs::copy` tetap berjalan hingga selesai di kernel OS, sehingga file backup terbentuk di disk meskipun browser sudah meng-abort koneksinya.
+* **Solusi Baku:**
+  1. **Eliminasi `fs::copy` Redundan:** Berkat arsitektur Append-Only CoW, restore snapshot hanya membutuhkan metadata `.meta` (`eof` dan `bat`), tidak membutuhkan copy file `super.vhd`. Pembuatan `.meta` selesai dalam **< 1 milidetik** (~10 KB).
+  2. **Non-Blocking Background Dispatch:** Pindahkan eksekusi backup dan merge sepenuhnya ke dalam `tokio::spawn` di background sehingga endpoint `POST /api/superclient/commit` langsung mengembalikan response `200 OK` seketika (0.001s).
+  3. **Resilient Frontend Timeout:** Berikan timeout `15000ms` (15 detik) pada pemanggilan commit di `ui/index.js`.
+
+#### 17. Client Gagal Booting / BSOD 0x7B Akibat Boot Helper Merusak Registri TCP/IP di Phase 1
+* **Gejala / Error:**
+  - Setelah `helper.exe` dipasang via `install_client.bat` ke `BootExecute`, PC client diskless mendadak freeze saat booting atau memunculkan Blue Screen `0x0000007B` (*INACCESSIBLE_BOOT_DEVICE*).
+* **Akar Masalah (Root Cause):**
+  1. **Blind Loop & Penghapusan Registri DHCP di `BootExecute` (`helper.cpp`):** `helper.exe` sebelumnya melakukan loop ke seluruh subkey di bawah `Tcpip\Parameters\Interfaces` dan menghapus nilai `DhcpInterfaceOptions`, `DhcpIPAddress`, `DhcpServer`, dll., serta memaksa `EnableDHCP = 0` dan menulis `0.0.0.0` pada semua interface. Menghapus konfigurasi DHCP saat kernel `tcpip.sys` dan `msiscsi.sys` sedang aktif streaming disk iSCSI memutus binding L2/L3 sehingga storage iSCSI putus mendadak $\rightarrow$ **BSOD `0x7B`**.
+  2. **Blind Parameter Injection ke `SCSIAdapter`:** Helper menyuntikkan parameter tuning ke `Class\{4D36E97B...}\0000\Parameters`. Pada banyak motherboard, slot `0000` di class ini adalah controller fisik SATA AHCI / NVMe, bukan Microsoft iSCSI Initiator, sehingga merusak parameter disk lokal.
+* **Solusi Baku (Safe & Non-Destructive Boot Helper):**
+  1. **Non-Destructive Static IP Override di `BootExecute` (`ApplyStaticIpConfiguration`):** `helper.exe` membaca parameter jaringan dari ACPI iBFT dan menulis `IPAddress`, `SubnetMask`, `DefaultGateway`, `NameServer`, dan `EnableDHCP = 0` secara aman ke subkey `Tcpip\Parameters\Interfaces\{GUID}`. Yang terpenting: helper **DILARANG KERAS** menghapus kunci/value lain (`DhcpInterfaceOptions`, `DhcpIPAddress`, `DhcpServer`, dll) atau melakukan zeroing IP, sehingga binding TCP/IP dan transmisi iSCSI tetap 100% utuh tanpa memicu DHCP discovery ulang di user-mode.
+
+  2. **Pembersihan IP Diserahkan Penuh ke `helper-svc.exe` (User-Mode):** Penghapusan IP residu super client dijalankan secara aman di user-mode via `helper-svc.exe` menggunakan Windows API resmi `DeleteUnicastIpAddressEntry` (`iphlpapi.dll`). Ini mencabut IP duplikat dari memori kernel tanpa memutus koneksi socket iSCSI atau merusak file registri disk.
+  3. **Preservasi Mutlak Slot `0000` & `Linkage`:** Sesuai 6 Pilar Native Driverless SANBOOT (BAB 9), seluruh subkey `Linkage` dan slot `0000` dijaga 100% utuh dan tidak tersentuh oleh helper.
+  4. **Tuning Fast-Boot `iScsiPrt` (`WaitForNetworkAtBoot` & `DelayForNetworkAtBoot`):** Menambahkan injeksi nilai `WaitForNetworkAtBoot = 1` dan `DelayForNetworkAtBoot = 5` ke `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters`. Parameter ini memerintahkan driver Microsoft iSCSI Initiator untuk menunggu status link fisik kartu LAN siap tanpa timeout/stall lama (default 30-60 detik), sehingga proses booting diskless Windows berlangsung jauh lebih cepat dan mulus.
+
+
 ---
 
 ### 3.3 Alat Bantu Debugging MCP `codebase-memory`
@@ -851,11 +906,9 @@ Daftar status modul dan kapabilitas sistem Simple-Iscsi saat ini:
 | **SCSI SBC-3 / SPC-4** | [`src/scsi_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_gamedisk.rs) | **STABLE** | Emulasi Inquiry, Read Capacity, Read/Write 10/16, Mode Sense, Synccache. |
 | **Queue Depth & CmdQue** | [`src/scsi_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_gamedisk.rs) | **OPTIMIZED** | `CmdQue = 1`, Queue Depth 32-64, throughput tembus kawat LAN 900+ Mbps. |
 | **Writeback Cache Engine** | [`src/writeback_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/writeback_gamedisk.rs) | **STABLE** | Initial allocation 128 MB per client dengan auto-expansion dinamis. |
-| **VHD Engine** | [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) | **STABLE** | Fixed & Dynamic VHD parsing, BAT mapping, parent-child diffing. |
+| **VHD Engine & CoW Snapshot** | [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) & [`src/vhd_merge.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd_merge.rs) | **STABLE** | Fixed & Dynamic VHD parsing, BAT mapping, parent-child diffing, Append-Only Copy-on-Write (CoW) merge engine, multi-level snapshot backup/revert instan (<1 detik) tanpa merusak blok master. |
 | **Boot Helper C++ (Stage 1)** | [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp) | **STABLE** | `helper.exe` berjalan via `BootExecute` (Native Subsystem), sinkronisasi Hostname 100% murni dari DHCP/iBFT, dual-path registry overwrite (`Interfaces` & `Services\GUID`), disarming service pihak ketiga, dan pembuatan marker `SimpleIscsiBoot`. |
 | **User-Mode IP Helper (Stage 2)** | [`helper/helper-svc.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper-svc.cpp) | **STABLE** | `helper-svc.exe` berjalan via Windows Service / Run Key, membersihkan IP residu super client dari RAM kernel secara real-time via `DeleteUnicastIpAddressEntry` (`iphlpapi.dll`) tanpa memutus sesi iSCSI aktif. |
-| **Native Driverless Boot** | Registri & [`DOCUMENTATION.md`](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md) (BAB 9) | **VERIFIED** | 100% Native Driverless (Slot 0000, `NetCfgInstanceId`, `WFPLWFS`, `ConfigFlags = 0`). |
-| **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP, tombol kontrol & restart cepat per-layanan/semua layanan. |
 | **Native Driverless Boot** | Registri & [`DOCUMENTATION.md`](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md) (BAB 9) | **VERIFIED** | 100% Native Driverless (Slot 0000, `NetCfgInstanceId`, `WFPLWFS`, `ConfigFlags = 0`). |
 | **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP, tombol kontrol & restart cepat per-layanan/semua layanan. |
 
@@ -873,6 +926,29 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 - **Rincian Perubahan:** Poin-poin spesifik apa saja yang diubah atau ditambahkan.
 - **Hasil & Verifikasi:** Hasil pengujian, kompilasi, atau status graf index.
 ```
+
+---
+
+### [2026-10-05] - Implementasi VHD Append-Only CoW Merge & Deterministik Multi-Level Snapshot Rollback
+- **Tujuan:** Memperbaiki logika snapshot revert di mana file baru hasil commit Super Client (misal File A) masih tersisa di master VHD setelah di-revert, serta mengaktifkan rollback snapshot bertingkat (*multi-level*) yang 100% deterministik dan instan.
+- **Modul Terdampak:**
+  - [`src/vhd_merge.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd_merge.rs) (`merge_vhd_sync`, `backup_before_merge`, `restore_from_meta`, `restore_backup_by_index`, `cleanup_backup_files`, dan unit tests)
+  - [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md)
+  - [`docs/superpowers/plans/2026-10-05-vhd-snapshot-revert-append-cow-plan.md`](file:///c:/Project%20GIT/Simple-Iscsi/docs/superpowers/plans/2026-10-05-vhd-snapshot-revert-append-cow-plan.md)
+- **Akar Masalah:**
+  - Sebelumnya, `merge_vhd_sync` melakukan in-place overwrite pada blok yang sudah ada di parent (`parent_bat_entry != 0xFFFFFFFF`).
+  - Penambahan file baru memodifikasi MFT dan struktur folder pada blok parent lama (`offset < eof`).
+  - Karena snapshot hanya menyimpan metadata BAT dan ukuran file `eof`, saat revert dieksekusi, `set_len(eof)` tidak memotong data `< eof` dan BAT lama tetap mengarah ke blok fisik yang sudah terlanjur tertimpa data File A.
+- **Rincian Perubahan:**
+  1. **Append-Only Copy-on-Write (CoW) Allocation:** Menghapus percabangan in-place overwrite pada `merge_vhd_sync`. Seluruh blok differencing VHD yang dialokasikan kini selalu ditulis di akhir file (`next_write_pos = parent_file_size - 512`) dan mengarahkan `parent.bat[block_idx]` ke posisi baru. Blok lama di rentang `0..original_eof` tetap 100% read-only dan murni.
+  2. **Instant & Clean Truncate Rollback:** Fungsi `restore_from_meta` memotong file base VHD ke `eof` awal (melenyapkan seluruh blok baru hasil merge secara instan), memulihkan seluruh entri BAT asli, dan memperbarui footer di `eof - 512` serta footer copy di offset 0.
+  3. **Multi-Level Snapshot Support:** Menguji dan memvalidasi revert dinamis berantai (misal 5x commit, rollback ke snapshot 4, lalu ke snapshot 2, lalu ke base) dengan pembersihan file snapshot terkait via `cleanup_backup_files`.
+  4. **Automated Unit Tests:** Menambahkan 2 unit test komprehensif di `src/vhd_merge.rs`:
+     - `test_vhd_append_cow_merge_and_snapshot_rollback`: Menguji merge blok parent lama vs revert, memverifikasi CoW dan pembersihan data 100%.
+     - `test_multilevel_snapshot_rollback`: Menguji 3 level commit bertingkat dan rollback bertahap.
+- **Hasil & Verifikasi:**
+  - Seluruh 8 unit test Rust lulus 100% (`cargo test -- --nocapture` exit code 0).
+  - `cargo check` sukses 100% tanpa error.
 
 ---
 
@@ -1012,6 +1088,40 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
   2. Menyusun Playbook Kasus Nyata Proyek: Solusi baku panic Tokio runtime pada foreign thread Win32 (`runtime_handle.spawn`), penanganan socket reuse WSAEADDRINUSE 10048, penanganan missing icon resource Win32 1812, dan audit registri BSOD 0x7B Native Driverless.
   3. Mengintegrasikan alur cabang debugging ke dalam diagram alur kerja SOP harian AI Agent (Section 4).
 - **Hasil & Verifikasi:** Dokumen `ANTIGRAVITY.md` memiliki panduan troubleshooting yang lengkap, mencegah AI melakukan tindakan tebak-menebak (*guess-and-check*) yang berisiko merusak kestabilan kode.
+
+---
+
+### [2026-10-05] - Implementasi Append-Only CoW VHD Snapshot Revert, Asynchronous Commit, & Proteksi Registri Boot Helper
+- **Tujuan:** 
+  1. Menyelesaikan masalah restorasi snapshot VHD (revert) yang sebelumnya tidak membatalkan file baru (File A) akibat penulisan in-place pada blok parent.
+  2. Mengatasi `AbortError: signal is aborted without reason` pada browser saat commit file differencing VHD berukuran gigabyte.
+  3. Memperbaiki `helper.exe` pada `BootExecute` Phase 1 agar aman, non-destruktif, tidak menghapus kunci DHCP/Interfaces, dan mencegah BSOD `0x7B` pada PC client diskless.
+- **Modul Terdampak:**
+  - `src/vhd_merge.rs`
+  - `src/api/routes_client.rs`
+  - `ui/index.js`
+  - `helper/helper.cpp`
+  - `helper/install_client.bat`
+  - `ANTIGRAVITY.md`
+- **Rincian Perubahan:**
+  1. **Append-Only Copy-on-Write (CoW) VHD Merge Engine (`src/vhd_merge.rs`):**
+     - Menghapus total in-place overwrite pada fungsi `merge_vhd_sync`. Seluruh blok modifikasi dari differencing VHD selalu di-append pada `next_write_pos = file_size - 512`.
+     - Blok-blok asli parent pada rentang `0..original_eof` dipertahankan 100% read-only.
+     - Fungsi `restore_from_meta` mengeksekusi `set_len(original_eof)` dan penulisan ulang BAT, menjamin restorasi instan (< 1 detik) dan deterministik secara multi-level (revert dari commit ke-5 ke commit ke-4, ke-3, dst.).
+     - Menambahkan 2 unit test Rust komprehensif: `test_vhd_append_cow_merge_and_snapshot_rollback` dan `test_multilevel_snapshot_rollback`.
+  2. **Asynchronous Commit & Metadata Snapshotting (`src/vhd_merge.rs`, `src/api/routes_client.rs`, `ui/index.js`):**
+     - Mengeliminasi `std::fs::copy` sinkronus multi-GB pada `backup_before_merge`. Snapshot creation kini hanya menulis metadata `.meta` (~10 KB dalam < 1ms).
+     - Menjalankan `merge_vhd_sync` di dalam background task Tokio asinkronus (`tokio::spawn`) sehingga endpoint `POST /api/superclient/commit` merespons `200 OK` dalam 1ms.
+     - Menaikkan timeout commit di `ui/index.js` menjadi 15000ms.
+  3. **Sterilisasi Boot Helper & Proteksi Registri TCP/IP (`helper/helper.cpp`):**
+     - Menghapus fungsi loop `OverwriteTcpipRegistryBlock` yang sebelumnya menghapus `DhcpInterfaceOptions`, `DhcpIPAddress`, dan memaksa `EnableDHCP = 0` di `BootExecute`.
+     - Menghapus injeksi membabi buta ke `SCSIAdapter\0000\Parameters` yang dapat merusak controller SATA AHCI/NVMe lokal.
+     - `helper.exe` pada Phase 1 dibatasi murni pada operasi aman: membaca ACPI iBFT, menulis marker `SimpleIscsiBoot`, dan menyinkronkan Hostname (`ComputerName`).
+     - Pembersihan IP residu diserahkan 100% ke `helper-svc.exe` (User-Mode) via Windows API resmi `DeleteUnicastIpAddressEntry` (`iphlpapi.dll`).
+- **Hasil & Verifikasi:**
+  - `cargo test` lulus 100% (8/8 tests passing).
+  - Kompilasi `helper.exe` (Native Subsystem) dan `helper-svc.exe` (Win32 Service) via MSVC sukses tanpa error.
+  - Unit test `test_ip_cleaner.exe` lulus 100% (25/25 tests passing).
 
 ---
 

@@ -1790,7 +1790,7 @@ async function handleSuperClientDisableChoice(choice) {
 
     if (choice === 'commit') {
         showToast(`Memproses Commit Super Client (${hostname})...`, 'info');
-        const res = await apiPost('/api/superclient/commit', { ip, hostname });
+        const res = await apiPost('/api/superclient/commit', { ip, hostname }, 15000);
         if (res && res.status === 'ok') {
             startMergeProgressPolling();
         } else {

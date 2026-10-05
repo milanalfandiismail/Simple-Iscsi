@@ -142,26 +142,19 @@ pub fn merge_vhd_sync(child_path: &str, parent_path: &str) -> io::Result<()> {
                 bitmap_buf.fill(0xFF);
             }
 
-            // Cek apakah block sudah ada di parent
-            let parent_bat_entry = parent.bat.get(block_idx).copied().unwrap_or(0xFFFFFFFF);
-            if parent_bat_entry != 0xFFFFFFFF {
-                // In-place overwrite block yang sudah ada di parent (tidak menambah ukuran file yang tidak perlu)
-                let parent_offset = (parent_bat_entry as u64) * 512;
-                parent.file.seek(SeekFrom::Start(parent_offset))?;
-                parent.file.write_all(&bitmap_buf)?;
-                parent.file.write_all(&data_buf)?;
-            } else {
-                // Alokasikan block baru di akhir parent file (posisi next_write_pos)
-                let new_bat_entry = (next_write_pos / 512) as u32;
-                parent.file.seek(SeekFrom::Start(next_write_pos))?;
-                parent.file.write_all(&bitmap_buf)?;
-                parent.file.write_all(&data_buf)?;
+            // Alokasikan block selalu di akhir parent file (posisi next_write_pos) — Append-Only Copy-on-Write (CoW).
+            // Seluruh blok asli parent di 0..original_eof tetap 100% read-only & utuh.
+            // Hal ini menjamin revert/rollback snapshot dapat memotong file (truncate) dan memulihkan BAT secara deterministik,
+            // sehingga file/data baru super client musnah 100% tanpa meninggalkan residu di blok lama.
+            let new_bat_entry = (next_write_pos / 512) as u32;
+            parent.file.seek(SeekFrom::Start(next_write_pos))?;
+            parent.file.write_all(&bitmap_buf)?;
+            parent.file.write_all(&data_buf)?;
 
-                next_write_pos += bitmap_size + vhd_block_size;
+            next_write_pos += bitmap_size + vhd_block_size;
 
-                if block_idx < parent.bat.len() {
-                    parent.bat[block_idx] = new_bat_entry;
-                }
+            if block_idx < parent.bat.len() {
+                parent.bat[block_idx] = new_bat_entry;
             }
 
             total_merged += 1;
@@ -469,3 +462,284 @@ pub fn restore_backup_by_index(base_path: &str, idx: usize) -> io::Result<String
     }
     res
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::{Read, Seek, SeekFrom, Write};
+
+    fn create_test_vhd(
+        path: &str,
+        disk_type: u32,
+        block_size: u32,
+        bat_entries: &[u32],
+        blocks_data: &[(usize, u8)], // (bat_index, byte_fill)
+    ) -> io::Result<u64> {
+        let mut file = File::create(path)?;
+        
+        let sectors_per_block = block_size / 512;
+        let mut bitmap_bytes = (sectors_per_block + 7) / 8;
+        if bitmap_bytes % 512 != 0 {
+            bitmap_bytes = ((bitmap_bytes / 512) + 1) * 512;
+        }
+
+        // 1. Footer (512 bytes)
+        let mut footer = vec![0u8; 512];
+        footer[0..8].copy_from_slice(b"conectix");
+        let virtual_size = (bat_entries.len() as u64) * (block_size as u64);
+        footer[48..56].copy_from_slice(&virtual_size.to_be_bytes());
+        footer[60..64].copy_from_slice(&disk_type.to_be_bytes());
+        file.write_all(&footer)?;
+
+        // 2. Dynamic Header (1024 bytes)
+        let mut header = vec![0u8; 1024];
+        header[0..8].copy_from_slice(b"cxsparse");
+        header[16..24].copy_from_slice(&1536u64.to_be_bytes()); // table_offset = 1536
+        header[28..32].copy_from_slice(&(bat_entries.len() as u32).to_be_bytes());
+        header[32..36].copy_from_slice(&block_size.to_be_bytes());
+        file.write_all(&header)?;
+
+        // 3. BAT Table (table_offset = 1536)
+        let mut bat_bytes = vec![0u8; 512]; // at least 512 bytes
+        for (i, &entry) in bat_entries.iter().enumerate() {
+            let off = i * 4;
+            bat_bytes[off..off + 4].copy_from_slice(&entry.to_be_bytes());
+        }
+        file.write_all(&bat_bytes)?;
+
+        // 4. Data Blocks
+        for &(bat_idx, byte_fill) in blocks_data {
+            let sector_offset = bat_entries[bat_idx];
+            let byte_offset = (sector_offset as u64) * 512;
+            file.seek(SeekFrom::Start(byte_offset))?;
+            
+            // Bitmap
+            let bitmap = vec![0xFFu8; bitmap_bytes as usize];
+            file.write_all(&bitmap)?;
+            // Data
+            let data = vec![byte_fill; block_size as usize];
+            file.write_all(&data)?;
+        }
+
+        // 5. Trailing Footer
+        let final_pos = file.seek(SeekFrom::End(0))?;
+        file.write_all(&footer)?;
+        file.sync_all()?;
+        Ok(final_pos + 512)
+    }
+
+    #[test]
+    fn test_vhd_append_cow_merge_and_snapshot_rollback() {
+        let temp_dir = std::env::temp_dir().join(format!("vhd_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let parent_path = temp_dir.join("parent.vhd").to_string_lossy().to_string();
+        let child_path = temp_dir.join("child.vhd").to_string_lossy().to_string();
+
+        let block_size = 65536u32; // 64KB per block for fast testing
+        let sectors_per_block = block_size / 512; // 128 sectors
+        let bitmap_sectors = 1u32; // 512 bytes = 1 sector
+        let block_total_sectors = bitmap_sectors + sectors_per_block;
+
+        // Parent BAT: 4 blocks total.
+        // Block 0 allocated at sector 4 (offset 2048)
+        // Block 1 allocated at sector 4 + block_total_sectors
+        // Block 2 & 3 unallocated
+        let s0 = 4u32;
+        let s1 = s0 + block_total_sectors;
+        let parent_bat = vec![s0, s1, 0xFFFFFFFF, 0xFFFFFFFF];
+        
+        let parent_initial_size = create_test_vhd(
+            &parent_path,
+            3, // Dynamic
+            block_size,
+            &parent_bat,
+            &[(0, 0x11), (1, 0x22)], // Block 0 has 0x11, Block 1 has 0x22
+        ).unwrap();
+
+        // Verify parent initial state
+        {
+            let p_file = File::open(&parent_path).unwrap();
+            let mut p_vhd = VhdBackend::open(p_file).unwrap();
+            assert_eq!(p_vhd.bat[0], s0);
+            assert_eq!(p_vhd.bat[1], s1);
+            assert_eq!(p_vhd.bat[2], 0xFFFFFFFF);
+            
+            // Read Block 0
+            let mut buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((s0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut buf).unwrap();
+            assert!(buf.iter().all(|&b| b == 0x11));
+        }
+
+        // Child (Differencing):
+        // Modifies Block 0 with 0xAA (Simulating File A added by Super Client)
+        // Adds Block 2 with 0xBB
+        let cs0 = 4u32;
+        let cs2 = cs0 + block_total_sectors;
+        let child_bat = vec![cs0, 0xFFFFFFFF, cs2, 0xFFFFFFFF];
+        create_test_vhd(
+            &child_path,
+            4, // Differencing
+            block_size,
+            &child_bat,
+            &[(0, 0xAA), (2, 0xBB)],
+        ).unwrap();
+
+        // 1. Take Backup before merge
+        let backup_meta_path = backup_before_merge(&parent_path, &child_path).unwrap();
+        assert!(Path::new(&backup_meta_path).exists());
+
+        // 2. Perform Merge (Append-Only CoW)
+        merge_vhd_sync(&child_path, &parent_path).unwrap();
+
+        // Verify parent state after merge:
+        // - Parent file size MUST be larger than parent_initial_size (due to append)
+        // - Parent BAT[0] MUST point to a new offset >= (parent_initial_size - 512)
+        // - Parent Block 0 MUST now contain 0xAA
+        // - Parent Block 2 MUST now contain 0xBB
+        // - Original Block 0 at sector s0 (offset 2048) in the parent MUST STILL CONTAIN 0x11 (Read-Only untouched)!
+        {
+            let p_file = File::open(&parent_path).unwrap();
+            let mut p_vhd = VhdBackend::open(p_file).unwrap();
+            assert_ne!(p_vhd.bat[0], s0, "BAT[0] must point to newly appended offset, not old in-place offset!");
+            assert_ne!(p_vhd.bat[2], 0xFFFFFFFF);
+
+            // Read new Block 0 via BAT[0]
+            let new_s0 = p_vhd.bat[0];
+            let mut buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((new_s0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut buf).unwrap();
+            assert!(buf.iter().all(|&b| b == 0xAA), "New Block 0 data must be 0xAA");
+
+            // Read old sector s0 at offset 2048 to PROVE it was untouched (CoW preservation!)
+            let mut old_buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((s0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut old_buf).unwrap();
+            assert!(old_buf.iter().all(|&b| b == 0x11), "Original parent block 0 sector at offset 2048 MUST BE UNTOUCHED 0x11!");
+        }
+
+        // 3. Perform Restore / Revert Snapshot
+        let restore_res = restore_backup_by_index(&parent_path, 1).unwrap();
+        assert_eq!(restore_res, backup_meta_path);
+
+        // 4. Verify parent state after restore:
+        // - Parent file size MUST be exactly restored to parent_initial_size
+        // - Parent BAT[0] MUST point back to s0
+        // - Parent Block 0 MUST contain 0x11 (0xAA / File A is 100% GONE!)
+        // - Parent Block 2 MUST be back to 0xFFFFFFFF
+        // - VHD signature and header MUST be valid
+        {
+            let meta = std::fs::metadata(&parent_path).unwrap();
+            assert_eq!(meta.len(), parent_initial_size, "Restored file length must match parent_initial_size exactly!");
+
+            let p_file = File::open(&parent_path).unwrap();
+            let mut p_vhd = VhdBackend::open(p_file).unwrap();
+            assert_eq!(p_vhd.bat[0], s0);
+            assert_eq!(p_vhd.bat[1], s1);
+            assert_eq!(p_vhd.bat[2], 0xFFFFFFFF);
+            assert_eq!(p_vhd.bat[3], 0xFFFFFFFF);
+
+            let mut buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((s0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut buf).unwrap();
+            assert!(buf.iter().all(|&b| b == 0x11), "Block 0 MUST be 0x11 after restore, File A is completely wiped!");
+        }
+
+        // Cleanup temp dir
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_multilevel_snapshot_rollback() {
+        let temp_dir = std::env::temp_dir().join(format!("vhd_multilevel_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let parent_path = temp_dir.join("master.vhd").to_string_lossy().to_string();
+        let child_path = temp_dir.join("child.vhd").to_string_lossy().to_string();
+
+        let block_size = 65536u32;
+        let s0 = 4u32;
+        let parent_bat = vec![s0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF];
+
+        // Base VHD: Block 0 = 0x10
+        let s0_size = create_test_vhd(
+            &parent_path,
+            3,
+            block_size,
+            &parent_bat,
+            &[(0, 0x10)],
+        ).unwrap();
+
+        // --- Commit 1 (Chrome update): modifies Block 0 to 0x20 ---
+        create_test_vhd(&child_path, 4, block_size, &[s0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF], &[(0, 0x20)]).unwrap();
+        backup_before_merge(&parent_path, &child_path).unwrap(); // backup1
+        merge_vhd_sync(&child_path, &parent_path).unwrap();
+        let s1_size = std::fs::metadata(&parent_path).unwrap().len();
+
+        // --- Commit 2 (Steam update): modifies Block 0 to 0x30 ---
+        create_test_vhd(&child_path, 4, block_size, &[s0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF], &[(0, 0x30)]).unwrap();
+        backup_before_merge(&parent_path, &child_path).unwrap(); // backup2
+        merge_vhd_sync(&child_path, &parent_path).unwrap();
+        let s2_size = std::fs::metadata(&parent_path).unwrap().len();
+
+        // --- Commit 3 (File A error): modifies Block 0 to 0x40 ---
+        create_test_vhd(&child_path, 4, block_size, &[s0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF], &[(0, 0x40)]).unwrap();
+        backup_before_merge(&parent_path, &child_path).unwrap(); // backup3
+        merge_vhd_sync(&child_path, &parent_path).unwrap();
+        let s3_size = std::fs::metadata(&parent_path).unwrap().len();
+        assert!(s3_size > s2_size, "Commit 3 must increase file size due to append-only CoW");
+
+        // Check we have 3 backups available
+        let backups = list_backups(&parent_path).unwrap();
+        assert_eq!(backups.len(), 3);
+        assert_eq!(backups[0].0, 1);
+        assert_eq!(backups[1].0, 2);
+        assert_eq!(backups[2].0, 3);
+
+        // 1. Revert to Backup 3 (Rollback Commit 3 / File A -> Leaves disk at Commit 2 / Steam)
+        restore_backup_by_index(&parent_path, 3).unwrap();
+        assert_eq!(std::fs::metadata(&parent_path).unwrap().len(), s2_size);
+        {
+            let p_file = File::open(&parent_path).unwrap();
+            let mut p_vhd = VhdBackend::open(p_file).unwrap();
+            let bat0 = p_vhd.bat[0];
+            let mut buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((bat0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut buf).unwrap();
+            assert!(buf.iter().all(|&b| b == 0x30), "Disk is back at Commit 2 (0x30)");
+        }
+        let remaining_backups = list_backups(&parent_path).unwrap();
+        assert_eq!(remaining_backups.len(), 2, "Backup 3 should be cleaned, 1 and 2 remain");
+
+        // 2. Revert to Backup 2 (Rollback Commit 2 / Steam -> Leaves disk at Commit 1 / Chrome)
+        restore_backup_by_index(&parent_path, 2).unwrap();
+        assert_eq!(std::fs::metadata(&parent_path).unwrap().len(), s1_size);
+        {
+            let p_file = File::open(&parent_path).unwrap();
+            let mut p_vhd = VhdBackend::open(p_file).unwrap();
+            let bat0 = p_vhd.bat[0];
+            let mut buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((bat0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut buf).unwrap();
+            assert!(buf.iter().all(|&b| b == 0x20), "Disk is back at Commit 1 (0x20)");
+        }
+
+        // 3. Revert to Backup 1 (Rollback Commit 1 / Chrome -> Leaves disk at Base 0x10)
+        restore_backup_by_index(&parent_path, 1).unwrap();
+        assert_eq!(std::fs::metadata(&parent_path).unwrap().len(), s0_size);
+        {
+            let p_file = File::open(&parent_path).unwrap();
+            let mut p_vhd = VhdBackend::open(p_file).unwrap();
+            let bat0 = p_vhd.bat[0];
+            let mut buf = vec![0u8; block_size as usize];
+            p_vhd.file.seek(SeekFrom::Start((bat0 as u64 + 1) * 512)).unwrap();
+            p_vhd.file.read_exact(&mut buf).unwrap();
+            assert!(buf.iter().all(|&b| b == 0x10), "Disk is back at original Base (0x10)");
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}
+

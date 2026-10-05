@@ -7,7 +7,7 @@ cd /d "%~dp0"
 net session >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [!] Meminta hak akses Administrator via UAC...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/k cd /d \"%~dp0\" && \"%~nx0\"' -Verb RunAs"
     exit /b
 )
 
@@ -85,15 +85,30 @@ if %ERRORLEVEL% equ 0 (
     echo       [+] Startup Run Key SimpleIscsiHelper berhasil didaftarkan.
 )
 
+:: 5. Konfigurasi Parameter iScsiPrt & msiscsi (WaitForNetworkAtBoot & Fast-Boot Delay)
+echo [5/5] Mengonfigurasi parameter iScsiPrt (Fast Boot Tuning)...
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "WaitForNetworkAtBoot" /t REG_DWORD /d 1 /f >nul
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "DelayForNetworkAtBoot" /t REG_DWORD /d 5 /f >nul
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "LinkDownTime" /t REG_DWORD /d 60 /f >nul
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "MaxRequestHoldTime" /t REG_DWORD /d 60 /f >nul
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\msiscsi\Parameters" /v "LinkDownTime" /t REG_DWORD /d 60 /f >nul
+if %ERRORLEVEL% equ 0 (
+    echo       [+] Parameter iScsiPrt WaitForNetworkAtBoot=1 dan DelayForNetworkAtBoot=5 berhasil dipasang.
+)
+
 echo ===================================================
 echo   [+] Instalasi Selesai!
 echo   Client diskless telah dikonfigurasi dengan:
 echo     1. Stage 1: BootExecute Native Helper
 echo     2. Stage 2: User-Mode IP Purge Companion
+echo     3. Fast-Boot: iScsiPrt WaitForNetworkAtBoot Tuning
 echo.
 echo   Saat client boot, hostname dan IP akan murni
-echo   mengikuti DHCP tanpa sisa static IP super client.
+echo   mengikuti DHCP tanpa sisa static IP super client,
+echo   serta booting berlangsung cepat dan stabil!
 echo ===================================================
+
 if "%1" neq "nopause" (
     pause
 )
+
