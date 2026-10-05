@@ -7,7 +7,7 @@ cd /d "%~dp0"
 net session >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [!] Meminta hak akses Administrator via UAC...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/k cd /d \"%~dp0\" && \"%~nx0\"' -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
 
@@ -56,7 +56,7 @@ if exist "helper-svc.exe" (
     exit /b 1
 )
 
-:: 3. Daftarkan helper.exe ke BootExecute (Stage 1) secara aman via PowerShell
+:: 3. Daftarkan helper.exe ke BootExecute (Stage 1)
 echo [3/5] Mendaftarkan helper.exe ke BootExecute...
 powershell -NoProfile -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'BootExecute' -Value @('autocheck autochk *', 'helper.exe')" >nul 2>&1
 if %ERRORLEVEL% equ 0 (
@@ -97,6 +97,7 @@ if %ERRORLEVEL% equ 0 (
     echo       [+] Parameter iScsiPrt WaitForNetworkAtBoot=1 dan DelayForNetworkAtBoot=5 berhasil dipasang.
 )
 
+echo.
 echo ===================================================
 echo   [+] Instalasi Selesai!
 echo   Client diskless telah dikonfigurasi dengan:
@@ -107,7 +108,6 @@ echo.
 echo   Saat client boot, hostname dan IP akan disinkronkan
 echo   mengikuti DHCP/iBFT secara mulus dan aman!
 echo ===================================================
+echo.
 
-if "%1" neq "nopause" (
-    pause
-)
+pause
