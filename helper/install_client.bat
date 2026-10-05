@@ -5,9 +5,9 @@ cd /d "%~dp0"
 
 :: Validasi hak akses Administrator
 net session >nul 2>&1
-if %ERRORLEVEL% neq 0 (
+if !ERRORLEVEL! neq 0 (
     echo [!] Meminta hak akses Administrator via UAC...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/k \"\"%~f0\"\"' -Verb RunAs"
     exit /b
 )
 
@@ -56,24 +56,23 @@ if exist "helper-svc.exe" (
     exit /b 1
 )
 
-:: 3. Daftarkan helper.exe ke BootExecute (Stage 1)
+:: 3. Daftarkan helper.exe ke BootExecute (Stage 1) murni via reg.exe (/s ",")
 echo [3/5] Mendaftarkan helper.exe ke BootExecute...
-powershell -NoProfile -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'BootExecute' -Value @('autocheck autochk *', 'helper.exe')" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v BootExecute /t REG_MULTI_SZ /s "," /d "autocheck autochk *,helper.exe" /f >nul
+if !ERRORLEVEL! equ 0 (
     echo       [+] helper.exe berhasil didaftarkan di BootExecute.
 ) else (
-    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v BootExecute /t REG_MULTI_SZ /s "," /d "autocheck autochk *,helper.exe" /f >nul
-    echo       [+] helper.exe didaftarkan di BootExecute (via reg fallback).
+    echo       [!] Gagal mendaftarkan helper.exe di BootExecute!
 )
 
 :: 4. Daftarkan helper-svc.exe sebagai Windows Service dan Startup Run Key (Stage 2)
 echo [4/5] Mendaftarkan helper-svc.exe sebagai Service dan Startup...
 sc query SimpleIscsiHelper >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    sc config SimpleIscsiHelper binPath= "%SystemRoot%\System32\helper-svc.exe" start= auto DisplayName= "Simple-Iscsi Network Alignment Helper" >nul
+if !ERRORLEVEL! equ 0 (
+    sc config SimpleIscsiHelper binPath= "\"%SystemRoot%\System32\helper-svc.exe\"" start= auto DisplayName= "Simple-Iscsi Network Alignment Helper" >nul
     echo       [+] Windows Service SimpleIscsiHelper dikonfigurasi ulang - Start Auto.
 ) else (
-    sc create SimpleIscsiHelper binPath= "%SystemRoot%\System32\helper-svc.exe" start= auto DisplayName= "Simple-Iscsi Network Alignment Helper" >nul
+    sc create SimpleIscsiHelper binPath= "\"%SystemRoot%\System32\helper-svc.exe\"" start= auto DisplayName= "Simple-Iscsi Network Alignment Helper" >nul
     if !ERRORLEVEL! equ 0 (
         echo       [+] Windows Service SimpleIscsiHelper berhasil dibuat - Start Auto.
     ) else (
@@ -81,8 +80,8 @@ if %ERRORLEVEL% equ 0 (
     )
 )
 
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "SimpleIscsiHelper" /t REG_SZ /d "%SystemRoot%\System32\helper-svc.exe /run" /f >nul
-if %ERRORLEVEL% equ 0 (
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "SimpleIscsiHelper" /t REG_SZ /d "\"%SystemRoot%\System32\helper-svc.exe\" /run" /f >nul
+if !ERRORLEVEL! equ 0 (
     echo       [+] Startup Run Key SimpleIscsiHelper berhasil didaftarkan.
 )
 
@@ -93,7 +92,7 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "DelayFo
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "LinkDownTime" /t REG_DWORD /d 60 /f >nul
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters" /v "MaxRequestHoldTime" /t REG_DWORD /d 60 /f >nul
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\msiscsi\Parameters" /v "LinkDownTime" /t REG_DWORD /d 60 /f >nul
-if %ERRORLEVEL% equ 0 (
+if !ERRORLEVEL! equ 0 (
     echo       [+] Parameter iScsiPrt WaitForNetworkAtBoot=1 dan DelayForNetworkAtBoot=5 berhasil dipasang.
 )
 
