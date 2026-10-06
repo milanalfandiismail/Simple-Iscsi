@@ -1154,16 +1154,16 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 - **Tujuan:** Memenuhi kewajiban lisensi open-source pihak ketiga untuk file binary bootloader jaringan (`ipxe.efi`, `ipxe-full.efi`, `ipxe-shim.efi`, `uefi`) yang disertakan dalam folder `pxe/`, serta mendokumentasikan pemisahan lisensi antara Simple-Iscsi (MIT) dan iPXE (GPLv2).
 - **Modul Terdampak:**
   - `pxe/COPYING.GPLv2` (Baru: teks resmi GNU GPL v2)
-  - `pxe/LICENSE.md` (Baru: atribusi hak cipta, instruksi ketersediaan kode sumber iPXE, dan klausul *mere aggregation*)
-  - `README.md` (Pembaruan seksi lisensi & komponen pihak ketiga)
+  - `pxe/LICENSE.md` (Baru: atribusi hak cipta ringkas tanpa info kontak pribadi, tautan repository resmi, dan klausul *mere aggregation*)
+  - `README.md` (Penyederhanaan seksi lisensi menjadi 2 baris ringkas merujuk folder `pxe/`)
   - `DOCUMENTATION.md` (Penambahan BAB 15: Lisensi & Atribusi Komponen Pihak Ketiga)
   - `ANTIGRAVITY.md`
 - **Rincian Implementasi:**
-  1. **Audit Lisensi iPXE:** Menetapkan bahwa iPXE berlisensi GNU GPL v2. Sesuai Bagian 3 GPLv2, distribusi binary wajib menyertakan salinan lisensi GPLv2 dan tautan/penawaran akses kode sumber (`https://github.com/ipxe/ipxe`).
-  2. **Audit Lisensi Shim:** Binary `ipxe-shim.efi` (rhboot/shim) berlisensi BSD-2-Clause, mewajibkan penulisan ulang hak cipta Red Hat dan disclaimer.
+  1. **Audit Lisensi iPXE:** Menetapkan bahwa iPXE berlisensi GNU GPL v2. Sesuai Bagian 3 GPLv2, distribusi binary wajib menyertakan salinan lisensi GPLv2 dan tautan ke sumber resmi (`https://github.com/ipxe/ipxe`). Tidak diwajibkan mencantumkan email pribadi pemegang hak cipta.
+  2. **Audit Lisensi Shim:** Binary `ipxe-shim.efi` (rhboot/shim) berlisensi BSD-2-Clause, diatribusikan ke Red Hat, Inc. & kontributor secara ringkas.
   3. **Klausul *Mere Aggregation* (GPLv2 Bagian 2):** Menegaskan bahwa daemon server Simple-Iscsi (Rust) dan helper client (C++) berkomunikasi dengan iPXE murni via protokol jaringan standar (DHCP, TFTP, iSCSI) tanpa library linking, sehingga kode sumber Simple-Iscsi tetap 100% berlisensi MIT.
 - **Hasil & Verifikasi:**
-  - File lisensi GPLv2 dan atribusi BSD-2-Clause lengkap di direktori `pxe/`.
+  - File lisensi GPLv2 dan atribusi BSD-2-Clause lengkap, bersih, dan ringkas di direktori `pxe/`.
   - Dokumentasi proyek tersinkronisasi.
 
 ---
