@@ -864,8 +864,8 @@ Simple-Iscsi menyertakan beberapa file binary bootloader jaringan yang telah dik
 Server Simple-Iscsi (Rust) bertindak sebagai penyedia layanan independen (DHCP, TFTP, dan iSCSI target daemon). Binary bootloader `ipxe.efi` dieksekusi di sisi klien firmware UEFI dan hanya berinteraksi dengan server Simple-Iscsi melalui protokol jaringan standar tanpa melakukan linking pustaka langsung. Sesuai dengan Bagian 2 Lisensi GNU GPL v2, distribusi ini berstatus **agregasi murni (*mere aggregation*)**, sehingga lisensi basis kode utama Simple-Iscsi tetap murni di bawah **MIT License**.
 
 Teks lisensi lengkap dan panduan kompilasi kode sumber iPXE dapat dilihat pada:
-- [`pxe/COPYING.GPLv2`](file:///c:/Project%20GIT/Simple-Iscsi/pxe/COPYING.GPLv2)
-- [`pxe/LICENSE.md`](file:///c:/Project%20GIT/Simple-Iscsi/pxe/LICENSE.md)
+- [`pxe/COPYING.GPLv2`](pxe/COPYING.GPLv2)
+- [`pxe/LICENSE.md`](pxe/LICENSE.md)
 
 ---
 *Dokumentasi ini disusun secara komprehensif berdasarkan basis kode resmi Simple-Iscsi (Rust & C++) untuk referensi pengembangan dan operasional.*

@@ -1,5 +1,9 @@
 # Simple iSCSI Target Server 🚀
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Language: Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-lightgrey.svg)](https://microsoft.com)
+
 Target Server iSCSI & Infrastruktur Network Booting (PXE/DHCP/iPXE) modern berbasis **Rust** untuk sistem diskless (*diskless gaming client* & Windows SANBOOT OS). 
 
 Mendukung kecepatan transfer hingga **900+ Mbps (~112 MB/s)** pada jaringan kabel LAN Gigabit (1 Gbps) standar melalui emulasi SCSI SPC-4/SBC-3 (Tagged Command Queuing / Queue Depth 32–64), dual-layer RAM/Disk writeback cache 128 MB, dan ACPI iBFT driverless auto-configuration.
@@ -8,7 +12,7 @@ Mendukung kecepatan transfer hingga **900+ Mbps (~112 MB/s)** pada jaringan kabe
 
 > 📖 **Dokumentasi Lengkap Protokol & Arsitektur (All-in-One):**  
 > Seluruh spesifikasi mendalam mengenai format DHCP Option (17, 168, 169, 170), protokol iSCSI RFC 7143 (BHS 48-byte, OpCodes, Seq Numbers), SCSI Layer (INQUIRY, VPD 0xB0, Multi-LUN), Writeback Engine, dan ACPI iBFT Helper terdokumentasi secara utuh di:  
-> 👉 [**`DOCUMENTATION.md`**](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md)
+> 👉 [**`DOCUMENTATION.md`**](DOCUMENTATION.md)
 ---
 
 ## ✨ Fitur Utama
@@ -151,7 +155,8 @@ cargo test
 
 ## 📄 Lisensi
 
-- **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](file:///c:/Project%20GIT/Simple-Iscsi/LICENSE) © 2026 **Milan Alfandi Ismail**.
-- **Komponen Bootloader (`pxe/`):** Berisi binary pihak ketiga [iPXE](https://github.com/ipxe/ipxe) (GPLv2) dan [Shim](https://github.com/rhboot/shim) (BSD-2-Clause). Rincian lisensi lengkap lihat [**`pxe/LICENSE.md`**](file:///c:/Project%20GIT/Simple-Iscsi/pxe/LICENSE.md).
+- **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](LICENSE) © 2026 **Milan Alfandi Ismail**. Ketentuan lisensi lengkap dapat dilihat pada file [**`LICENSE`**](LICENSE).
+- **Komponen Bootloader (`pxe/`):** Berisi binary pihak ketiga [iPXE](https://github.com/ipxe/ipxe) (GPLv2) dan [Shim](https://github.com/rhboot/shim) (BSD-2-Clause). Rincian lisensi lengkap lihat [**`pxe/LICENSE.md`**](pxe/LICENSE.md).
+
 
 
