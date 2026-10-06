@@ -550,3 +550,27 @@ fn get_windows_drive_size(file: &std::fs::File) -> std::io::Result<u64> {
         Err(std::io::Error::last_os_error())
     }
 }
+
+#[cfg(test)]
+impl Backend {
+    pub fn new_dummy(vendor: &str, product: &str, rev: &str) -> Self {
+        let tmp_path = format!("{}/dummy_test_{}.tmp", std::env::temp_dir().display(), uuid::Uuid::new_v4());
+        let file = std::fs::File::options().read(true).write(true).create(true).open(&tmp_path).expect("failed to create temp file");
+        let inner = BackendInner {
+            backend: BackendType::RawDisk(file),
+        };
+        Backend {
+            inner: Arc::new(RwLock::new(inner)),
+            block_size: 512,
+            total_size: 1024 * 1024,
+            total_blocks: 2048,
+            vendor_id: vendor.to_string(),
+            product_id: product.to_string(),
+            product_revision: rev.to_string(),
+            read_cache: None,
+            io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
+        }
+    }
+}
+
+

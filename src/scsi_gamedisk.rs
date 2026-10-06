@@ -259,12 +259,57 @@ mod tests {
 
     #[test]
     fn test_inquiry_standard_and_vpd_b0() {
-        // Backend dummy struct for inquiry
-        // EVPD Page 0xB0 test
+        let backend = Backend::new_dummy("RUSTISCS", "WindowsBoot", "1.00");
+
+        // Standard Inquiry test
+        let cdb_std = [0x12, 0x00, 0x00, 0x00, 36, 0x00];
+        let res_std = handle_inquiry(&cdb_std, &backend, 0);
+        match res_std {
+            ScsiResult::Data { data, status } => {
+                assert_eq!(status, 0x00);
+                assert_eq!(data.len(), 36);
+                assert_eq!(data[2], 0x06); // SPC-4
+                assert_eq!(data[7] & 0x02, 0x02); // CmdQue = 1
+                assert_eq!(&data[8..16], b"RUSTISCS");
+                assert_eq!(&data[16..32], b"WindowsBoot     ");
+                assert_eq!(&data[32..36], b"1.00");
+            }
+            _ => panic!("Expected ScsiResult::Data"),
+        }
+
+        // EVPD Page 0xB0 test (Block Limits)
         let cdb_b0 = [0x12, 0x01, 0xB0, 0x00, 64, 0x00];
-        // We can create a dummy Backend using a temp file if needed or test handle_inquiry directly
-        // Test standard inquiry byte 7 bit 1 (CmdQue)
+        let res_b0 = handle_inquiry(&cdb_b0, &backend, 0);
+        match res_b0 {
+            ScsiResult::Data { data, status } => {
+                assert_eq!(status, 0x00);
+                assert_eq!(data[1], 0xB0);
+            }
+            _ => panic!("Expected ScsiResult::Data for VPD 0xB0"),
+        }
+    }
+
+    #[test]
+    fn test_inquiry_custom_vendor_and_product_branding() {
+        let backend = Backend::new_dummy("SAMSUNG", "980 PRO NVMe", "2.00");
+
+        let cdb_std = [0x12, 0x00, 0x00, 0x00, 36, 0x00];
+        let res = handle_inquiry(&cdb_std, &backend, 0);
+        match res {
+            ScsiResult::Data { data, status } => {
+                assert_eq!(status, 0x00);
+                assert_eq!(data.len(), 36);
+                // Vendor bytes 8..16 (8 bytes, padded with spaces)
+                assert_eq!(&data[8..16], b"SAMSUNG ");
+                // Product bytes 16..32 (16 bytes, padded with spaces)
+                assert_eq!(&data[16..32], b"980 PRO NVMe    ");
+                // Revision bytes 32..36 (4 bytes)
+                assert_eq!(&data[32..36], b"2.00");
+            }
+            _ => panic!("Expected ScsiResult::Data"),
+        }
     }
 }
+
 
 
