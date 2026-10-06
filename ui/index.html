@@ -148,16 +148,24 @@
                         <h2 class="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50">Daftar Penggunaan I/O Klien</h2>
                         <span class="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">Live Monitoring</span>
                     </div>
-                    <div class="w-full overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-left text-[11px] lg:text-[10px] xl:text-xs 2xl:text-sm border-collapse">
+                    <div class="w-full overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
+                        <table class="w-full text-left text-xs lg:text-[11px] xl:text-xs border-collapse table-auto lg:table-fixed">
+                            <colgroup>
+                                <col class="w-[28%] sm:w-[26%] lg:w-[22%] xl:w-[20%]">
+                                <col class="w-[28%] sm:w-[26%] lg:w-[23%] xl:w-[22%]">
+                                <col class="w-[24%] sm:w-[22%] lg:w-[19%] xl:w-[20%]">
+                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
+                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
+                                <col class="w-auto lg:w-[12%] xl:w-[12%]">
+                            </colgroup>
                             <thead>
                                 <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Klien & Status</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Jaringan</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Image & PXE</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Read I/O</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Write I/O</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Klien & Status</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Jaringan</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Image & PXE</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Read I/O</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Write I/O</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="dashboard-clients-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
@@ -185,16 +193,24 @@
                 </header>
 
                 <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <div class="w-full overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-left text-[11px] lg:text-[10px] xl:text-xs 2xl:text-sm border-collapse">
+                    <div class="w-full overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
+                        <table class="w-full text-left text-xs lg:text-[11px] xl:text-xs border-collapse table-auto lg:table-fixed">
+                            <colgroup>
+                                <col class="w-[28%] sm:w-[26%] lg:w-[22%] xl:w-[20%]">
+                                <col class="w-[28%] sm:w-[26%] lg:w-[23%] xl:w-[22%]">
+                                <col class="w-[24%] sm:w-[22%] lg:w-[19%] xl:w-[20%]">
+                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
+                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
+                                <col class="w-auto lg:w-[12%] xl:w-[12%]">
+                            </colgroup>
                             <thead>
                                 <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Klien & Status</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Jaringan</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Image & PXE</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Read I/O</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Write I/O</th>
-                                    <th class="py-2.5 px-3 text-[10.5px] lg:text-[9.5px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Uptime</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Klien & Status</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Jaringan</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Image & PXE</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Read I/O</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Write I/O</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="clients-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
@@ -218,13 +234,18 @@
                 </header>
 
                 <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <div class="overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse">
+                    <div class="w-full overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
+                        <table class="w-full text-left text-xs sm:text-sm border-collapse table-auto lg:table-fixed">
+                            <colgroup>
+                                <col class="w-[46%] sm:w-[50%] lg:w-[48%] xl:w-[52%]">
+                                <col class="w-[26%] sm:w-[24%] lg:w-[24%] xl:w-[24%]">
+                                <col class="w-[28%] sm:w-[26%] lg:w-[28%] xl:w-[24%] text-right">
+                            </colgroup>
                             <thead>
                                 <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Image Key & VHD Path</th>
-                                    <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Snapshot Backups</th>
-                                    <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap text-right">Aksi</th>
+                                    <th class="py-2.5 px-3 sm:px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Image Key & VHD Path</th>
+                                    <th class="py-2.5 px-3 sm:px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Snapshot Backups</th>
+                                    <th class="py-2.5 px-3 sm:px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 text-right">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody id="vhds-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
@@ -249,20 +270,106 @@
                     <!-- Disk cards loaded dynamically here -->
                 </div>
 
-                <!-- Global Storage Parameters Card -->
-                <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <h2 class="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">Global Storage Parameters</h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                <!-- Storage Parameters & SCSI Disk Identity 2-Column Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2 gap-4 mb-5 sm:mb-6">
+                    <!-- Card 1: Global Storage Parameters -->
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
                         <div>
-                            <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Max Cache Size Per Client (GB)</label>
-                            <input type="number" id="disk-max-cache-gb" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
+                            <div class="flex items-center gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+                                <span class="text-base">⚡</span>
+                                <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">Global Storage Parameters</h2>
+                            </div>
+                            <div class="space-y-3.5 text-xs sm:text-sm mb-5">
+                                <div>
+                                    <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Max Cache Size Per Client (GB)</label>
+                                    <input type="number" id="disk-max-cache-gb" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
+                                    <p class="text-[10.5px] text-zinc-500 dark:text-zinc-400 mt-1 leading-normal">Batas maksimal memori RAM/Disk untuk cache writeback per klien.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Max Write Speed Throttle (MB/s)</label>
+                                    <input type="number" id="disk-throttle-mb" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
+                                    <p class="text-[10.5px] text-zinc-500 dark:text-zinc-400 mt-1 leading-normal">Batas kecepatan tulis iSCSI agar tidak membanjiri I/O server.</p>
+                                </div>
+                            </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Max Write Speed Throttle (MB/s)</label>
-                            <input type="number" id="disk-throttle-mb" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
+                            <button type="button" class="btn-primary w-full sm:w-auto px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveGlobalStorageParams()">💾 Simpan Parameter Storage</button>
                         </div>
                     </div>
-                    <button class="btn-primary px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveGlobalStorageParams()">💾 Simpan Parameter Storage</button>
+
+                    <!-- Card 2: Identitas & Vendor SCSI Disk -->
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
+                        <div>
+                            <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-3.5">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-base">🏷️</span>
+                                    <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">Identitas & Vendor SCSI Disk</h2>
+                                </div>
+                                <span class="text-[10.5px] text-zinc-400 dark:text-zinc-500 font-mono">SPC-4 Inquiry</span>
+                            </div>
+
+                            <!-- Preset Quick Buttons -->
+                            <div class="flex flex-wrap items-center gap-1.5 mb-3.5">
+                                <span class="text-[11px] text-zinc-500 dark:text-zinc-400 mr-1">Preset:</span>
+                                <button type="button" class="btn-secondary px-2 py-0.5 text-[10.5px] font-medium cursor-pointer" onclick="applyDiskBrandingPreset('hypernvme')">HyperNVMe</button>
+                                <button type="button" class="btn-secondary px-2 py-0.5 text-[10.5px] font-medium cursor-pointer" onclick="applyDiskBrandingPreset('quantum')">Quantum</button>
+                                <button type="button" class="btn-secondary px-2 py-0.5 text-[10.5px] font-medium cursor-pointer" onclick="applyDiskBrandingPreset('apex')">ApexPulse</button>
+                                <button type="button" class="btn-secondary px-2 py-0.5 text-[10.5px] font-medium cursor-pointer" onclick="applyDiskBrandingPreset('genesis')">Genesis</button>
+                                <button type="button" class="btn-secondary px-2 py-0.5 text-[10.5px] font-medium cursor-pointer" onclick="applyDiskBrandingPreset('stealth')">Stealth</button>
+                                <button type="button" class="btn-secondary px-2 py-0.5 text-[10.5px] font-medium cursor-pointer text-zinc-400" onclick="applyDiskBrandingPreset('default')">Reset</button>
+                            </div>
+
+                            <!-- Form Inputs -->
+                            <div class="space-y-3 text-xs mb-3.5">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[10.5px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Vendor OS Disk (Maks 8)</label>
+                                        <input type="text" id="disk-vendor-os" maxlength="8" placeholder="GENESIS" oninput="updateDiskBrandingPreview()" class="w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono uppercase focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10.5px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Model OS Disk (Maks 16)</label>
+                                        <input type="text" id="disk-product-os" maxlength="16" placeholder="NVMe Boot Master" oninput="updateDiskBrandingPreview()" class="w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[10.5px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Vendor GameDisk (Maks 8)</label>
+                                        <input type="text" id="disk-vendor-game" maxlength="8" placeholder="HYPERVMD" oninput="updateDiskBrandingPreview()" class="w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono uppercase focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10.5px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Model GameDisk (Maks 16)</label>
+                                        <input type="text" id="disk-product-game" maxlength="16" placeholder="GameVault Pro" oninput="updateDiskBrandingPreview()" class="w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[10.5px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Firmware Revision (Maks 4)</label>
+                                    <input type="text" id="disk-revision-common" maxlength="4" placeholder="1.00" class="w-24 px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600">
+                                </div>
+                            </div>
+
+                            <!-- Live Windows Simulation Preview Box -->
+                            <div class="rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-950/60 p-2.5 mb-4 space-y-1.5">
+                                <div class="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                                    <span>🖥️</span>
+                                    <span>Simulasi Nama Disk di Device Manager Windows:</span>
+                                </div>
+                                <div class="text-[11px] font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900 px-2 py-1 rounded border border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between">
+                                    <span class="text-zinc-400 text-[10px] shrink-0">Boot Disk:</span>
+                                    <span id="preview-os-disk-text" class="font-semibold text-emerald-600 dark:text-emerald-400 truncate ml-2">GENESIS Virtual Boot SCSI Disk Device</span>
+                                </div>
+                                <div class="text-[11px] font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900 px-2 py-1 rounded border border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between">
+                                    <span class="text-zinc-400 text-[10px] shrink-0">GameDisk:</span>
+                                    <span id="preview-game-disk-text" class="font-semibold text-sky-600 dark:text-sky-400 truncate ml-2">HYPERVMD GameVault Pro SCSI Disk Device</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <button type="button" class="btn-primary w-full sm:w-auto px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveDiskBrandingAction()">💾 Simpan Identitas Disk</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Active Writeback Files Manager Card -->
@@ -304,7 +411,7 @@
                     </div>
                 </header>
 
-                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 mb-5 sm:mb-6">
+                <form id="settings-form" onsubmit="saveConfigJson(event)" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2 gap-4 mb-5 sm:mb-6">
                     <!-- CARD 1: Server & iSCSI Daemon -->
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
                         <div>
@@ -399,7 +506,7 @@
                     </div>
 
                     <!-- CARD 3: TFTP Service & Boot Files -->
-                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs sm:col-span-2 lg:col-span-2 xl:col-span-1">
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
                         <div>
                             <div class="flex items-center gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
                                 <span class="text-base">📂</span>
@@ -417,38 +524,39 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- CARD 4: TFTP Bootloader Folders Manager -->
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
+                        <div>
+                            <div class="flex items-center justify-between gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-base">📁</span>
+                                    <div>
+                                        <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">TFTP Folders Manager</h2>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-primary inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium shadow-2xs whitespace-nowrap shrink-0 cursor-pointer" onclick="createNewTftpFolderPrompt()">➕ Tambah</button>
+                            </div>
+                            <div class="overflow-x-auto max-h-52 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+                                <table class="w-full text-left text-xs sm:text-sm border-collapse">
+                                    <thead>
+                                        <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
+                                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Nama Folder</th>
+                                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap text-right">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tftp-folders-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
+                                        <tr>
+                                            <td colspan="2" class="py-6 px-5 text-center text-zinc-500 dark:text-zinc-400">Memuat folder TFTP...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </form>
 
                 <datalist id="network-ips-datalist"></datalist>
-
-                <!-- TFTP FOLDERS CRUD CARD -->
-                <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
-                        <div class="flex items-center gap-2">
-                            <span class="text-base">📁</span>
-                            <div>
-                                <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">TFTP Bootloader Folders Manager</h2>
-                                <p class="text-[10.5px] text-zinc-500 dark:text-zinc-400 mt-0.5">Folder di dalam root TFTP (untuk pemilahan config boot loader klien).</p>
-                            </div>
-                        </div>
-                        <button class="btn-primary inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium shadow-2xs whitespace-nowrap shrink-0 cursor-pointer" onclick="createNewTftpFolderPrompt()">➕ Tambah Folder Boot</button>
-                    </div>
-                    <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse">
-                            <thead>
-                                <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Nama Folder</th>
-                                    <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap text-right">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tftp-folders-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                                <tr>
-                                    <td colspan="2" class="py-6 px-5 text-center text-zinc-500 dark:text-zinc-400">Memuat folder TFTP...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </section>
         </main>
     </div>

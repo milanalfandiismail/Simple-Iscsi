@@ -133,9 +133,14 @@ pub fn start_config_watcher(
                             let lun_id = i as u8;
                             let mut reused = false;
                             
-                            // Cek apakah konfigurasi disk ini persis sama dengan yang lama
+                            // Cek apakah konfigurasi disk ini persis sama dengan yang lama (termasuk vendor/product)
                             for (old_i, old_gd_cfg) in old_config.gamedisk.iter().enumerate() {
-                                if old_i as u8 == lun_id && old_gd_cfg.physical_disk == gd_cfg.physical_disk {
+                                if old_i as u8 == lun_id 
+                                    && old_gd_cfg.physical_disk == gd_cfg.physical_disk
+                                    && old_gd_cfg.vendor_id == gd_cfg.vendor_id
+                                    && old_gd_cfg.product_id == gd_cfg.product_id
+                                    && old_gd_cfg.product_revision == gd_cfg.product_revision
+                                {
                                     if let Some(b) = backends_map.get(&lun_id) {
                                         new_map.insert(lun_id, Arc::clone(b));
                                         reused = true;

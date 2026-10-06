@@ -609,36 +609,36 @@ function renderDashboardClientsTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/80 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="flex items-center gap-1.5 min-w-0">
                     ${statusSpan}
-                    <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">${c.hostname || c.ip}</span>
+                    <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs truncate max-w-[90px] sm:max-w-[130px] lg:max-w-[100px] xl:max-w-[140px]" title="${c.hostname || c.ip}">${c.hostname || c.ip}</span>
                     ${superBadge}${dynamicBadge}
                 </div>
-                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
+                <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate" title="${c.ip}${c.mac ? ' • ' + c.mac : ''}">${c.ip}<span class="hidden 2xl:inline">${c.mac ? ' • ' + c.mac : ''}</span></div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="text-xs text-zinc-700 dark:text-zinc-300 font-mono whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-zinc-300 dark:text-zinc-700 mx-0.5">•</span> <span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="text-[11px] text-zinc-700 dark:text-zinc-300 font-mono truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">GW:</span> ${c.gateway || '-'}</div>
+                <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">DNS:</span> ${c.dns || '-'} <span class="text-zinc-300 dark:text-zinc-700 mx-0.5">•</span> <span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1 flex-nowrap whitespace-nowrap">
-                    <span class="text-zinc-400 text-xs">💿</span>
-                    <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5 font-mono text-[11px] text-zinc-900 dark:text-zinc-100 truncate max-w-[130px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1 min-w-0">
+                    <span class="text-zinc-400 text-xs shrink-0">💿</span>
+                    <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1 py-0.5 font-mono text-[10.5px] text-zinc-900 dark:text-zinc-100 truncate max-w-[90px] lg:max-w-[95px] xl:max-w-[130px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
                 </div>
-                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="client-read-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="client-read-total text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[10.5px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 truncate">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="client-write-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="client-write-total text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[10.5px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 truncate">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
-                <div class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'} truncate">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-0.5 truncate">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
 
@@ -691,36 +691,36 @@ function renderClientsManagerTable() {
         row.setAttribute('data-ip', c.ip);
         row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/80 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="flex items-center gap-1.5 min-w-0">
                     ${statusSpan}
-                    <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">${c.hostname || 'PC'}</span>
+                    <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs truncate max-w-[90px] sm:max-w-[130px] lg:max-w-[100px] xl:max-w-[140px]" title="${c.hostname || 'PC'}">${c.hostname || 'PC'}</span>
                     ${superBadge}
                 </div>
-                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap">${c.ip} • ${c.mac}</div>
+                <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate" title="${c.ip} • ${c.mac}">${c.ip}<span class="hidden 2xl:inline"> • ${c.mac}</span></div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="text-xs text-zinc-700 dark:text-zinc-300 font-mono whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-zinc-300 dark:text-zinc-700 mx-0.5">•</span> <span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="text-[11px] text-zinc-700 dark:text-zinc-300 font-mono truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">GW:</span> ${c.gateway || '-'}</div>
+                <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">DNS:</span> ${c.dns || '-'} <span class="text-zinc-300 dark:text-zinc-700 mx-0.5">•</span> <span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1 flex-nowrap whitespace-nowrap">
-                    <span class="text-zinc-400 text-xs">💿</span>
-                    <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5 font-mono text-[11px] text-zinc-900 dark:text-zinc-100 truncate max-w-[130px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1 min-w-0">
+                    <span class="text-zinc-400 text-xs shrink-0">💿</span>
+                    <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1 py-0.5 font-mono text-[10.5px] text-zinc-900 dark:text-zinc-100 truncate max-w-[90px] lg:max-w-[95px] xl:max-w-[130px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
                 </div>
-                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="client-read-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="client-read-total text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[10.5px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 truncate">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="client-write-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="client-write-total text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[10.5px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 truncate">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
-                <div class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
+            <td class="py-2 px-2.5 xl:px-3 min-w-0">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'} truncate">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-0.5 truncate">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
 
@@ -895,21 +895,21 @@ function renderVhdTable() {
         row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/80";
         const safeKey = key.replace(/'/g, "\\'");
         row.innerHTML = `
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-4">
+            <td class="py-2.5 px-3 sm:py-3 sm:px-3.5 min-w-0">
                 <div class="flex items-center gap-2">
                     <span class="text-sm">💿</span>
                     <span class="font-mono text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100">${key}</span>
                 </div>
-                <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate max-w-md mt-0.5" title="${path}">${path}</div>
+                <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate max-w-full mt-0.5" title="${path}">${path}</div>
             </td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-4">
+            <td class="py-2.5 px-3 sm:py-3 sm:px-3.5 min-w-0">
                 <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200" id="snapshots-count-${key}">Loading...</div>
                 <div class="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">Auto Snapshot Ready</div>
             </td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-4 text-right">
+            <td class="py-2.5 px-2.5 sm:py-3 sm:px-3.5 text-right whitespace-nowrap">
                 <div class="inline-flex items-center gap-1.5 justify-end">
-                    <button class="btn-secondary inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium cursor-pointer" onclick="openVhdCrudModal('${safeKey}')">Edit</button>
-                    <button class="btn-primary inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium shadow-2xs cursor-pointer" onclick="showVhdSnapshots('${safeKey}')">Snapshots</button>
+                    <button class="btn-secondary inline-flex items-center justify-center px-2 sm:px-2.5 py-1 text-[11px] xl:text-xs font-medium cursor-pointer" onclick="openVhdCrudModal('${safeKey}')">Edit</button>
+                    <button class="btn-primary inline-flex items-center justify-center px-2 sm:px-2.5 py-1 text-[11px] xl:text-xs font-medium shadow-2xs cursor-pointer" onclick="showVhdSnapshots('${safeKey}')">Snapshots</button>
                 </div>
             </td>
         `;
@@ -1348,6 +1348,127 @@ async function saveGlobalStorageParams() {
     }
 }
 
+// SCSI Disk Identity & Vendor Branding Handlers
+function loadDiskBrandingParams() {
+    if (!configObj) return;
+
+    const winCfg = configObj.windows || {};
+    const gdList = configObj.gamedisk || [];
+    const firstGd = gdList[0] || {};
+
+    const osVendorEl = document.getElementById('disk-vendor-os');
+    const osProductEl = document.getElementById('disk-product-os');
+    const gmVendorEl = document.getElementById('disk-vendor-game');
+    const gmProductEl = document.getElementById('disk-product-game');
+    const revEl = document.getElementById('disk-revision-common');
+
+    if (osVendorEl) osVendorEl.value = winCfg.vendor_id || 'RUSTISCS';
+    if (osProductEl) osProductEl.value = winCfg.product_id || 'WindowsBoot';
+    if (gmVendorEl) gmVendorEl.value = firstGd.vendor_id || 'RUSTISCS';
+    if (gmProductEl) gmProductEl.value = firstGd.product_id || 'GameDisk-0';
+    if (revEl) revEl.value = winCfg.product_revision || firstGd.product_revision || '1.00';
+
+    updateDiskBrandingPreview();
+}
+
+function updateDiskBrandingPreview() {
+    const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim().toUpperCase();
+    const osProduct = (document.getElementById('disk-product-os')?.value || 'WindowsBoot').trim();
+    const gmVendor = (document.getElementById('disk-vendor-game')?.value || 'RUSTISCS').trim().toUpperCase();
+    const gmProduct = (document.getElementById('disk-product-game')?.value || 'GameDisk-0').trim();
+
+    const previewOs = document.getElementById('preview-os-disk-text');
+    if (previewOs) {
+        previewOs.textContent = `${osVendor || 'RUSTISCS'} ${osProduct || 'WindowsBoot'} SCSI Disk Device`;
+    }
+
+    const previewGame = document.getElementById('preview-game-disk-text');
+    if (previewGame) {
+        previewGame.textContent = `${gmVendor || 'RUSTISCS'} ${gmProduct || 'GameDisk-0'} SCSI Disk Device`;
+    }
+}
+
+function applyDiskBrandingPreset(presetKey) {
+    const presets = {
+        hypernvme: {
+            osVendor: 'HYPERVMD', osProduct: 'Gen5 NVMe Boost',
+            gmVendor: 'HYPERVMD', gmProduct: 'GameVault Pro',
+            rev: '2.00'
+        },
+        quantum: {
+            osVendor: 'QUANTUM', osProduct: 'Q-Drive Master',
+            gmVendor: 'QUANTUM', gmProduct: 'Q-Array HighIO',
+            rev: '1.00'
+        },
+        apex: {
+            osVendor: 'APEXPULS', osProduct: 'Prime OS Drive',
+            gmVendor: 'APEXPULS', gmProduct: 'Titan GameDisk',
+            rev: '1.00'
+        },
+        genesis: {
+            osVendor: 'GENESIS', osProduct: 'Virtual Boot',
+            gmVendor: 'GENESIS', gmProduct: 'Fast Storage',
+            rev: '1.00'
+        },
+        stealth: {
+            osVendor: 'STEALTH', osProduct: 'ZeroLatency SSD',
+            gmVendor: 'STEALTH', gmProduct: 'StreamDisk Pro',
+            rev: '1.00'
+        },
+        default: {
+            osVendor: 'RUSTISCS', osProduct: 'WindowsBoot',
+            gmVendor: 'RUSTISCS', gmProduct: 'GameDisk-0',
+            rev: '1.00'
+        }
+    };
+
+    const p = presets[presetKey] || presets.default;
+    const osVendorEl = document.getElementById('disk-vendor-os');
+    const osProductEl = document.getElementById('disk-product-os');
+    const gmVendorEl = document.getElementById('disk-vendor-game');
+    const gmProductEl = document.getElementById('disk-product-game');
+    const revEl = document.getElementById('disk-revision-common');
+
+    if (osVendorEl) osVendorEl.value = p.osVendor;
+    if (osProductEl) osProductEl.value = p.osProduct;
+    if (gmVendorEl) gmVendorEl.value = p.gmVendor;
+    if (gmProductEl) gmProductEl.value = p.gmProduct;
+    if (revEl) revEl.value = p.rev;
+
+    updateDiskBrandingPreview();
+}
+
+async function saveDiskBrandingAction() {
+    if (!configObj) configObj = {};
+    if (!configObj.windows) configObj.windows = {};
+
+    const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim().toUpperCase();
+    const osProduct = (document.getElementById('disk-product-os')?.value || 'WindowsBoot').trim();
+    const gmVendor = (document.getElementById('disk-vendor-game')?.value || 'RUSTISCS').trim().toUpperCase();
+    const gmProduct = (document.getElementById('disk-product-game')?.value || 'GameDisk-0').trim();
+    const rev = (document.getElementById('disk-revision-common')?.value || '1.00').trim();
+
+    configObj.windows.vendor_id = osVendor || 'RUSTISCS';
+    configObj.windows.product_id = osProduct || 'WindowsBoot';
+    configObj.windows.product_revision = rev || '1.00';
+
+    if (Array.isArray(configObj.gamedisk)) {
+        configObj.gamedisk.forEach((gd, idx) => {
+            gd.vendor_id = gmVendor || 'RUSTISCS';
+            gd.product_id = configObj.gamedisk.length > 1 ? `${gmProduct}-${idx}` : gmProduct;
+            gd.product_revision = rev || '1.00';
+        });
+    }
+
+    const ok = await saveConfigJsonFull();
+    if (ok) {
+        showToast('Identitas vendor disk berhasil disimpan & diperbarui!', 'success');
+        await loadConfigJson();
+    } else {
+        showToast('Gagal menyimpan identitas disk', 'error');
+    }
+}
+
 async function loadWritebackFiles() {
     const data = await apiGet('/api/writeback/files');
     const tbody = document.getElementById('writeback-files-tbody');
@@ -1464,6 +1585,7 @@ async function loadConfigJson() {
     } finally {
         renderVhdTable();
         loadDiskPartitions();
+        loadDiskBrandingParams();
         loadTftpFolders();
         populateNetworkDropdowns();
     }

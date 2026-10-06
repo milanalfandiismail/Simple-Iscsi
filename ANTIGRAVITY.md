@@ -715,6 +715,48 @@ Berdasarkan audit langsung pada file hive registri master (`Iscsi menyala tanpa 
      - Fungsi `switchTab(tabId)` menghapus kelas `active` dan menambahkan `hidden` pada semua tab lama sebelum mengaktifkan tab target dengan kelas `active` yang memicu animasi `tabFadeIn` secara halus (160ms, non-glitchy).
      - State tombol sidebar (`.nav-item`) berpindah secara dinamis dengan styling `bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100 font-medium` dan transisi `transition-all duration-150`.
 
+#### 20. Scrollbar Horizontal Berlebih pada Tabel Layar Desktop (`lg` & `xl`) — Fit-in-Table Architecture
+* **Gejala / Masalah:**
+  - Pada layar monitor standar desktop (`lg: 1024px` dan `xl: 1280px`), tabel monitoring klien dan tabel manajemen menampilkan scrollbar horizontal yang tidak perlu dan memaksa operator melakukan scroll mendatar untuk melihat metrik I/O dan status PC.
+* **Akar Masalah:**
+  - Seluruh elemen `<td>` menggunakan kelas `whitespace-nowrap` dan padding lebar (`px-3`) tanpa pembagian proporsi kolom (`<colgroup>`), sehingga lebar intrinsik teks (IP, MAC, Gateway, DNS, Image Path) mencapai >870px, melebihi lebar kontainer kartu pada breakpoint `lg` (~712px).
+* **Solusi Baku (Fit-in-Table Responsive Columns & Compact Multi-Line Formatting):**
+  1. **Tabel Fixed & Colgroup Proporsional ([`ui/index.html`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.html)):**
+     - Menggunakan `w-full table-auto lg:table-fixed` dengan tag `<colgroup>` terukur:
+       ```html
+       <colgroup>
+           <col class="w-[28%] sm:w-[26%] lg:w-[22%] xl:w-[20%]">
+           <col class="w-[28%] sm:w-[26%] lg:w-[23%] xl:w-[22%]">
+           <col class="w-[24%] sm:w-[22%] lg:w-[19%] xl:w-[20%]">
+           <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
+           <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
+           <col class="w-auto lg:w-[12%] xl:w-[12%]">
+       </colgroup>
+       ```
+     - Kontainer tabel menggunakan `overflow-x-auto lg:overflow-x-visible`, memastikan tidak ada scrollbar horizontal pada breakpoint `lg` ke atas sambil mempertahankan scroll sentuh alami pada layar mobile.
+  2. **Strukturasi Sel Multi-Line & Truncation Dinamis ([`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js)):**
+     - Membagi baris informasi secara vertikal yang rapi:
+       - Kolom Klien: Baris 1 Status & Hostname (truncate), Baris 2 IP & MAC.
+       - Kolom Jaringan: Baris 1 `GW: <IP>`, Baris 2 `DNS: <IP> • Next: <IP>`.
+       - Kolom Image: Baris 1 `💿 <Image Key>`, Baris 2 `PXE: <Type>`.
+       - Kolom I/O: Baris 1 Total Bytes, Baris 2 Speed `⚡ <Speed>`.
+     - Hasil: Tabel pas 100% (*fit-in-table*) pada semua layar desktop `lg`, `xl`, dan `2xl` tanpa mengorbankan kelengkapan informasi.
+
+#### 21. Arsitektur Kustomisasi Identitas & Vendor Branding SCSI Disk (SPC-4 Inquiry Standard)
+* **Kebutuhan & Ekspektasi:**
+  - Operator ingin mengubah string identitas disk iSCSI yang terbaca di Windows Client (Device Manager, Task Manager, Disk Management) dari nama default `RUSTISCS` menjadi vendor kustom yang bebas dan kreatif (misal: `SAMSUNG 980 PRO`, `WD_BLACK SN850X`, `KINGSTON NVMe`, atau `GENESIS DISKLESS`).
+* **Arsitektur Standar SCSI SPC-4 INQUIRY (36-Byte Response):**
+  - **Bytes 0..7:** Header SPC-4 (Device Type 0x00 Direct-Access Block Device, RMB=0, Version=0x06 SPC-4, Format=0x02, Additional Length=31, CmdQue=0x02).
+  - **Bytes 8..15 (8 bytes):** T10 Vendor Identification (ASCII, rata kiri, di-pad spasi `b' '` hingga 8 byte).
+  - **Bytes 16..31 (16 bytes):** Product Identification (ASCII, rata kiri, di-pad spasi `b' '` hingga 16 byte).
+  - **Bytes 32..35 (4 bytes):** Product Revision Level (ASCII, rata kiri, di-pad spasi `b' '` hingga 4 byte).
+  - Driver class storage Windows (`disk.sys`) menggabungkan string ini menjadi:
+    `"{Vendor} {Product} SCSI Disk Device"`
+* **Solusi Baku (Backend & Frontend):**
+  1. **Serde Fallback Defaults ([`src/config.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config.rs)):** Menambahkan `#[serde(default = "...")]` untuk `vendor_id`, `product_id`, dan `product_revision` pada `WindowsConfig` dan `GamediskConfig` agar aman saat file konfigurasi tidak memiliki atribut lengkap.
+  2. **Cache Invalidation di File Watcher ([`src/config_manager.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config_manager.rs)):** Deteksi pembaruan disk membandingkan `vendor_id`, `product_id`, dan `product_revision`. Jika ada perbedaan, backend lama digantikan dengan backend baru seketika.
+  3. **Kartu UI Disk Management & Live Simulation Preview ([`ui/index.html`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.html)):** Menyediakan form 2-kolom seimbang di halaman Disk Management dengan input Vendor/Model OS Boot VHD & GameDisk, tombol preset cepat, serta badge simulasi tampilan Windows Device Manager secara realtime.
+
 ---
 
 ### 3.3 Alat Bantu Debugging MCP `codebase-memory`
@@ -1221,27 +1263,29 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
   - `cargo check` & `cargo test` lulus 100%.
   - Uji eksekusi `install_client.bat` & `uninstall_client.bat` berhasil 100% (5/5 steps passing).
 
-### [2026-10-06] - Eksekusi Transformasi UI/UX Shadcn / Minimalist Tech, Transisi Mulus Tab/Sidebar, & Resolusi CORS File Protocol
+### [2026-10-06] - Eksekusi Transformasi UI/UX Shadcn / Minimalist Tech, Fit-in-Table Architecture, & Resolusi CORS
 - **Tujuan:** 
   1. Mengimplementasikan desain modern **Shadcn / Minimalist Tech** di seluruh antarmuka web Simple-Iscsi (monokrom Zinc, 1px border, 5 breakpoint responsif `sm/md/lg/xl/2xl`, dark mode ergonomi operator 12 jam).
   2. Menyelesaikan issue CORS / `ERR_FAILED` saat `ui/index.html` dibuka langsung melalui skema browser lokal (`file:///...`).
   3. Memastikan transisi perpindahan menu tab dan sidebar berlangsung halus (*smooth / non-jittery*) dengan animasi micro-interaction CSS `@keyframes`.
+  4. Menerapkan arsitektur **Fit-in-Table** pada layar desktop (`lg` 1024px & `xl` 1280px) agar seluruh tabel monitoring klien dan image VHD pas 100% di kontainer kartu tanpa memicu scrollbar horizontal.
 - **Modul Terdampak:**
   - `ui/input.css` (Definisi token Zinc, dark mode background `#09090b`, kartu `#121215`, border `#27272a`, `.btn-primary`, `.btn-secondary`, `.card-flat`, `@keyframes tabFadeIn`, `.tab-panel.active`, `.nav-item` smooth states)
-  - `ui/index.html` (Struktur semantic 5 breakpoint `sm/md/lg/xl/2xl`, high-density client monitor, status pills, 6 dialog modals, `#engine-status-indicator`)
-  - `ui/index.js` (Dynamic API base resolution `getApiBase()` / `resolveApiUrl()`, smooth `switchTab()` orchestration, safe `apiGet` & `apiPost`, live client speed rendering)
+  - `ui/index.html` (Struktur semantic 5 breakpoint `sm/md/lg/xl/2xl`, `<colgroup>` proporsional & `table-fixed lg:overflow-x-visible`, high-density client monitor, status pills, 6 dialog modals, `#engine-status-indicator`)
+  - `ui/index.js` (Dynamic API base resolution `getApiBase()` / `resolveApiUrl()`, multi-line compact client row rendering, smooth `switchTab()` orchestration, safe `apiGet` & `apiPost`, live client speed rendering)
   - `ui/tailwind.css` (Kompilasi CSS lokal Tailwind v4.3.3 minified)
   - `src/server_api.rs` (Ekspansi header CORS `Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, *` & `Access-Control-Max-Age: 86400`)
-  - `ANTIGRAVITY.md` (Living memory sinkronisasi: Section 3 Case 18 & 19, Section 5.1, Section 8, Section 9)
+  - `ANTIGRAVITY.md` (Living memory sinkronisasi: Section 3 Case 18, 19, & 20, Section 5.1, Section 8, Section 9)
 - **Rincian Implementasi & Debugging:**
   1. **Dynamic Base URL Resolution:** Menambahkan resolver otomatis `getApiBase()`. Jika halaman dibuka via `file:///` (origin null), request API secara otomatis dialihkan ke `http://127.0.0.1:8080/api/...` alih-alih `file:///C:/api/...`.
   2. **CORS Preflight Hardening:** Menambahkan header wildcard dan preflight cache pada server Rust untuk mendukung akses lintas origin dari file lokal maupun remote dashboard.
   3. **Silky Smooth Tab Transitions:** Mengimplementasikan `@keyframes tabFadeIn` (opacity + 3px translateY, 160ms cubic-bezier) yang aktif saat tab berganti, melenyapkan jump-cut dan layout shift.
-  4. **Visual Engine Status Indicator:** Menambahkan `setServerConnectionStatus` yang memantau respon API dan memberikan feedback visual realtime pada sidebar footer (`🟢 Live API` vs `🔴 Offline`).
+  4. **Fit-in-Table Columns & Multi-Line Compaction:** Menggantikan layout sel lebar dengan pembagian multi-line kompak (GW pada baris 1, DNS/Next pada baris 2; Status/Hostname pada baris 1, IP/MAC pada baris 2) serta `colgroup` proporsional (`table-fixed lg:overflow-x-visible`), melenyapkan scrollbar horizontal pada monitor desktop `lg` dan `xl`.
+  5. **Visual Engine Status Indicator:** Menambahkan `setServerConnectionStatus` yang memantau respon API dan memberikan feedback visual realtime pada sidebar footer (`🟢 Live API` vs `🔴 Offline`).
 - **Hasil & Verifikasi:**
-  - Kompilasi Tailwind CSS v4 lokal berhasil dalam 170ms (`exit code 0`).
+  - Kompilasi Tailwind CSS v4 lokal berhasil dalam 144ms (`exit code 0`).
   - `cargo check` & `cargo test` lulus 100% (8/8 unit tests passed).
-  - UI siap digunakan dan terverifikasi mulus baik melalui web server `http://127.0.0.1:8080` maupun dibuka langsung via `file:///`.
+  - UI terverifikasi mulus dan tabel pas sempurna pada semua resolusi `lg`, `xl`, dan `2xl`.
 
 ---
 
@@ -1366,6 +1410,34 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
 - **Hasil & Verifikasi:**
   - Kompilasi `cargo build` sukses 100% tanpa error (`target/debug/rust-iscsi-server.exe`).
   - Graf dependensi terupdate via MCP `codebase-memory`.
+
+### [2026-10-06] - Kustomisasi Identitas & Vendor Branding SCSI Disk (SPC-4 Inquiry Standard)
+- **Tujuan:** Memberikan kebebasan penuh bagi operator untuk menyesuaikan nama vendor, model, dan versi firmware disk iSCSI (OS Boot VHD dan GameDisk) yang terbaca di Windows Client (Device Manager / Task Manager) dari default `RUSTISCS` menjadi identitas kustom modern (seperti `HYPERVMD Gen5 NVMe`, `QUANTUM Q-Drive`, `APEXPULS Prime OS`, `GENESIS Virtual Boot`, `STEALTH ZeroLatency`), lengkap dengan simulasi live preview di dashboard Web Disk Management.
+- **Modul Terdampak:** [`src/config.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config.rs), [`src/config_manager.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config_manager.rs), [`src/scsi_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_gamedisk.rs), [`src/backend.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/backend.rs), [`ui/index.html`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.html), [`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js), [`ui/tailwind.css`](file:///c:/Project%20GIT/Simple-Iscsi/ui/tailwind.css), [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md).
+- **Rincian Perubahan:**
+  1. **SCSI SPC-4 INQUIRY Protocol Compliance:** Memastikan byte 8..15 (8-byte Vendor ID space-padded), byte 16..31 (16-byte Product ID space-padded), dan byte 32..35 (4-byte Revision space-padded) terisi akurat dan bebas dari buffer overflow/panics.
+  2. **Serde Fallback Defaults & Dynamic File Watcher Invalidation:** Menyematkan fallback `#[serde(default = "...")]` untuk `vendor_id`, `product_id`, dan `product_revision` pada `WindowsConfig` dan `GamediskConfig`. Memperbarui `config_manager.rs` untuk me-reload instance backend secara dinamis saat konfigurasi identitas disk diperbarui.
+  3. **Kartu Identitas Disk 2-Kolom & Live Simulation Preview:** Menambahkan kartu *Identitas & Vendor SCSI Disk* di halaman Disk Management berdampingan dengan *Global Storage Parameters* dalam grid 2-kolom seimbang (`lg`, `xl`, `2xl`), dilengkapi tombol preset modern 1-klik (`HyperNVMe`, `Quantum`, `ApexPulse`, `Genesis`, `Stealth`, `Reset`) dan badge realtime simulasi tampilan Windows Device Manager.
+- **Hasil & Verifikasi:**
+  - Kompilasi Tailwind CSS berhasil (`npm run build:css` $\rightarrow$ exit code 0).
+  - Verifikasi seluruh unit test Rust sukses (`cargo test` $\rightarrow$ **9 passed; 0 failed**).
+  - Living memory disinkronisasikan ke `ANTIGRAVITY.md`.
+
+---
+
+### [2026-10-06] - Refactoring UI Fit-in-Table, Layout 2-Kolom Pengaturan Sentral & Animasi Transisi Halus
+- **Tujuan:** Mengoptimalkan kenyamanan operator antarmuka web dashboard Simple iSCSI: membasmi scrollbar horizontal pada breakpoint `lg` & `xl`, merapikan tombol aksi Image Manager agar tidak melebihi garis tabel, menstandarisasi form Pengaturan Sentral menjadi 2 kolom simetris pada `lg` & `xl`, menyempurnakan transisi tab sidebar, dan mempermudah akses file langsung (`file:///`).
+- **Modul Terdampak:** [`ui/index.html`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.html), [`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js), [`ui/input.css`](file:///c:/Project%20GIT/Simple-Iscsi/ui/input.css), [`ui/tailwind.css`](file:///c:/Project%20GIT/Simple-Iscsi/ui/tailwind.css), [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md).
+- **Rincian Perubahan:**
+  1. **Image Manager Action Cell Fit on `lg`:** Menyesuaikan alokasi `<colgroup>` menjadi `w-[48% lg:48% xl:52%]`, `w-[24%]`, `w-[28% lg:28% xl:24%]` dan mengompres padding sel `py-2.5 px-3` serta ukuran tombol aksi (`px-2 sm:px-2.5 py-1 text-[11px] xl:text-xs whitespace-nowrap`) sehingga tombol Edit dan Snapshots pas 100% di dalam sel tanpa keluar garis pada breakpoint `lg` (1024px).
+  2. **Pengaturan Sentral & TFTP 2-Kolom Konsisten (`lg`, `xl`, `2xl`):** Mengintegrasikan form `#settings-form` menjadi grid 2-kolom seimbang (`grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2`). Baris 1 memuat Card 1 (Server & iSCSI) dan Card 2 (DHCP Server), sedangkan Baris 2 memuat Card 3 (TFTP Service & Bootloader) dan Card 4 (TFTP Folders Manager) secara berdampingan (2x2 balanced grid) pada semua breakpoint layar desktop (`lg`, `xl`, `2xl`), menciptakan tata letak UI/UX yang simetris, rapi, dan bersih.
+  3. **Fit-in-Table Architecture (Tabel Monitoring Klien):** Membagi metrik monitoring menjadi representasi 2 baris vertikal per-sel (Status/Hostname, Network GW/DNS, Image/PXE, I/O Bytes/Speed) dengan `table-auto lg:table-fixed` dan `overflow-x-auto lg:overflow-x-visible`, meniadakan scrollbar horizontal pada monitor desktop.
+  4. **Transisi Tab Halus Tanpa Glitch:** Mengimplementasikan `@keyframes tabFadeIn` (160ms cubic-bezier) pada `.tab-panel.active` dan sinkronisasi transisi highlight sidebar `.nav-item`.
+  5. **Header Minimalis & Dual-Scheme URL Resolution:** Merampingkan branding sidebar menjadi "Simple Iscsi v1.0 • Live API" serta menyematkan `resolveApiUrl()` untuk kelancaran akses langsung via skema `file:///`.
+- **Hasil & Verifikasi:**
+  - Kompilasi Tailwind CSS berhasil (`npm run build:css` $\rightarrow$ exit code 0).
+  - Verifikasi seluruh unit test Rust sukses (`cargo test` $\rightarrow$ 8 passed, 0 failed).
+  - Living memory disinkronisasikan ke `ANTIGRAVITY.md`.
 
 ---
 

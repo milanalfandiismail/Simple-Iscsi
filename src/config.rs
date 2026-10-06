@@ -98,12 +98,31 @@ impl Default for GamediskTargetConfig {
     }
 }
 
+fn default_vendor_id() -> String {
+    "RUSTISCS".to_string()
+}
+
+fn default_windows_product_id() -> String {
+    "WindowsBoot".to_string()
+}
+
+fn default_gamedisk_product_id() -> String {
+    "GameDisk".to_string()
+}
+
+fn default_product_revision() -> String {
+    "1.00".to_string()
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GamediskConfig {
     pub physical_disk: String,
     pub block_size: u64,
+    #[serde(default = "default_vendor_id")]
     pub vendor_id: String,
+    #[serde(default = "default_gamedisk_product_id")]
     pub product_id: String,
+    #[serde(default = "default_product_revision")]
     pub product_revision: String,
 }
 
@@ -113,8 +132,11 @@ pub struct WindowsConfig {
     pub target_iqn_prefix: String,
     pub vhd_dir: String,
     pub block_size: u64,
+    #[serde(default = "default_vendor_id")]
     pub vendor_id: String,
+    #[serde(default = "default_windows_product_id")]
     pub product_id: String,
+    #[serde(default = "default_product_revision")]
     pub product_revision: String,
     pub discovery: bool,
     #[serde(default)]
