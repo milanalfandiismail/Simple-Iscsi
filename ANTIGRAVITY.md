@@ -753,7 +753,12 @@ flowchart TD
   * Network Booting: PXE, DHCP (RFC 2131 / 2132), TFTP (RFC 1350), iPXE scripting.
   * Block Storage: iSCSI (RFC 7143), SCSI SPC-4 & SBC-3 (Inquiry, Read/Write 10/16, Mode Sense, Synccache).
   * Storage Format: Virtual Hard Disk (VHD Fixed/Dynamic, Differencing), Raw Physical Disks (GameDisk).
-* **Web UI Dashboard:** HTML5, Tailwind CSS, Vanilla JS, SSE/WebSocket for live I/O stats.
+* **Web UI Dashboard (Shadcn / Minimalist Tech):**
+  - **Framework & Tooling:** HTML5, Tailwind CSS v4 (`@tailwindcss/cli` local build via `npm run build:css`), Vanilla JavaScript ES6+, SSE/WebSocket live streaming.
+  - **Aesthetic Principles:** Sangat bersih (*clean look*), dominasi monokrom Zinc (`#09090b` dark / `#fafafa` light), 1px hairline border (`border-zinc-200 dark:border-zinc-800`), dan radius kecil (`rounded-md` 6px / `rounded-lg` 8px).
+  - **12-Hour Operator Ergonomics:** Permukaan dark mode low-glare dengan kontras teks seimbang, ramah mata untuk monitoring jangka panjang tanpa kelelahan optik.
+  - **Breakpoints Responsif:** Adaptif penuh di 5 breakpoint Tailwind (`sm: 640px`, `md: 768px`, `lg: 1024px`, `xl: 1280px`, `2xl: 1536px`).
+  - **Implementation Plan:** Tertera pada [`docs/superpowers/plans/2026-10-06-shadcn-minimalist-tech-ui-revamp-plan.md`](docs/superpowers/plans/2026-10-06-shadcn-minimalist-tech-ui-revamp-plan.md).
 
 ---
 
@@ -1149,6 +1154,25 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
   - Kompilasi MSVC `helper.exe` (Native Subsystem) dan `helper-svc.exe` (Win32 Service) sukses 100%.
   - `cargo check` & `cargo test` lulus 100%.
   - Uji eksekusi `install_client.bat` & `uninstall_client.bat` berhasil 100% (5/5 steps passing).
+
+### [2026-10-06] - Perencanaan Komprehensif Perombakan UI/UX Menjadi Shadcn / Minimalist Tech
+- **Tujuan:** Merancang transisi menyeluruh UI/UX Simple-Iscsi Dashboard ke standar modern **Shadcn / Minimalist Tech** (clean look monokrom Zinc, 1px hairline border, small radius, 12-hour operator eye comfort, 5 responsive breakpoints `sm/md/lg/xl/2xl`, dan local Tailwind compilation).
+- **Modul Terdampak:**
+  - `docs/superpowers/plans/2026-10-06-shadcn-minimalist-tech-ui-revamp-plan.md` (Baru: Dokumen implementasi plan 7 task)
+  - `ui/input.css` (Target Task 1)
+  - `ui/index.html` (Target Task 2, 3, 4, 5, 6)
+  - `ui/index.js` (Target Task 2, 3, 4, 5, 6)
+  - `ui/tailwind.css` (Target Task 7 - Local Build)
+  - `ANTIGRAVITY.md` (Spesifikasi arsitektur & Living Memory)
+- **Rincian Perencanaan:**
+  1. **Filosofi Shadcn Zinc:** Menghapus palet indigo saturated dan menggantinya dengan monokrom Zinc (`zinc-950/900/800` vs `zinc-50/100/200`) dengan border 1px solid dan radius `rounded-md`/`rounded-lg`.
+  2. **12-Hour Operator Eye Comfort:** Permukaan dark mode low-glare dengan kontras teks seimbang, ramah mata untuk monitoring jangka panjang tanpa kelelahan optik.
+  3. **Responsivitas 5 Breakpoint:** Memetakan styling adaptif untuk `sm` (640px), `md` (768px), `lg` (1024px), `xl` (1280px), dan `2xl` (1536px).
+  4. **Preservasi 100% DOM IDs & JS Handlers:** Seluruh 50+ element ID, form, modal, websocket/SSE binding, dan context menu dijamin tetap utuh tanpa modifikasi yang merusak fungsionalitas.
+  5. **Tailwind CLI Lokal:** Memastikan proses kompilasi dieksekusi secara lokal via `npm run build:css`.
+- **Hasil & Verifikasi:** Dokumen plan tersimpan di `docs/superpowers/plans/2026-10-06-shadcn-minimalist-tech-ui-revamp-plan.md`.
+
+---
 
 ### [2026-10-06] - Kepatuhan Lisensi iPXE (GPLv2) & UEFI Shim (BSD-2-Clause)
 - **Tujuan:** Memenuhi kewajiban lisensi open-source pihak ketiga untuk file binary bootloader jaringan (`ipxe.efi`, `ipxe-full.efi`, `ipxe-shim.efi`, `uefi`) yang disertakan dalam folder `pxe/`, serta mendokumentasikan pemisahan lisensi antara Simple-Iscsi (MIT) dan iPXE (GPLv2).
