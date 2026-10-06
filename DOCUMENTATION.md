@@ -849,4 +849,24 @@ Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
   Menjamin bahwa pada detik `iscsiprt.sys` mulai memanggil fungsi socket kernel, driver kartu LAN (`NDIS`) dan tumpukan protokol TCP/IP (`PNP_TDI` + `WFPLWFS`) sudah berstatus *Running* dan siap mengalirkan paket data block storage!
 
 ---
+
+## 15. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
+
+Simple-Iscsi menyertakan beberapa file binary bootloader jaringan yang telah dikompilasi sebelumnya (*pre-compiled binaries*) di dalam folder `pxe/` untuk memfasilitasi UEFI PXE Network Booting:
+
+| Komponen | Binary Terkait | Pemilik Hak Cipta & Proyek Asal | Lisensi | Repository Sumber |
+| :--- | :--- | :--- | :--- | :--- |
+| **Simple-Iscsi Core** | `rust-iscsi-server.exe`, `helper-svc.exe` | © 2026 Milan Alfandi Ismail | **MIT License** | Repositori ini |
+| **iPXE Bootloader** | `ipxe.efi`, `ipxe-full.efi`, `uefi` | © Michael Brown & Kontributor iPXE | **GNU GPL v2** | [ipxe/ipxe](https://github.com/ipxe/ipxe) |
+| **UEFI Shim** | `ipxe-shim.efi` | © Red Hat, Inc. & Kontributor | **BSD 2-Clause** | [rhboot/shim](https://github.com/rhboot/shim) |
+
+### Hubungan Lisensi (*Mere Aggregation*)
+Server Simple-Iscsi (Rust) bertindak sebagai penyedia layanan independen (DHCP, TFTP, dan iSCSI target daemon). Binary bootloader `ipxe.efi` dieksekusi di sisi klien firmware UEFI dan hanya berinteraksi dengan server Simple-Iscsi melalui protokol jaringan standar tanpa melakukan linking pustaka langsung. Sesuai dengan Bagian 2 Lisensi GNU GPL v2, distribusi ini berstatus **agregasi murni (*mere aggregation*)**, sehingga lisensi basis kode utama Simple-Iscsi tetap murni di bawah **MIT License**.
+
+Teks lisensi lengkap dan panduan kompilasi kode sumber iPXE dapat dilihat pada:
+- [`pxe/COPYING.GPLv2`](file:///c:/Project%20GIT/Simple-Iscsi/pxe/COPYING.GPLv2)
+- [`pxe/LICENSE.md`](file:///c:/Project%20GIT/Simple-Iscsi/pxe/LICENSE.md)
+
+---
 *Dokumentasi ini disusun secara komprehensif berdasarkan basis kode resmi Simple-Iscsi (Rust & C++) untuk referensi pengembangan dan operasional.*
+
