@@ -149,16 +149,9 @@ cargo test
 
 ---
 
-## 📄 Lisensi & Komponen Pihak Ketiga (Licenses & Third-Party)
+## 📄 Lisensi
 
-- **Simple-Iscsi (Server & Client Helper):**  
-  Seluruh kode sumber Simple-Iscsi didistribusikan di bawah lisensi [**MIT License**](file:///c:/Project%20GIT/Simple-Iscsi/LICENSE) © 2026 **Milan Alfandi Ismail**.
+- **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](file:///c:/Project%20GIT/Simple-Iscsi/LICENSE) © 2026 **Milan Alfandi Ismail**.
+- **Komponen Bootloader (`pxe/`):** Berisi binary pihak ketiga [iPXE](https://github.com/ipxe/ipxe) (GPLv2) dan [Shim](https://github.com/rhboot/shim) (BSD-2-Clause). Rincian lisensi lengkap lihat [**`pxe/LICENSE.md`**](file:///c:/Project%20GIT/Simple-Iscsi/pxe/LICENSE.md).
 
-- **iPXE Bootloader (`pxe/*/ipxe.efi`, `ipxe-full.efi`, `uefi`):**  
-  Proyek [iPXE](https://ipxe.org/) didistribusikan di bawah lisensi [**GNU General Public License v2 (GPLv2)**](file:///c:/Project%20GIT/Simple-Iscsi/pxe/COPYING.GPLv2). Sumber kode resmi iPXE dapat diakses di [github.com/ipxe/ipxe](https://github.com/ipxe/ipxe).
-
-- **UEFI Shim Loader (`pxe/*/ipxe-shim.efi`):**  
-  Proyek [rhboot/shim](https://github.com/rhboot/shim) didistribusikan di bawah lisensi **BSD 2-Clause License**.
-
-> Untuk rincian lengkap mengenai lisensi komponen bootloader jaringan pihak ketiga dan ketentuan hak ciptanya, silakan merujuk ke [**`pxe/LICENSE.md`**](file:///c:/Project%20GIT/Simple-Iscsi/pxe/LICENSE.md).
 
