@@ -650,6 +650,70 @@ Berdasarkan audit langsung pada file hive registri master (`Iscsi menyala tanpa 
   3. **Preservasi Mutlak Slot `0000` & `Linkage`:** Sesuai 6 Pilar Native Driverless SANBOOT (BAB 9), seluruh subkey `Linkage` dan slot `0000` dijaga 100% utuh dan tidak tersentuh oleh helper.
   4. **Tuning Fast-Boot `iScsiPrt` (`WaitForNetworkAtBoot` & `DelayForNetworkAtBoot`):** Menambahkan injeksi nilai `WaitForNetworkAtBoot = 1` dan `DelayForNetworkAtBoot = 5` ke `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt\Parameters`. Parameter ini memerintahkan driver Microsoft iSCSI Initiator untuk menunggu status link fisik kartu LAN siap tanpa timeout/stall lama (default 30-60 detik), sehingga proses booting diskless Windows berlangsung jauh lebih cepat dan mulus.
 
+#### 18. Browser `TypeError: Failed to fetch` / CORS Policy Block saat Membuka Dashboard via File URI (`file:///`)
+* **Gejala / Error:**
+  - Saat membuka file `ui/index.html` langsung dari Explorer via browser (URL: `file:///C:/Project%20GIT/Simple-Iscsi/ui/index.html`), seluruh pemanggilan API gagal dan konsol browser memunculkan error:
+    ```
+    Access to fetch at 'file:///C:/api/system/network_interfaces' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: brave, chrome, chrome-extension, data, http, https, isolated-app.
+    index.js:142 GET file:///C:/api/system/network_interfaces net::ERR_FAILED
+    TypeError: Failed to fetch at apiGet (index.js:142:27)
+    ```
+* **Akar Masalah (Root Cause):**
+  1. **File Protocol Relative Path Resolution:** Ketika HTML dibuka melalui `file:///...`, pemanggilan endpoint relatif seperti `fetch('/api/...')` dievaluasi oleh browser sebagai file filesystem lokal (`file:///C:/api/...`), bukan request HTTP jaringan ke server backend.
+  2. **Browser `origin: null` Security Constraint:** Browser modern memperlakukan skema `file:` sebagai origin `null` yang memiliki kebijakan isolasi CORS ketat untuk mencegah exploit pembacaan disk lokal.
+* **Solusi Baku (Dual-Scheme Smart Resolution & CORS Hardening):**
+  1. **Dynamic Base URL Resolution di Frontend ([`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js)):**
+     - Mengimplementasikan helper `getApiBase()` dan `resolveApiUrl(path)`:
+       ```javascript
+       function getApiBase() {
+           if (window.location.protocol === 'file:' || !window.location.host) {
+               return 'http://127.0.0.1:8080';
+           }
+           return '';
+       }
+       function resolveApiUrl(path) {
+           const cleanPath = path.startsWith('/') ? path : `/${path}`;
+           return `${getApiBase()}${cleanPath}`;
+       }
+       ```
+     - Seluruh pemanggilan `fetch()` di wrapper `apiGet()`, `apiPost()`, dan handler SSE/WebSocket wajib melewati `resolveApiUrl()`.
+  2. **CORS Headers Hardening di Backend ([`src/server_api.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/server_api.rs)):**
+     - Server HTTP Rust mengembalikan header respon CORS yang komprehensif pada setiap response dan preflight `OPTIONS`:
+       ```rust
+       .header("Access-Control-Allow-Origin", "*")
+       .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+       .header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, *")
+       .header("Access-Control-Max-Age", "86400")
+       ```
+  3. **Live Engine Status Indicator:**
+     - Frontend menyediakan `setServerConnectionStatus(connected)` yang memantau respon API dan memberikan feedback visual realtime pada sidebar footer (`🟢 Live API` vs `🔴 Offline`).
+
+#### 19. Perpindahan Sidebar & Tab Tidak Mulus (*Jittery / Jump Cut*)
+* **Gejala / Masalah:**
+  - Saat berpindah antar tab navigasi (misal dari Dashboard ke Manajemen Klien, Log, atau Pengaturan), transisi terasa kasar, patah-patah (*jump cut*), atau memicu *layout shift* yang mengganggu kenyamanan pandangan operator.
+* **Akar Masalah:**
+  - Tab panel hanya menggunakan toggle kelas `hidden` tanpa adanya transisi opasitas dan translasi vertikal yang sinkron, sehingga elemen DOM muncul secara instan dengan frame rendering yang kaku.
+* **Solusi Baku (CSS Keyframes Animation & Smooth Class Orchestration):**
+  1. **Animasi `@keyframes tabFadeIn` ([`ui/input.css`](file:///c:/Project%20GIT/Simple-Iscsi/ui/input.css)):**
+     ```css
+     @keyframes tabFadeIn {
+       from {
+         opacity: 0;
+         transform: translateY(3px);
+       }
+       to {
+         opacity: 1;
+         transform: translateY(0);
+       }
+     }
+     .tab-panel.active {
+       display: block !important;
+       animation: tabFadeIn 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+     }
+     ```
+  2. **Orkestrasi State Bersih ([`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js)):**
+     - Fungsi `switchTab(tabId)` menghapus kelas `active` dan menambahkan `hidden` pada semua tab lama sebelum mengaktifkan tab target dengan kelas `active` yang memicu animasi `tabFadeIn` secara halus (160ms, non-glitchy).
+     - State tombol sidebar (`.nav-item`) berpindah secara dinamis dengan styling `bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100 font-medium` dan transisi `transition-all duration-150`.
 
 ---
 
@@ -746,16 +810,18 @@ flowchart TD
     HELPER -->|"8. Read ACPI iBFT & Clean Duplicate IP"| WIN_DRV
 ```
 
-### 4.1 Tech Stack Inti
+### 5.1 Tech Stack Inti
 * **Server Backend:** Rust (Edisi 2021), Tokio Async Runtime, DashMap, Parking Lot, Moka Cache, Serde/TOML, Socket2 (`SO_REUSEADDR`), Pure Native Win32 Shell Notify Icon (`user32`, `kernel32`, `shell32`).
 * **Client Boot Helper:** C++ (Win32 / Native NT API `ntdll.dll`), compiled with MSVC `cl.exe`.
 * **Network & Storage Protocols:**
   * Network Booting: PXE, DHCP (RFC 2131 / 2132), TFTP (RFC 1350), iPXE scripting.
   * Block Storage: iSCSI (RFC 7143), SCSI SPC-4 & SBC-3 (Inquiry, Read/Write 10/16, Mode Sense, Synccache).
   * Storage Format: Virtual Hard Disk (VHD Fixed/Dynamic, Differencing), Raw Physical Disks (GameDisk).
-* **Web UI Dashboard (Shadcn / Minimalist Tech):**
-  - **Framework & Tooling:** HTML5, Tailwind CSS v4 (`@tailwindcss/cli` local build via `npm run build:css`), Vanilla JavaScript ES6+, SSE/WebSocket live streaming.
-  - **Aesthetic Principles:** Sangat bersih (*clean look*), dominasi monokrom Zinc (`#09090b` dark / `#fafafa` light), 1px hairline border (`border-zinc-200 dark:border-zinc-800`), dan radius kecil (`rounded-md` 6px / `rounded-lg` 8px).
+* **Web UI Dashboard (Shadcn / Minimalist Tech Standard):**
+  - **Framework & Tooling:** HTML5 Semantic, Tailwind CSS v4 (`@tailwindcss/cli` compiled locally via `npm run build:css`), Vanilla JavaScript ES6+, SSE/WebSocket live streaming.
+  - **Aesthetic Principles:** Sangat bersih (*clean look*), dominasi monokrom Zinc (`#09090b` canvas dark / `#121215` card / `#27272a` border & `#ffffff`/`#fafafa` light), 1px hairline border (`border-zinc-200 dark:border-zinc-800`), dan radius kecil (`rounded-md` 6px / `rounded-lg` 8px).
+  - **Smooth Transitions & Keyframes:** `@keyframes tabFadeIn` (opacity + 3px translateY, 160ms cubic-bezier) pada panel aktif serta hover micro-interactions pada tombol `.nav-item`.
+  - **Dual-Scheme Protocol Auto-Routing & CORS:** Smart API resolver (`getApiBase()` / `resolveApiUrl()`) yang transparan mendukung pemuatan via `file:///` maupun server HTTP `http://127.0.0.1:8080`, dilengkapi backend CORS preflight hardening.
   - **12-Hour Operator Ergonomics:** Permukaan dark mode low-glare dengan kontras teks seimbang, ramah mata untuk monitoring jangka panjang tanpa kelelahan optik.
   - **Breakpoints Responsif:** Adaptif penuh di 5 breakpoint Tailwind (`sm: 640px`, `md: 768px`, `lg: 1024px`, `xl: 1280px`, `2xl: 1536px`).
   - **Implementation Plan:** Tertera pada [`docs/superpowers/plans/2026-10-06-shadcn-minimalist-tech-ui-revamp-plan.md`](docs/superpowers/plans/2026-10-06-shadcn-minimalist-tech-ui-revamp-plan.md).
@@ -915,7 +981,7 @@ Daftar status modul dan kapabilitas sistem Simple-Iscsi saat ini:
 | **Boot Helper C++ (Stage 1)** | [`helper/helper.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper.cpp) | **STABLE** | `helper.exe` berjalan via `BootExecute` (Native Subsystem), sinkronisasi Hostname 100% murni dari DHCP/iBFT, dual-path registry overwrite (`Interfaces` & `Services\GUID`), disarming service pihak ketiga, dan pembuatan marker `SimpleIscsiBoot`. |
 | **User-Mode IP Helper (Stage 2)** | [`helper/helper-svc.cpp`](file:///c:/Project%20GIT/Simple-Iscsi/helper/helper-svc.cpp) | **STABLE** | `helper-svc.exe` berjalan via Windows Service / Run Key, membersihkan IP residu super client dari RAM kernel secara real-time via `DeleteUnicastIpAddressEntry` (`iphlpapi.dll`) tanpa memutus sesi iSCSI aktif. |
 | **Native Driverless Boot** | Registri & [`DOCUMENTATION.md`](file:///c:/Project%20GIT/Simple-Iscsi/DOCUMENTATION.md) (BAB 9) | **VERIFIED** | 100% Native Driverless (Slot 0000, `NetCfgInstanceId`, `WFPLWFS`, `ConfigFlags = 0`). |
-| **Web UI Dashboard** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE** | Monitoring koneksi client, throughput real-time, manajemen VHD & TFTP, tombol kontrol & restart cepat per-layanan/semua layanan. |
+| **Web UI Dashboard (Shadcn / Minimalist Tech)** | [`ui/`](file:///c:/Project%20GIT/Simple-Iscsi/ui/) & [`src/api/`](file:///c:/Project%20GIT/Simple-Iscsi/src/api/) | **STABLE & VERIFIED** | Modern Shadcn Minimalist Tech monokrom Zinc (`#09090b`), border 1px, 5 breakpoint responsif `sm/md/lg/xl/2xl`, animasi `@keyframes tabFadeIn`, transisi mulus sidebar, live status indicator, dan dual-scheme URL resolution (`file:///` & `http://127.0.0.1:8080`). |
 
 ---
 
@@ -1154,6 +1220,30 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
   - Kompilasi MSVC `helper.exe` (Native Subsystem) dan `helper-svc.exe` (Win32 Service) sukses 100%.
   - `cargo check` & `cargo test` lulus 100%.
   - Uji eksekusi `install_client.bat` & `uninstall_client.bat` berhasil 100% (5/5 steps passing).
+
+### [2026-10-06] - Eksekusi Transformasi UI/UX Shadcn / Minimalist Tech, Transisi Mulus Tab/Sidebar, & Resolusi CORS File Protocol
+- **Tujuan:** 
+  1. Mengimplementasikan desain modern **Shadcn / Minimalist Tech** di seluruh antarmuka web Simple-Iscsi (monokrom Zinc, 1px border, 5 breakpoint responsif `sm/md/lg/xl/2xl`, dark mode ergonomi operator 12 jam).
+  2. Menyelesaikan issue CORS / `ERR_FAILED` saat `ui/index.html` dibuka langsung melalui skema browser lokal (`file:///...`).
+  3. Memastikan transisi perpindahan menu tab dan sidebar berlangsung halus (*smooth / non-jittery*) dengan animasi micro-interaction CSS `@keyframes`.
+- **Modul Terdampak:**
+  - `ui/input.css` (Definisi token Zinc, dark mode background `#09090b`, kartu `#121215`, border `#27272a`, `.btn-primary`, `.btn-secondary`, `.card-flat`, `@keyframes tabFadeIn`, `.tab-panel.active`, `.nav-item` smooth states)
+  - `ui/index.html` (Struktur semantic 5 breakpoint `sm/md/lg/xl/2xl`, high-density client monitor, status pills, 6 dialog modals, `#engine-status-indicator`)
+  - `ui/index.js` (Dynamic API base resolution `getApiBase()` / `resolveApiUrl()`, smooth `switchTab()` orchestration, safe `apiGet` & `apiPost`, live client speed rendering)
+  - `ui/tailwind.css` (Kompilasi CSS lokal Tailwind v4.3.3 minified)
+  - `src/server_api.rs` (Ekspansi header CORS `Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, *` & `Access-Control-Max-Age: 86400`)
+  - `ANTIGRAVITY.md` (Living memory sinkronisasi: Section 3 Case 18 & 19, Section 5.1, Section 8, Section 9)
+- **Rincian Implementasi & Debugging:**
+  1. **Dynamic Base URL Resolution:** Menambahkan resolver otomatis `getApiBase()`. Jika halaman dibuka via `file:///` (origin null), request API secara otomatis dialihkan ke `http://127.0.0.1:8080/api/...` alih-alih `file:///C:/api/...`.
+  2. **CORS Preflight Hardening:** Menambahkan header wildcard dan preflight cache pada server Rust untuk mendukung akses lintas origin dari file lokal maupun remote dashboard.
+  3. **Silky Smooth Tab Transitions:** Mengimplementasikan `@keyframes tabFadeIn` (opacity + 3px translateY, 160ms cubic-bezier) yang aktif saat tab berganti, melenyapkan jump-cut dan layout shift.
+  4. **Visual Engine Status Indicator:** Menambahkan `setServerConnectionStatus` yang memantau respon API dan memberikan feedback visual realtime pada sidebar footer (`🟢 Live API` vs `🔴 Offline`).
+- **Hasil & Verifikasi:**
+  - Kompilasi Tailwind CSS v4 lokal berhasil dalam 170ms (`exit code 0`).
+  - `cargo check` & `cargo test` lulus 100% (8/8 unit tests passed).
+  - UI siap digunakan dan terverifikasi mulus baik melalui web server `http://127.0.0.1:8080` maupun dibuka langsung via `file:///`.
+
+---
 
 ### [2026-10-06] - Perencanaan Komprehensif Perombakan UI/UX Menjadi Shadcn / Minimalist Tech
 - **Tujuan:** Merancang transisi menyeluruh UI/UX Simple-Iscsi Dashboard ke standar modern **Shadcn / Minimalist Tech** (clean look monokrom Zinc, 1px hairline border, small radius, 12-hour operator eye comfort, 5 responsive breakpoints `sm/md/lg/xl/2xl`, dan local Tailwind compilation).

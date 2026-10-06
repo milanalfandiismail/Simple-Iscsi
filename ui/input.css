@@ -3,20 +3,42 @@
 @source "../ui/**/*.js";
 
 @theme {
-  --font-sans: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "General Sans", "Outfit", "DM Sans", sans-serif;
+  --font-sans: "Inter", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer utilities {
-  /* Tab Navigation Visibility */
+  /* Tab Navigation Visibility & Smooth Transitions */
   .tab-panel {
     display: none;
+    opacity: 0;
   }
   .tab-panel.active {
     display: block;
+    animation: tabFadeIn 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes tabFadeIn {
+    0% {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Sidebar Navigation Item Micro-interactions */
+  .nav-item {
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, transform 100ms ease;
+    cursor: pointer;
+    user-select: none;
+  }
+  .nav-item:active {
+    transform: scale(0.985);
   }
 
   /* Modal Backdrop */
@@ -26,8 +48,8 @@
     inset: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(10, 10, 10, 0.45);
-    backdrop-filter: blur(6px);
+    background-color: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
     z-index: 9999;
     align-items: center;
     justify-content: center;
@@ -40,7 +62,7 @@
     z-index: 1000;
   }
   .context-item.disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
     pointer-events: none;
   }
@@ -48,12 +70,12 @@
   /* Toast Notification */
   .toast-container {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    bottom: 20px;
+    right: 20px;
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     pointer-events: none;
   }
 
@@ -61,7 +83,7 @@
     pointer-events: auto;
     transform: translateX(120%);
     opacity: 0;
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
   }
 
   .toast-msg.show {
@@ -69,43 +91,62 @@
     opacity: 1;
   }
 
-  /* Subtle Card Hover Lift from Genesis Design */
-  .card-hover {
-    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
-  }
-  .card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+  /* Flat Minimalist Card */
+  .card-flat {
+    background-color: #ffffff;
+    border: 1px solid #e4e4e7;
+    border-radius: 8px;
+    transition: border-color 150ms ease, background-color 150ms ease;
   }
 
-  /* Primary Button Subtle Hover Glow */
+  .card-flat:hover {
+    border-color: #d4d4d8;
+  }
+
+  /* Shadcn Monochrome Primary Button */
   .btn-primary {
-    background-color: #6366f1;
-    color: #ffffff;
+    background-color: #18181b;
+    color: #fafafa;
+    border: 1px solid #27272a;
     border-radius: 6px;
     font-weight: 500;
-    transition: background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+    transition: background-color 150ms ease, opacity 150ms ease, transform 100ms ease;
   }
   .btn-primary:hover {
-    background-color: #4f46e5;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    background-color: #27272a;
   }
   .btn-primary:active {
-    transform: translateY(0);
+    transform: scale(0.98);
+  }
+
+  /* Shadcn Monochrome Secondary Button */
+  .btn-secondary {
+    background-color: transparent;
+    color: #18181b;
+    border: 1px solid #e4e4e7;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: background-color 150ms ease, border-color 150ms ease, transform 100ms ease;
+  }
+  .btn-secondary:hover {
+    background-color: #f4f4f5;
+    border-color: #d4d4d8;
+  }
+  .btn-secondary:active {
+    transform: scale(0.98);
   }
 
   /* Minimal Clean Scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: #d4d4d8;
-    border-radius: 9999px;
+    border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #a1a1aa;
@@ -113,15 +154,17 @@
 }
 
 /* ==========================================================================
-   Genesis Design System - Light & Dark Palette Rules
+   Shadcn / Minimalist Tech Design System (Zinc Monochrome)
    ========================================================================== */
+
+/* Base Light Theme */
 html, body {
   background-color: #fafafa;
-  color: #0a0a0a;
+  color: #09090b;
   font-family: var(--font-sans);
 }
 
-/* Dark Mode Overrides */
+/* Base Dark Theme (Ergonomic 12-Hour Eye Comfort) */
 html.dark,
 body.dark {
   background-color: #09090b !important;
@@ -134,26 +177,50 @@ html.dark body {
   color: #fafafa !important;
 }
 
+/* Primary Button in Dark Mode */
+html.dark .btn-primary {
+  background-color: #fafafa !important;
+  color: #09090b !important;
+  border-color: #ffffff !important;
+}
+html.dark .btn-primary:hover {
+  background-color: #e4e4e7 !important;
+}
+
+/* Secondary Button in Dark Mode */
+html.dark .btn-secondary {
+  color: #fafafa !important;
+  border-color: #27272a !important;
+  background-color: transparent !important;
+}
+html.dark .btn-secondary:hover {
+  background-color: #18181b !important;
+  border-color: #3f3f46 !important;
+}
+
 /* Base Surfaces & Cards in Dark Mode */
 html.dark aside,
 html.dark .bg-white,
+html.dark .card-flat,
 html.dark .modal-backdrop > div {
-  background-color: #18181b !important;
+  background-color: #121215 !important;
   border-color: #27272a !important;
   color: #fafafa !important;
 }
 
-/* Subtle Borders in Dark Mode */
+/* Hairline Borders in Dark Mode */
 html.dark .border-stone-200,
 html.dark .border-stone-100,
 html.dark .border-stone-300,
 html.dark .border-zinc-200,
-html.dark .border-zinc-100 {
+html.dark .border-zinc-100,
+html.dark .border-zinc-300 {
   border-color: #27272a !important;
 }
 
 html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]),
-html.dark .divide-zinc-100 > :not([hidden]) ~ :not([hidden]) {
+html.dark .divide-zinc-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-zinc-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: #27272a !important;
 }
 
@@ -162,7 +229,8 @@ html.dark .text-stone-900,
 html.dark .text-zinc-900,
 html.dark h1,
 html.dark h2,
-html.dark h3 {
+html.dark h3,
+html.dark h4 {
   color: #fafafa !important;
 }
 
@@ -189,54 +257,56 @@ html.dark .text-zinc-400 {
 html.dark thead tr,
 html.dark .bg-stone-50,
 html.dark .bg-zinc-50 {
-  background-color: #202024 !important;
+  background-color: #18181b !important;
   border-color: #27272a !important;
-  color: #d4d4d8 !important;
+  color: #a1a1aa !important;
 }
 
 html.dark .bg-stone-100,
 html.dark .bg-zinc-100 {
-  background-color: #27272a !important;
+  background-color: #1f1f23 !important;
   color: #e4e4e7 !important;
 }
 
 html.dark tr.hover\:bg-stone-50:hover,
+html.dark tr.hover\:bg-zinc-50:hover,
 html.dark tbody tr:hover {
-  background-color: #242429 !important;
+  background-color: #18181b !important;
 }
 
 /* Form Controls in Dark Mode */
 html.dark input,
 html.dark select,
 html.dark textarea {
-  background-color: #1f1f23 !important;
-  border-color: #3f3f46 !important;
+  background-color: #09090b !important;
+  border-color: #27272a !important;
   color: #fafafa !important;
 }
 
 html.dark input:focus,
 html.dark select:focus,
 html.dark textarea:focus {
-  border-color: #6366f1 !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
+  border-color: #71717a !important;
+  box-shadow: 0 0 0 1px #71717a !important;
 }
 
-/* Secondary Button in Dark Mode */
+/* Secondary Button Reset in Dark Mode */
 html.dark button.bg-white {
-  background-color: #27272a !important;
-  border-color: #3f3f46 !important;
+  background-color: #18181b !important;
+  border-color: #27272a !important;
   color: #fafafa !important;
 }
 
 html.dark button.bg-white:hover {
-  background-color: #3f3f46 !important;
+  background-color: #27272a !important;
+  border-color: #3f3f46 !important;
 }
 
 /* Navigation Items in Dark Mode */
 html.dark .nav-item.active {
-  background-color: rgba(99, 102, 241, 0.15) !important;
-  color: #818cf8 !important;
-  border-color: rgba(99, 102, 241, 0.3) !important;
+  background-color: #27272a !important;
+  color: #fafafa !important;
+  border-color: #3f3f46 !important;
 }
 
 html.dark .nav-item:not(.active) {
@@ -244,47 +314,45 @@ html.dark .nav-item:not(.active) {
 }
 
 html.dark .nav-item:not(.active):hover {
-  background-color: #27272a !important;
+  background-color: #18181b !important;
   color: #fafafa !important;
 }
 
-/* Status Badges in Dark Mode */
-html.dark .bg-emerald-50 {
-  background-color: rgba(16, 185, 129, 0.15) !important;
-  color: #6ee7b7 !important;
-  border-color: rgba(16, 185, 129, 0.3) !important;
+/* Minimalist Functional Status Badges in Dark Mode */
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-500\/10 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
 }
 
-html.dark .bg-rose-50 {
-  background-color: rgba(239, 68, 68, 0.15) !important;
-  color: #fca5a5 !important;
-  border-color: rgba(239, 68, 68, 0.3) !important;
+html.dark .bg-rose-50,
+html.dark .bg-rose-500\/10 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
 }
 
-html.dark .bg-blue-50 {
-  background-color: rgba(99, 102, 241, 0.15) !important;
-  color: #a5b4fc !important;
-  border-color: rgba(99, 102, 241, 0.3) !important;
+html.dark .bg-amber-100,
+html.dark .bg-amber-500\/10 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
 }
 
-html.dark .bg-amber-100 {
-  background-color: rgba(245, 158, 11, 0.15) !important;
-  color: #fde68a !important;
-  border-color: rgba(245, 158, 11, 0.3) !important;
-}
-
-html.dark .bg-indigo-100 {
-  background-color: rgba(99, 102, 241, 0.15) !important;
-  color: #c7d2fe !important;
-  border-color: rgba(99, 102, 241, 0.3) !important;
+html.dark .bg-indigo-100,
+html.dark .bg-zinc-100 {
+  background-color: #1f1f23 !important;
+  color: #d4d4d8 !important;
+  border-color: #27272a !important;
 }
 
 /* Context Menu in Dark Mode */
 html.dark .context-menu {
-  background-color: #18181b !important;
+  background-color: #121215 !important;
   border-color: #27272a !important;
   color: #fafafa !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
 }
 
 html.dark .context-item {
@@ -293,7 +361,7 @@ html.dark .context-item {
 
 html.dark .context-item:hover {
   background-color: #27272a !important;
-  color: #fafafa !important;
+  color: #ffffff !important;
 }
 
 /* Scrollbar in Dark Mode */

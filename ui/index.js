@@ -60,25 +60,33 @@ function initTheme() {
 function switchTab(tabId, btnEl = null) {
     activeTab = tabId;
 
-    // Toggle panels
+    // 1. Toggle panels with smooth transition
     document.querySelectorAll('.tab-panel').forEach(panel => {
         panel.classList.remove('active');
     });
     const activePanel = document.getElementById(`tab-${tabId}`);
-    if (activePanel) activePanel.classList.add('active');
+    if (activePanel) {
+        activePanel.classList.add('active');
+        window.scrollTo({ top: 0, behavior: 'instant' });
+    }
 
-    // Toggle nav item styles
+    // 2. Identify active button if not provided directly
+    if (!btnEl) {
+        btnEl = document.querySelector(`.nav-item[onclick*="'${tabId}'"]`);
+    }
+
+    // 3. Toggle nav item styles (Shadcn Zinc Monochrome)
     document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.classList.remove('active', 'bg-indigo-50', 'text-indigo-600', 'border', 'border-indigo-200/60', 'font-semibold');
-        btn.classList.add('text-stone-600', 'hover:bg-stone-100', 'hover:text-stone-900');
+        btn.classList.remove('active', 'bg-zinc-100', 'dark:bg-zinc-900', 'text-zinc-900', 'dark:text-zinc-50', 'border', 'border-zinc-200', 'dark:border-zinc-800', 'font-medium', 'shadow-2xs');
+        btn.classList.add('text-zinc-600', 'dark:text-zinc-400', 'hover:bg-zinc-100/70', 'dark:hover:bg-zinc-900/60', 'hover:text-zinc-900', 'dark:hover:text-zinc-100');
     });
 
     if (btnEl) {
-        btnEl.classList.add('active', 'bg-indigo-50', 'text-indigo-600', 'border', 'border-indigo-200/60', 'font-semibold');
-        btnEl.classList.remove('text-stone-600', 'hover:bg-stone-100', 'hover:text-stone-900');
+        btnEl.classList.add('active', 'bg-zinc-100', 'dark:bg-zinc-900', 'text-zinc-900', 'dark:text-zinc-50', 'border', 'border-zinc-200', 'dark:border-zinc-800', 'font-medium', 'shadow-2xs');
+        btnEl.classList.remove('text-zinc-600', 'dark:text-zinc-400', 'hover:bg-zinc-100/70', 'dark:hover:bg-zinc-900/60', 'hover:text-zinc-900', 'dark:hover:text-zinc-100');
     }
 
-    // Auto close mobile drawer if open
+    // 4. Auto close mobile drawer if open
     const navContainer = document.getElementById('sidebar-nav');
     if (window.innerWidth < 1024 && navContainer && !navContainer.classList.contains('hidden')) {
         navContainer.classList.add('hidden');
@@ -134,28 +142,71 @@ function initAutoSyncIntervals() {
     }, 5000);
 }
 
+// Server Connection State & API Base Resolution
+let isServerConnected = null;
+
+function setServerConnectionStatus(connected) {
+    if (isServerConnected === connected) return;
+    isServerConnected = connected;
+    const statusEl = document.getElementById('engine-status-indicator');
+    if (statusEl) {
+        if (connected) {
+            statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span class="text-zinc-600 dark:text-zinc-300">Live API</span>`;
+        } else {
+            statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> <span class="text-zinc-500 dark:text-zinc-400">Offline</span>`;
+        }
+    }
+}
+
+function getApiBase() {
+    try {
+        const custom = localStorage.getItem('simple_iscsi_api_base');
+        if (custom) return custom.replace(/\/+$/, '');
+    } catch (_) {}
+
+    // When opened directly as a local file (file:///...) or empty host, target default server port 8080
+    if (typeof window !== 'undefined' && (window.location.protocol === 'file:' || !window.location.host)) {
+        return 'http://127.0.0.1:8080';
+    }
+    return '';
+}
+
+function resolveApiUrl(url) {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const base = getApiBase();
+    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+    return base ? `${base}${cleanUrl}` : cleanUrl;
+}
+
 // HTTP API Fetch Helpers
 async function apiGet(url, timeoutMs = 3500) {
+    const fullUrl = resolveApiUrl(url);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(url, { signal: controller.signal });
+        const res = await fetch(fullUrl, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json(); // AbortController still active here
+        const data = await res.json();
         clearTimeout(timeoutId);
+        setServerConnectionStatus(true);
         return data;
     } catch (err) {
         clearTimeout(timeoutId);
-        if (err.name !== 'AbortError') console.error(`GET ${url} failed:`, err);
+        if (err.name !== 'AbortError') {
+            setServerConnectionStatus(false);
+            console.warn(`[Simple-Iscsi API] GET ${fullUrl} unavailable (${err.message || 'Offline'})`);
+        }
         return null;
     }
 }
 
 async function apiPost(url, body = {}, timeoutMs = 4500) {
+    const fullUrl = resolveApiUrl(url);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(url, {
+        const res = await fetch(fullUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: typeof body === 'string' ? body : JSON.stringify(body),
@@ -171,17 +222,19 @@ async function apiPost(url, body = {}, timeoutMs = 4500) {
         }
         clearTimeout(timeoutId);
         if (!res.ok) {
-            console.error(`POST ${url} returned ${res.status}:`, result);
+            console.warn(`[Simple-Iscsi API] POST ${fullUrl} returned ${res.status}:`, result);
             return {
                 status: 'error',
                 message: (result && result.message) ? result.message : `HTTP ${res.status}`
             };
         }
+        setServerConnectionStatus(true);
         return result;
     } catch (err) {
         clearTimeout(timeoutId);
-        console.error(`POST ${url} failed:`, err);
-        return { status: 'error', message: err.message || 'Network error' };
+        setServerConnectionStatus(false);
+        console.warn(`[Simple-Iscsi API] POST ${fullUrl} failed:`, err.message || 'Network error');
+        return { status: 'error', message: err.message || 'Network error / Server Offline' };
     }
 }
 
@@ -233,13 +286,13 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     const colorClasses = {
-        success: 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20',
-        error: 'bg-rose-600 text-white shadow-lg shadow-rose-600/20',
-        warning: 'bg-amber-600 text-white shadow-lg shadow-amber-600/20',
-        info: 'bg-stone-900 text-white shadow-lg shadow-stone-900/20'
-    }[type] || 'bg-stone-900 text-white';
+        success: 'bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 border border-zinc-700 dark:border-zinc-300 shadow-md',
+        error: 'bg-rose-950 text-rose-100 border border-rose-800 shadow-md',
+        warning: 'bg-amber-950 text-amber-100 border border-amber-800 shadow-md',
+        info: 'bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 border border-zinc-700 dark:border-zinc-300 shadow-md'
+    }[type] || 'bg-zinc-900 text-white';
 
-    toast.className = `toast-msg flex items-center gap-2.5 px-4 py-3 rounded-lg text-xs sm:text-sm font-medium ${colorClasses}`;
+    toast.className = `toast-msg flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-xs sm:text-sm font-medium ${colorClasses}`;
     toast.innerHTML = `<span>${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span><span>${message}</span>`;
 
     container.appendChild(toast);
@@ -417,7 +470,7 @@ function handleStatsData(data) {
             }
 
             const statusText = statsInfo.active ? '🟢 Online' : '🔴 Offline';
-            const statusClass = `client-status-badge inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${statsInfo.active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`;
+            const statusClass = `client-status-badge inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md ${statsInfo.active ? 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' : 'bg-rose-50/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800'}`;
 
             const updateRowStats = (row) => {
                 if (!row) return;
@@ -441,7 +494,7 @@ function handleStatsData(data) {
                 const uptimeEl = row.querySelector('.client-uptime');
                 if (uptimeEl) {
                     setTextIfChanged(uptimeEl, statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline');
-                    uptimeEl.className = `client-uptime text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'}`;
+                    uptimeEl.className = `client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'}`;
                 }
             };
 
@@ -458,10 +511,10 @@ function updateServiceCard(name, service) {
         portEl.textContent = `Port: ${service.port || 0}`;
         if (service.enabled) {
             pillEl.textContent = '🟢 Enabled';
-            pillEl.className = 'pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap shrink-0';
+            pillEl.className = 'pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 whitespace-nowrap shrink-0';
         } else {
             pillEl.textContent = '🔴 Disabled';
-            pillEl.className = 'pill-status text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap shrink-0';
+            pillEl.className = 'pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800 whitespace-nowrap shrink-0';
         }
     }
 }
@@ -522,10 +575,10 @@ function renderDashboardClientsTable() {
 
     if (mergedClients.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="py-12 px-6 text-center">
-            <div class="flex flex-col items-center justify-center text-center gap-3">
-                <div class="text-4xl">🔌</div>
-                <h3 class="font-bold text-base text-stone-900 font-['General_Sans','Outfit',sans-serif]">Belum Ada Klien Aktif</h3>
-                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
+            <div class="flex flex-col items-center justify-center text-center gap-2">
+                <div class="text-2xl">🔌</div>
+                <h3 class="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight">Belum Ada Klien Aktif</h3>
+                <p class="text-zinc-500 dark:text-zinc-400 text-xs max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
             </div>
         </td></tr>`;
         const totalPcsEl = document.getElementById('stat-total-pcs');
@@ -545,47 +598,47 @@ function renderDashboardClientsTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
-            : `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
+            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">🟢 Online</span>`
+            : `<span class="client-status-badge inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-rose-50/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[9.5px] lg:text-[9px] xl:text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
-        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[9.5px] lg:text-[9px] xl:text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200 ml-1">DHCP</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 ml-1">⚡ Super</span>` : '';
+        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 ml-1">DHCP</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
-        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
+        row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/80 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+            <td class="py-2.5 px-3 whitespace-nowrap">
                 <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     ${statusSpan}
-                    <span class="font-bold text-stone-900 text-xs lg:text-[11px] xl:text-xs 2xl:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || c.ip}</span>
+                    <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">${c.hostname || c.ip}</span>
                     ${superBadge}${dynamicBadge}
                 </div>
-                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap">${c.ip}${c.mac ? ' • ' + c.mac : ''}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="text-xs lg:text-[9.5px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="text-xs text-zinc-700 dark:text-zinc-300 font-mono whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-zinc-300 dark:text-zinc-700 mx-0.5">•</span> <span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1 flex-nowrap whitespace-nowrap">
-                    <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-900 truncate max-w-[90px] lg:max-w-[75px] xl:max-w-[130px] 2xl:max-w-[160px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1 flex-nowrap whitespace-nowrap">
+                    <span class="text-zinc-400 text-xs">💿</span>
+                    <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5 font-mono text-[11px] text-zinc-900 dark:text-zinc-100 truncate max-w-[130px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
                 </div>
-                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="client-read-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="client-read-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="client-write-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="client-write-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="client-uptime text-xs lg:text-[9.5px] xl:text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
-                <div class="text-[10px] lg:text-[9px] xl:text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
 
@@ -607,10 +660,10 @@ function renderClientsManagerTable() {
     const tbody = document.getElementById('clients-tbody');
     if (!clientsObj.client || clientsObj.client.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="py-12 px-6 text-center">
-            <div class="flex flex-col items-center justify-center text-center gap-3">
-                <div class="text-4xl">💻</div>
-                <h3 class="font-bold text-base text-stone-900 font-['General_Sans','Outfit',sans-serif]">Daftar Klien Kosong</h3>
-                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
+            <div class="flex flex-col items-center justify-center text-center gap-2">
+                <div class="text-2xl">💻</div>
+                <h3 class="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight">Daftar Klien Kosong</h3>
+                <p class="text-zinc-500 dark:text-zinc-400 text-xs max-w-sm">Klik tombol "Tambah Klien" untuk mulai mendaftarkan PC diskless Anda.</p>
             </div>
         </td></tr>`;
         return;
@@ -628,46 +681,46 @@ function renderClientsManagerTable() {
         const speedInfo = clientSpeedHistory.get(c.ip) || { readSpeed: 0, writeSpeed: 0 };
 
         const statusSpan = statsInfo.active
-            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Online</span>`
-            : `<span class="client-status-badge inline-flex items-center gap-1 text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">🔴 Offline</span>`;
+            ? `<span class="client-status-badge inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">🟢 Online</span>`
+            : `<span class="client-status-badge inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-rose-50/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">🔴 Offline</span>`;
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
-        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[9.5px] lg:text-[9px] xl:text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 ml-1">⚡ Super</span>` : '';
+        const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 ml-1">⚡ Super</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
-        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100 cursor-pointer";
+        row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/80 cursor-pointer";
         row.innerHTML = `
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
+            <td class="py-2.5 px-3 whitespace-nowrap">
                 <div class="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                     ${statusSpan}
-                    <span class="font-bold text-stone-900 text-xs lg:text-[11px] xl:text-xs 2xl:text-sm font-['General_Sans','Outfit',sans-serif]">${c.hostname || 'PC'}</span>
+                    <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">${c.hostname || 'PC'}</span>
                     ${superBadge}
                 </div>
-                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap">${c.ip} • ${c.mac}</div>
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap">${c.ip} • ${c.mac}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="text-xs lg:text-[9.5px] xl:text-xs text-stone-800 font-mono whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-stone-300 mx-0.5">•</span> <span class="text-stone-400 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
-                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="text-xs text-zinc-700 dark:text-zinc-300 font-mono whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">GW:</span> ${c.gateway || '-'} <span class="text-zinc-300 dark:text-zinc-700 mx-0.5">•</span> <span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">DNS:</span> ${c.dns || '-'}</div>
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">Next:</span> ${c.next_server || '-'}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="text-xs font-semibold text-stone-800 flex items-center gap-1 flex-nowrap whitespace-nowrap">
-                    <span class="text-stone-400 text-xs">💿</span>
-                    <span class="bg-stone-100 border border-stone-200/60 rounded px-1.5 py-0.5 font-mono text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-900 truncate max-w-[90px] lg:max-w-[75px] xl:max-w-[130px] 2xl:max-w-[160px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1 flex-nowrap whitespace-nowrap">
+                    <span class="text-zinc-400 text-xs">💿</span>
+                    <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5 font-mono text-[11px] text-zinc-900 dark:text-zinc-100 truncate max-w-[130px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
                 </div>
-                <div class="text-[10.5px] lg:text-[9.5px] xl:text-[11px] text-stone-500 font-mono mt-0.5 whitespace-nowrap"><span class="text-stone-400 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 whitespace-nowrap"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="client-read-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
-                <div class="client-read-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-indigo-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="client-read-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_read)}</div>
+                <div class="client-read-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.readSpeed)}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="client-write-total text-xs lg:text-[9.5px] xl:text-xs font-mono font-medium text-stone-700 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
-                <div class="client-write-speed text-[10.5px] lg:text-[9.5px] xl:text-[11px] font-mono font-semibold text-amber-600 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="client-write-total text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap">${formatBytes(statsInfo.bytes_written)}</div>
+                <div class="client-write-speed text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 mt-0.5 whitespace-nowrap">⚡ ${formatSpeed(speedInfo.writeSpeed)}</div>
             </td>
-            <td class="py-2 px-2 lg:py-2 lg:px-1.5 xl:py-3 xl:px-3 2xl:py-3.5 2xl:px-4 whitespace-nowrap">
-                <div class="client-uptime text-xs lg:text-[9.5px] xl:text-xs font-medium ${statsInfo.active ? 'text-stone-900' : 'text-stone-400'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
-                <div class="text-[10px] lg:text-[9px] xl:text-[10px] text-stone-400 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
+            <td class="py-2.5 px-3 whitespace-nowrap">
+                <div class="client-uptime text-xs font-medium ${statsInfo.active ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'} whitespace-nowrap">${statsInfo.active ? formatDuration(statsInfo.uptime_secs) : 'Offline'}</div>
+                <div class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono mt-0.5 whitespace-nowrap">${statsInfo.active ? 'Live Session' : 'Standby'}</div>
             </td>
         `;
 
@@ -827,10 +880,10 @@ function renderVhdTable() {
     const tbody = document.getElementById('vhds-tbody');
     if (!configObj || !configObj.image_manager || Object.keys(configObj.image_manager).length === 0) {
         tbody.innerHTML = `<tr><td colspan="3" class="py-12 px-6 text-center">
-            <div class="flex flex-col items-center justify-center text-center gap-3">
-                <div class="text-4xl">💿</div>
-                <h3 class="font-bold text-base text-stone-900 font-['General_Sans','Outfit',sans-serif]">Belum Ada VHD</h3>
-                <p class="text-stone-500 text-xs sm:text-sm max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
+            <div class="flex flex-col items-center justify-center text-center gap-2">
+                <div class="text-2xl">💿</div>
+                <h3 class="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight">Belum Ada VHD</h3>
+                <p class="text-zinc-500 dark:text-zinc-400 text-xs max-w-sm">Daftarkan file VHD Windows yang akan di-boot oleh klien Anda.</p>
             </div>
         </td></tr>`;
         return;
@@ -839,24 +892,24 @@ function renderVhdTable() {
     tbody.innerHTML = '';
     Object.entries(configObj.image_manager).forEach(([key, path]) => {
         const row = document.createElement('tr');
-        row.className = "hover:bg-stone-50 transition-colors border-b border-stone-100";
+        row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/80";
         const safeKey = key.replace(/'/g, "\\'");
         row.innerHTML = `
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5">
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-4">
                 <div class="flex items-center gap-2">
-                    <span class="text-base">💿</span>
-                    <span class="font-mono text-xs sm:text-sm font-bold text-stone-900 font-['General_Sans','Outfit',sans-serif]">${key}</span>
+                    <span class="text-sm">💿</span>
+                    <span class="font-mono text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100">${key}</span>
                 </div>
-                <div class="text-[11px] font-mono text-stone-500 truncate max-w-md mt-0.5" title="${path}">${path}</div>
+                <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate max-w-md mt-0.5" title="${path}">${path}</div>
             </td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5">
-                <div class="text-xs font-semibold text-stone-800" id="snapshots-count-${key}">Loading...</div>
-                <div class="text-[11px] text-stone-400 mt-0.5">Auto Snapshot Ready</div>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-4">
+                <div class="text-xs font-medium text-zinc-800 dark:text-zinc-200" id="snapshots-count-${key}">Loading...</div>
+                <div class="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">Auto Snapshot Ready</div>
             </td>
-            <td class="py-3 px-3.5 sm:py-3.5 sm:px-5" style="text-align: right;">
-                <div class="inline-flex items-center gap-2 justify-end">
-                    <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-stone-300 text-stone-700 hover:bg-stone-50 shadow-xs transition-all cursor-pointer" onclick="openVhdCrudModal('${safeKey}')">Edit</button>
-                    <button class="btn-primary inline-flex items-center justify-center px-3 py-1.5 text-xs shadow-xs cursor-pointer" onclick="showVhdSnapshots('${safeKey}')">Snapshots</button>
+            <td class="py-3 px-3.5 sm:py-3.5 sm:px-4 text-right">
+                <div class="inline-flex items-center gap-1.5 justify-end">
+                    <button class="btn-secondary inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium cursor-pointer" onclick="openVhdCrudModal('${safeKey}')">Edit</button>
+                    <button class="btn-primary inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium shadow-2xs cursor-pointer" onclick="showVhdSnapshots('${safeKey}')">Snapshots</button>
                 </div>
             </td>
         `;
@@ -972,39 +1025,39 @@ async function showVhdSnapshots(imageKey) {
     document.getElementById('snapshots-modal-title').textContent = `Riwayat Snapshot (${imageKey})`;
 
     const tbody = document.getElementById('snapshots-tbody');
-    tbody.innerHTML = `<tr><td colspan="3" class="py-6 px-4 text-center text-stone-500">Memuat snapshot...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" class="py-6 px-4 text-center text-zinc-500 dark:text-zinc-400">Memuat snapshot...</td></tr>`;
 
     const data = await apiGet(`/api/vhd/backups?image_key=${encodeURIComponent(imageKey)}`);
     if (!data || !Array.isArray(data) || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" class="py-6 px-4 text-center text-stone-500">Belum ada file snapshot backup untuk image ini.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" class="py-6 px-4 text-center text-zinc-500 dark:text-zinc-400">Belum ada file snapshot backup untuk image ini.</td></tr>`;
         return;
     }
 
     tbody.innerHTML = '';
     data.forEach(snap => {
         const row = document.createElement('tr');
-        row.className = "hover:bg-stone-50 border-b border-stone-100";
+        row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-800/80";
         const displayName = snap.name || (snap.path ? snap.path.split(/[\\/]/).pop() : `Snapshot #${snap.index}`);
         const displaySize = snap.size ? formatBytes(snap.size) : 'Auto Meta';
-        const dateDisplay = snap.date ? `<span class="text-[10px] text-stone-400 block">${snap.date}</span>` : '';
+        const dateDisplay = snap.date ? `<span class="text-[10px] text-zinc-400 dark:text-zinc-500 block">${snap.date}</span>` : '';
         const safeImgKey = imageKey.replace(/'/g, "\\'");
         const safeName = displayName.replace(/'/g, "\\'");
 
         row.innerHTML = `
             <td class="py-2.5 px-3.5">
-                <div class="font-mono text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                <div class="font-mono text-xs font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                     <span>💾</span>
                     <span>${displayName}</span>
-                    <span class="text-[10px] text-stone-400 font-normal">#${snap.index}</span>
+                    <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-normal">#${snap.index}</span>
                 </div>
-                <div class="text-[11px] font-mono text-stone-400 truncate max-w-xs mt-0.5" title="${snap.path}">${snap.path}</div>
+                <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate max-w-xs mt-0.5" title="${snap.path}">${snap.path}</div>
                 ${dateDisplay}
             </td>
-            <td class="py-2.5 px-3.5 font-mono text-xs text-stone-600 font-medium">
-                <span class="inline-flex items-center px-2 py-0.5 rounded bg-stone-100 border border-stone-200/60 text-stone-700 text-[11px]">${displaySize}</span>
+            <td class="py-2.5 px-3.5 font-mono text-xs text-zinc-600 dark:text-zinc-400">
+                <span class="inline-flex items-center px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px]">${displaySize}</span>
             </td>
             <td class="py-2.5 px-3.5 text-right">
-                <button class="inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all cursor-pointer" onclick="restoreSnapshotAction('${safeImgKey}', ${snap.index}, '${safeName}')">⏪ Restore</button>
+                <button class="btn-secondary inline-flex items-center justify-center px-2.5 py-1 text-xs font-medium hover:border-amber-400 dark:hover:border-amber-600 hover:text-amber-700 dark:hover:text-amber-400 transition-colors cursor-pointer" onclick="restoreSnapshotAction('${safeImgKey}', ${snap.index}, '${safeName}')">⏪ Restore</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -1049,7 +1102,7 @@ function renderDiskGrid(drives) {
     if (!container) return;
 
     if (!Array.isArray(drives) || drives.length === 0) {
-        container.innerHTML = `<div class="col-span-full py-10 text-center text-stone-500">Memindai disk fisik...</div>`;
+        container.innerHTML = `<div class="col-span-full py-10 text-center text-zinc-500 dark:text-zinc-400 text-xs">Memindai disk fisik...</div>`;
         return;
     }
 
@@ -1087,84 +1140,84 @@ function renderDiskGrid(drives) {
             }
         }
 
-        // Genesis role styling configuration
+        // Shadcn role styling configuration
         const roleConfig = {
             boot: {
                 label: 'BOOT VHD',
                 icon: '💿',
-                badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/80',
-                cardBorder: 'border-indigo-300/80 dark:border-indigo-800/60 ring-1 ring-indigo-500/15',
+                badgeClass: 'bg-zinc-100 text-zinc-900 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:border-zinc-700',
+                cardBorder: 'border-zinc-300 dark:border-zinc-700',
                 desc: 'Master OS VHD',
-                colorAccent: 'text-indigo-600 dark:text-indigo-400'
+                colorAccent: 'text-zinc-900 dark:text-zinc-100'
             },
             writeback: {
                 label: 'WRITEBACK',
                 icon: '⚡',
-                badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80',
-                cardBorder: 'border-amber-300/80 dark:border-amber-800/60 ring-1 ring-amber-500/15',
+                badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800',
+                cardBorder: 'border-zinc-200 dark:border-zinc-800',
                 desc: 'Client Cache I/O',
                 colorAccent: 'text-amber-600 dark:text-amber-400'
             },
             gamedisk: {
                 label: 'GAMEDISK',
                 icon: '🎮',
-                badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80',
-                cardBorder: 'border-emerald-300/80 dark:border-emerald-800/60 ring-1 ring-emerald-500/15',
+                badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800',
+                cardBorder: 'border-zinc-200 dark:border-zinc-800',
                 desc: 'Game Storage Target',
                 colorAccent: 'text-emerald-600 dark:text-emerald-400'
             },
             none: {
                 label: 'UNASSIGNED',
                 icon: '⚪',
-                badgeClass: 'bg-stone-100 text-stone-600 border-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700',
-                cardBorder: 'border-stone-200 dark:border-stone-800',
+                badgeClass: 'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700',
+                cardBorder: 'border-zinc-200 dark:border-zinc-800',
                 desc: 'Belum dialokasikan',
-                colorAccent: 'text-stone-500 dark:text-stone-400'
+                colorAccent: 'text-zinc-500 dark:text-zinc-400'
             }
         }[currentRole] || {
             label: 'UNASSIGNED',
             icon: '⚪',
-            badgeClass: 'bg-stone-100 text-stone-600 border-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700',
-            cardBorder: 'border-stone-200 dark:border-stone-800',
+            badgeClass: 'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700',
+            cardBorder: 'border-zinc-200 dark:border-zinc-800',
             desc: 'Belum dialokasikan',
-            colorAccent: 'text-stone-500 dark:text-stone-400'
+            colorAccent: 'text-zinc-500 dark:text-zinc-400'
         };
 
         const card = document.createElement('div');
-        card.className = `bg-white border rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-xs transition-all hover:shadow-md ${roleConfig.cardBorder}`;
+        card.className = `bg-white dark:bg-zinc-900 border rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs transition-colors ${roleConfig.cardBorder}`;
 
         card.innerHTML = `
             <div>
                 <!-- Top Header: Drive Name & Physical Disk -->
-                <div class="flex items-center justify-between gap-2 pb-3 border-b border-stone-100 dark:border-stone-800/80 mb-3.5">
+                <div class="flex items-center justify-between gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-3.5">
                     <div class="flex items-center gap-2.5 min-w-0">
-                        <div class="w-8 h-8 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center text-base shrink-0 font-mono">
+                        <div class="w-8 h-8 rounded-md bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm shrink-0 font-mono">
                             🗄️
                         </div>
                         <div class="min-w-0 flex-1">
-                            <h3 class="font-bold text-sm sm:text-base text-stone-900 dark:text-white leading-tight font-['General_Sans','Outfit',sans-serif]">Drive ${drive.letter}:\\</h3>
-                            <p class="text-[11px] text-stone-500 dark:text-stone-400 font-mono mt-1 break-all leading-tight">${drive.physical_disk || 'Logical Volume (Direct)'}</p>
+                            <h3 class="font-semibold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 leading-tight">Drive ${drive.letter}:\\</h3>
+                            <p class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 break-all leading-tight">${drive.physical_disk || 'Logical Volume (Direct)'}</p>
                         </div>
                     </div>
-                    <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${roleConfig.badgeClass}">
+                    <span class="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border shrink-0 ${roleConfig.badgeClass}">
                         <span>${roleConfig.icon}</span>
                         <span>${roleConfig.label}</span>
                     </span>
                 </div>
 
                 <!-- Role Info Description -->
-                <div class="text-[11px] text-stone-500 dark:text-stone-400 mb-3.5 flex items-center justify-between px-0.5">
+                <div class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3.5 flex items-center justify-between px-0.5">
                     <span class="font-medium">Fungsi Disk:</span>
-                    <span class="font-semibold ${roleConfig.colorAccent}">${roleConfig.desc}</span>
+                    <span class="font-medium ${roleConfig.colorAccent}">${roleConfig.desc}</span>
                 </div>
 
                 <!-- Interactive Allocation Action Button -->
-                <button type="button" class="w-full group px-3 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700/80 bg-stone-50/80 hover:bg-indigo-50/70 dark:bg-stone-800/50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-600/60 cursor-pointer flex items-center justify-between transition-all active:scale-[0.99] text-left" onclick="openPartitionModal('${letter}', '${currentRole}')">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs group-hover:scale-110 transition-transform">⚙️</span>
-                        <span class="font-semibold text-xs text-stone-800 dark:text-stone-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-['General_Sans','Outfit',sans-serif]">Ubah Alokasi Role</span>
+                <button type="button" class="w-full px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 cursor-pointer flex items-center justify-between transition-colors text-left" onclick="openPartitionModal('${letter}', '${currentRole}')">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xs">⚙️</span>
+                        <span class="font-medium text-xs text-zinc-800 dark:text-zinc-200">Ubah Alokasi Role</span>
                     </div>
-                    <span class="text-xs text-stone-400 group-hover:text-indigo-500 font-bold transition-colors">→</span>
+                    <span class="text-xs text-zinc-400 font-medium">→</span>
                 </button>
             </div>
         `;
@@ -1301,17 +1354,17 @@ async function loadWritebackFiles() {
     if (!tbody) return;
 
     if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="2" class="py-6 px-4 text-center text-stone-500">Tidak ada file cache writeback aktif.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="2" class="py-6 px-4 text-center text-zinc-500 dark:text-zinc-400 text-xs">Tidak ada file cache writeback aktif.</td></tr>`;
         return;
     }
 
     tbody.innerHTML = '';
     data.forEach(item => {
         const row = document.createElement('tr');
-        row.className = "hover:bg-stone-50 border-b border-stone-100";
+        row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-800/80";
         row.innerHTML = `
-            <td class="py-2.5 px-3.5 font-mono text-xs font-semibold text-stone-900">${item.name || item.path}</td>
-            <td class="py-2.5 px-3.5 font-mono text-xs text-stone-500">${formatBytes(item.size)}</td>
+            <td class="py-2.5 px-3.5 font-mono text-xs font-medium text-zinc-900 dark:text-zinc-100">${item.name || item.path}</td>
+            <td class="py-2.5 px-3.5 font-mono text-xs text-zinc-500 dark:text-zinc-400">${formatBytes(item.size)}</td>
         `;
         tbody.appendChild(row);
     });
@@ -1421,17 +1474,17 @@ function renderNicIpsList(nicIps) {
     if (!container) return;
 
     if (!nicIps || nicIps.length === 0) {
-        container.innerHTML = `<span class="text-stone-500 text-center text-xs py-1">Belum ada IP ditambahkan.</span>`;
+        container.innerHTML = `<span class="text-zinc-500 dark:text-zinc-400 text-center text-xs py-1">Belum ada IP ditambahkan.</span>`;
         return;
     }
 
     container.innerHTML = '';
     nicIps.forEach(ip => {
         const tag = document.createElement('div');
-        tag.className = "flex items-center justify-between px-2.5 py-1 rounded bg-white border border-stone-200";
+        tag.className = "flex items-center justify-between px-2.5 py-1 rounded-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800";
         tag.innerHTML = `
-            <span class="font-mono text-xs text-stone-900">${ip}</span>
-            <button type="button" class="text-rose-600 hover:text-rose-800 font-bold p-0.5" onclick="removeNicIpAction('${ip}')">✕</button>
+            <span class="font-mono text-xs text-zinc-900 dark:text-zinc-100">${ip}</span>
+            <button type="button" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium p-0.5 cursor-pointer" onclick="removeNicIpAction('${ip}')">✕</button>
         `;
         container.appendChild(tag);
     });
@@ -1532,7 +1585,7 @@ async function loadTftpFolders() {
     if (tbody) tbody.innerHTML = '';
 
     if (!folders || folders.length === 0) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="2" class="py-6 px-4 text-center text-stone-500">Belum ada folder bootloader kustom.</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="2" class="py-6 px-4 text-center text-zinc-500 dark:text-zinc-400 text-xs">Belum ada folder bootloader kustom.</td></tr>`;
         return;
     }
 
@@ -1545,11 +1598,11 @@ async function loadTftpFolders() {
 
         if (tbody) {
             const row = document.createElement('tr');
-            row.className = "hover:bg-stone-50 border-b border-stone-100";
+            row.className = "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-800/80";
             row.innerHTML = `
-                <td class="py-2.5 px-4 font-mono text-xs font-semibold text-stone-900">${f}</td>
+                <td class="py-2.5 px-4 font-mono text-xs font-medium text-zinc-900 dark:text-zinc-100">${f}</td>
                 <td class="py-2.5 px-4 text-right">
-                    <button type="button" class="text-rose-600 hover:text-rose-800 text-xs font-semibold" onclick="deleteTftpFolderAction('${f}')">Hapus</button>
+                    <button type="button" class="text-rose-600 dark:text-rose-400 hover:text-rose-700 text-xs font-medium cursor-pointer" onclick="deleteTftpFolderAction('${f}')">Hapus</button>
                 </td>
             `;
             tbody.appendChild(row);

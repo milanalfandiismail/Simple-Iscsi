@@ -117,8 +117,9 @@ async fn handle_request(
         return format!(
             "HTTP/1.1 204 No Content\r\n\
              Access-Control-Allow-Origin: *\r\n\
-             Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-             Access-Control-Allow-Headers: Content-Type\r\n\
+             Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n\
+             Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, *\r\n\
+             Access-Control-Max-Age: 86400\r\n\
              Connection: close\r\n\r\n"
         );
     }
@@ -405,8 +406,8 @@ pub fn build_response(status_code: u16, status_text: &str, content_type: &str, b
          Content-Type: {}\r\n\
          Content-Length: {}\r\n\
          Access-Control-Allow-Origin: *\r\n\
-         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-         Access-Control-Allow-Headers: Content-Type\r\n\
+         Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, *\r\n\
          Connection: close\r\n\r\n{}",
         status_code, status_text, content_type, body.len(), body
     )
