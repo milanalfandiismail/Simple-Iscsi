@@ -1411,6 +1411,19 @@ Setiap tugas atau fitur yang diselesaikan **WAJIB** dicatat di bawah ini dengan 
   - Kompilasi `cargo build` sukses 100% tanpa error (`target/debug/rust-iscsi-server.exe`).
   - Graf dependensi terupdate via MCP `codebase-memory`.
 
+### [2026-10-06] - Pembersihan Dashboard Monitoring Klien (Pure Static `clients.toml` View)
+- **Tujuan:** Menghilangkan baris dummy/phantom dynamic DHCP (`DHCP-xxx` / `isDynamic: true`) dari tabel Web Dashboard, memastikan antarmuka monitoring tetap bersih, presisi, dan murni 100% menampilkan PC client yang sah dan terdaftar di [`clients.toml`](file:///c:/Project%20GIT/Simple-Iscsi/clients.toml) beserta status sesi aktifnya.
+- **Modul Terdampak:** [`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js), [`ui/tailwind.css`](file:///c:/Project%20GIT/Simple-Iscsi/ui/tailwind.css), [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md).
+- **Rincian Perubahan:**
+  1. **Sanitasi `getMergedDashboardClients()`:** Menghapus injeksi baris dinamis dari `stats.clients` dan `stats.dhcp_leases` untuk IP yang tidak ada di `clients.toml`. Fungsi kini murni mengembalikan array klien statis terdaftar.
+  2. **Pembersihan Badge & Teks Placeholder:** Menghapus elemen `dynamicBadge` (`DHCP`) dari baris tabel dan memperbarui empty-state menjadi *"Belum Ada Klien Terdaftar"*.
+- **Hasil & Verifikasi:**
+  - Kompilasi Tailwind CSS berhasil (`npm run build:css` $\rightarrow$ exit code 0).
+  - Verifikasi unit test Rust sukses (`cargo test` $\rightarrow$ **9 passed; 0 failed**).
+  - Living memory disinkronisasikan ke `ANTIGRAVITY.md`.
+
+---
+
 ### [2026-10-06] - Kustomisasi Identitas & Vendor Branding SCSI Disk (SPC-4 Inquiry Standard)
 - **Tujuan:** Memberikan kebebasan penuh bagi operator untuk menyesuaikan nama vendor, model, dan versi firmware disk iSCSI (OS Boot VHD dan GameDisk) yang terbaca di Windows Client (Device Manager / Task Manager) dari default `RUSTISCS` menjadi identitas kustom modern (seperti `HYPERVMD Gen5 NVMe`, `QUANTUM Q-Drive`, `APEXPULS Prime OS`, `GENESIS Virtual Boot`, `STEALTH ZeroLatency`), lengkap dengan simulasi live preview di dashboard Web Disk Management.
 - **Modul Terdampak:** [`src/config.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config.rs), [`src/config_manager.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/config_manager.rs), [`src/scsi_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_gamedisk.rs), [`src/backend.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/backend.rs), [`ui/index.html`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.html), [`ui/index.js`](file:///c:/Project%20GIT/Simple-Iscsi/ui/index.js), [`ui/tailwind.css`](file:///c:/Project%20GIT/Simple-Iscsi/ui/tailwind.css), [`ANTIGRAVITY.md`](file:///c:/Project%20GIT/Simple-Iscsi/ANTIGRAVITY.md).

@@ -519,50 +519,9 @@ function updateServiceCard(name, service) {
     }
 }
 
-// Client Merging (Static clients.toml + Dynamic Live DHCP Clients + Active Sessions)
+// Client Listing for Dashboard (Purely Registered Clients from clients.toml)
 function getMergedDashboardClients() {
-    const staticClients = (clientsObj && Array.isArray(clientsObj.client)) ? [...clientsObj.client] : [];
-    const staticIps = new Set(staticClients.map(c => c.ip));
-
-    if (stats && Array.isArray(stats.clients)) {
-        stats.clients.forEach(activeClient => {
-            if (activeClient && activeClient.ip && !staticIps.has(activeClient.ip)) {
-                staticClients.push({
-                    hostname: `DHCP-${activeClient.ip.split('.').pop()}`,
-                    ip: activeClient.ip,
-                    mac: activeClient.mac || 'Dynamic DHCP',
-                    dns: '-',
-                    gateway: '-',
-                    next_server: '-',
-                    image_manager: 'Gamedisk Only',
-                    pxe: '-',
-                    isDynamic: true
-                });
-                staticIps.add(activeClient.ip);
-            }
-        });
-    }
-
-    if (stats && Array.isArray(stats.dhcp_leases)) {
-        stats.dhcp_leases.forEach(lease => {
-            if (lease && lease.ip && !staticIps.has(lease.ip)) {
-                staticClients.push({
-                    hostname: `DHCP-${lease.ip.split('.').pop()}`,
-                    ip: lease.ip,
-                    mac: lease.mac || 'DHCP Lease',
-                    dns: '-',
-                    gateway: '-',
-                    next_server: '-',
-                    image_manager: 'Gamedisk Only',
-                    pxe: '-',
-                    isDynamic: true
-                });
-                staticIps.add(lease.ip);
-            }
-        });
-    }
-
-    return staticClients;
+    return (clientsObj && Array.isArray(clientsObj.client)) ? [...clientsObj.client] : [];
 }
 
 // Render Dashboard Clients Table
@@ -577,8 +536,8 @@ function renderDashboardClientsTable() {
         tbody.innerHTML = `<tr><td colspan="6" class="py-12 px-6 text-center">
             <div class="flex flex-col items-center justify-center text-center gap-2">
                 <div class="text-2xl">🔌</div>
-                <h3 class="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight">Belum Ada Klien Aktif</h3>
-                <p class="text-zinc-500 dark:text-zinc-400 text-xs max-w-sm">Klien yang terhubung dan menyala akan muncul di sini secara real-time.</p>
+                <h3 class="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight">Belum Ada Klien Terdaftar</h3>
+                <p class="text-zinc-500 dark:text-zinc-400 text-xs max-w-sm">Klien terdaftar di clients.toml akan muncul di sini secara real-time.</p>
             </div>
         </td></tr>`;
         const totalPcsEl = document.getElementById('stat-total-pcs');
@@ -603,7 +562,6 @@ function renderDashboardClientsTable() {
 
         const isSuper = configObj && configObj.windows && configObj.windows.super_client_ip === c.ip;
         const superBadge = isSuper ? ` <span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 ml-1">⚡ Super</span>` : '';
-        const dynamicBadge = c.isDynamic ? ` <span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 ml-1">DHCP</span>` : '';
 
         const row = document.createElement('tr');
         row.setAttribute('data-ip', c.ip);
@@ -613,7 +571,7 @@ function renderDashboardClientsTable() {
                 <div class="flex items-center gap-1.5 min-w-0">
                     ${statusSpan}
                     <span class="font-medium text-zinc-900 dark:text-zinc-100 text-xs truncate max-w-[90px] sm:max-w-[130px] lg:max-w-[100px] xl:max-w-[140px]" title="${c.hostname || c.ip}">${c.hostname || c.ip}</span>
-                    ${superBadge}${dynamicBadge}
+                    ${superBadge}
                 </div>
                 <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate" title="${c.ip}${c.mac ? ' • ' + c.mac : ''}">${c.ip}<span class="hidden 2xl:inline">${c.mac ? ' • ' + c.mac : ''}</span></div>
             </td>
