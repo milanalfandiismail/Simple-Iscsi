@@ -188,13 +188,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let lun_id = i as u8;
         info!("Membuka storage backend raw: {}", gd_cfg.physical_disk);
 
-        match Backend::new_raw(
+        let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(config.server.read_cache_gb * 1024);
+        match Backend::new_raw_mb(
             &gd_cfg.physical_disk,
             gd_cfg.block_size,
             &gd_cfg.vendor_id,
             &gd_cfg.product_id,
             &gd_cfg.product_revision,
-            config.server.read_cache_gb,
+            ram_cache_mb,
         ) {
             Ok(b) => {
                 gamedisk_backends_map.insert(lun_id, Arc::new(b));

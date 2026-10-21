@@ -91,6 +91,11 @@ function switchTab(tabId, btnEl = null) {
     if (window.innerWidth < 1024 && navContainer && !navContainer.classList.contains('hidden')) {
         navContainer.classList.add('hidden');
     }
+
+    // 5. Trigger cache stats load on tab switch
+    if (tabId === 'cache') {
+        loadCacheStats();
+    }
 }
 
 function toggleMobileNav() {
@@ -138,8 +143,10 @@ function initAutoSyncIntervals() {
         if (activeTab === 'disk-mgmt') {
             loadDiskPartitions();
             loadWritebackFiles();
+        } else if (activeTab === 'cache') {
+            loadCacheStats();
         }
-    }, 5000);
+    }, 2000);
 }
 
 // Server Connection State & API Base Resolution
@@ -2031,3 +2038,218 @@ async function restartAllServicesAction() {
     }
 }
 
+
+
+// ==========================================
+// TAB 6: ISCSI RAM CACHE MONITOR & TELEMETRY
+// ==========================================
+
+async function loadCacheStats() {
+    try {
+        const data = await apiGet('/api/cache/stats');
+        if (!data) return;
+
+        // 1. Update Overview Stat Cards
+        const allocMbEl = document.getElementById('cache-stat-total-allocated');
+        const allocGbEl = document.getElementById('cache-stat-total-allocated-gb');
+        const usedMbEl = document.getElementById('cache-stat-total-used');
+        const usedPctEl = document.getElementById('cache-stat-used-pct');
+        const usedBarEl = document.getElementById('cache-used-progress-bar');
+        const hitRateEl = document.getElementById('cache-stat-hit-rate');
+        const totalHitsEl = document.getElementById('cache-stat-total-hits');
+        const totalMissesEl = document.getElementById('cache-stat-total-misses');
+
+        const totalAllocMb = data.total_allocated_mb || 0;
+        const totalUsedMb = data.total_used_mb || 0;
+        const usedPct = totalAllocMb > 0 ? Math.min(100, (totalUsedMb / totalAllocMb * 100)).toFixed(1) : '0';
+
+        if (allocMbEl) allocMbEl.textContent = `${totalAllocMb.toLocaleString()} MB`;
+        if (allocGbEl) allocGbEl.textContent = `(${(totalAllocMb / 1024).toFixed(1)} GB)`;
+        if (usedMbEl) usedMbEl.textContent = `${totalUsedMb.toLocaleString()} MB`;
+        if (usedPctEl) usedPctEl.textContent = `(${usedPct}%)`;
+        if (usedBarEl) usedBarEl.style.width = `${usedPct}%`;
+
+        if (hitRateEl) {
+            const hitRate = Number(data.overall_hit_rate_pct || 0).toFixed(1);
+            hitRateEl.textContent = `${hitRate}%`;
+            if (hitRate >= 90) {
+                hitRateEl.className = 'text-xl sm:text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight';
+            } else if (hitRate >= 70) {
+                hitRateEl.className = 'text-xl sm:text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 tracking-tight';
+            } else {
+                hitRateEl.className = 'text-xl sm:text-2xl font-bold font-mono text-zinc-600 dark:text-zinc-400 tracking-tight';
+            }
+        }
+
+        if (totalHitsEl) totalHitsEl.textContent = (data.total_hits || 0).toLocaleString();
+        if (totalMissesEl) totalMissesEl.textContent = (data.total_misses || 0).toLocaleString();
+
+        // 2. Render Per-Disk Cache Table
+        const tbody = document.getElementById('cache-disks-tbody');
+        if (!tbody) return;
+
+        if (!data.disks || data.disks.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="px-4 py-8 text-center text-zinc-500">
+                        Belum ada pool cache yang aktif. Boot klien iSCSI atau hubungkan disk untuk memulai pemantauan.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = data.disks.map(disk => {
+            const hitRate = Number(disk.hit_rate_pct || 0);
+            const hitRateStr = hitRate.toFixed(1);
+            let barColor = 'bg-emerald-500';
+            let badgeColor = 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800';
+
+            if (hitRate < 70) {
+                barColor = 'bg-zinc-400 dark:bg-zinc-600';
+                badgeColor = 'text-zinc-700 bg-zinc-50 border-zinc-200 dark:bg-zinc-900/60 dark:text-zinc-400 dark:border-zinc-800';
+            } else if (hitRate < 90) {
+                barColor = 'bg-amber-500';
+                badgeColor = 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800';
+            }
+
+            const typeBadge = disk.disk_type === 'imagedisk'
+                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">💿 Base OS Image</span>`
+                : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">💽 GameDisk</span>`;
+
+            const allocGb = (disk.ram_cache_mb / 1024).toFixed(1);
+
+            return `
+                <tr class="hover:bg-zinc-50/70 dark:hover:bg-zinc-900/40 transition-colors">
+                    <td class="px-4 py-3">
+                        <div class="font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                            <span>${disk.disk_type === 'imagedisk' ? '💿' : '💽'}</span>
+                            <span>${escapeHtml(disk.name)}</span>
+                        </div>
+                        <div class="text-[11px] font-mono text-zinc-400 mt-0.5">${escapeHtml(disk.disk_id)}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="mb-1">${typeBadge}</div>
+                        <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 max-w-xs truncate" title="${escapeHtml(disk.path)}">${escapeHtml(disk.path)}</div>
+                    </td>
+                    <td class="px-4 py-3 font-mono">
+                        <div class="font-semibold text-zinc-900 dark:text-zinc-100">${disk.ram_cache_mb.toLocaleString()} MB</div>
+                        <div class="text-[11px] text-zinc-400">(${allocGb} GB)</div>
+                    </td>
+                    <td class="px-4 py-3 font-mono">
+                        <div class="text-zinc-800 dark:text-zinc-200">${(disk.used_cache_mb || 0).toLocaleString()} MB</div>
+                        <div class="text-[11px] text-zinc-400">${(disk.entry_count || 0).toLocaleString()} chunks (256KB)</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-mono font-semibold text-xs text-zinc-900 dark:text-zinc-100">${hitRateStr}%</span>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded border font-mono ${badgeColor}">RAM Hit</span>
+                        </div>
+                        <div class="w-24 bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                            <div class="${barColor} h-1.5 rounded-full transition-all duration-300" style="width: ${hitRate}%"></div>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 font-mono text-xs">
+                        <div class="text-emerald-600 dark:text-emerald-400 font-medium">Hits: ${(disk.hit_count || 0).toLocaleString()}</div>
+                        <div class="text-zinc-500 dark:text-zinc-400">Miss: ${(disk.miss_count || 0).toLocaleString()}</div>
+                    </td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1.5">
+                            <button onclick="openEditCacheModal('${escapeHtml(disk.disk_id)}', ${disk.ram_cache_mb}, '${escapeHtml(disk.name)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Atur Kapasitas RAM Cache">
+                                ⚙️ <span>Atur</span>
+                            </button>
+                            <button onclick="clearDiskCache('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Flush cache memori untuk disk ini">
+                                🧹 <span>Flush</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('loadCacheStats error:', err);
+    }
+}
+
+function openEditCacheModal(diskId, currentMb, name) {
+    const modal = document.getElementById('modal-edit-cache');
+    if (!modal) return;
+
+    document.getElementById('edit-cache-disk-id').value = diskId;
+    document.getElementById('edit-cache-disk-name').value = `${name} (${diskId})`;
+    document.getElementById('edit-cache-mb-input').value = currentMb || 2048;
+    document.getElementById('modal-edit-cache-title').textContent = `Ubah Alokasi RAM Cache: ${name}`;
+
+    modal.style.display = 'flex';
+}
+
+function closeEditCacheModal() {
+    const modal = document.getElementById('modal-edit-cache');
+    if (modal) modal.style.display = 'none';
+}
+
+function setPresetSize(preset) {
+    const input = document.getElementById('edit-cache-mb-input');
+    if (!input) return;
+
+    const map = {
+        '512M': 512,
+        '1G': 1024,
+        '2G': 2048,
+        '4G': 4096,
+        '8G': 8192,
+        '16G': 16384,
+    };
+    if (map[preset]) {
+        input.value = map[preset];
+    }
+}
+
+async function submitEditCache(e) {
+    e.preventDefault();
+    const diskId = document.getElementById('edit-cache-disk-id').value;
+    const mbVal = parseInt(document.getElementById('edit-cache-mb-input').value, 10);
+
+    if (isNaN(mbVal) || mbVal < 0) {
+        showToast('Kapasitas RAM Cache tidak valid', 'error');
+        return;
+    }
+
+    try {
+        const res = await apiPost('/api/cache/config', {
+            disk_id: diskId,
+            ram_cache_mb: mbVal
+        });
+
+        if (res && res.status === 'ok') {
+            showToast(res.message || 'Alokasi RAM cache berhasil diubah!', 'success');
+            closeEditCacheModal();
+            await loadCacheStats();
+        } else {
+            showToast(res ? (res.error || res.message) : 'Gagal memperbarui konfigurasi cache', 'error');
+        }
+    } catch (err) {
+        showToast('Terjadi kesalahan saat menyimpan alokasi cache', 'error');
+    }
+}
+
+async function clearDiskCache(diskId) {
+    const targetLabel = diskId === 'all' ? 'seluruh cache server' : `cache untuk disk ${diskId}`;
+    if (!confirm(`Apakah Anda yakin ingin membersihkan (flush) ${targetLabel}?`)) {
+        return;
+    }
+
+    try {
+        showToast(`Membersihkan ${targetLabel}...`, 'info');
+        const res = await apiPost('/api/cache/clear', { disk_id: diskId });
+        if (res && res.status === 'ok') {
+            showToast(res.message || 'Cache berhasil dibersihkan!', 'success');
+            await loadCacheStats();
+        } else {
+            showToast('Gagal membersihkan cache', 'error');
+        }
+    } catch (err) {
+        showToast('Terjadi kesalahan saat membersihkan cache', 'error');
+    }
+}

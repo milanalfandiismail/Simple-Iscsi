@@ -75,6 +75,10 @@ impl ServiceManager {
         self.status_lock.read().unwrap().clone()
     }
 
+    pub fn get_backends(&self) -> Arc<std::sync::RwLock<HashMap<u8, Arc<Backend>>>> {
+        Arc::clone(&self.backends)
+    }
+
     fn set_dhcp_status(&self, state: ServiceState) {
         let mut report = self.status_lock.write().unwrap();
         report.dhcp = state;

@@ -55,6 +55,10 @@
                         <span class="text-sm">🗄️</span>
                         <span>Disk Management</span>
                     </button>
+                    <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('cache', this)">
+                        <span class="text-sm">⚡</span>
+                        <span>iSCSI Cache</span>
+                    </button>
                     <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('dhcp', this)">
                         <span class="text-sm">⚙️</span>
                         <span>Pengaturan Sentral</span>
@@ -558,6 +562,122 @@
 
                 <datalist id="network-ips-datalist"></datalist>
             </section>
+
+            <!-- TAB 6: ISCSI RAM CACHE MONITOR & TUNING -->
+            <section id="tab-cache" class="tab-panel w-full">
+                <!-- Header -->
+                <header class="pb-4 sm:pb-5 border-b border-zinc-200 dark:border-zinc-800 mb-5 sm:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h1 class="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                            <span>⚡</span>
+                            <span>iSCSI RAM Cache Monitor</span>
+                        </h1>
+                        <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Pantau real-time performa server cache, hit rate per-disk, dan alokasi RAM granular (Megabyte/Gigabyte) dengan retensi 8 jam.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="clearDiskCache('all')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer">
+                            🧹 <span>Flush Semua Cache</span>
+                        </button>
+                        <button onclick="loadCacheStats()" class="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium shadow-2xs transition-all cursor-pointer">
+                            🔄 <span>Segarkan</span>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Cache Summary Stat Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 shadow-2xs">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">Total Alokasi Cache</span>
+                        <div class="flex items-baseline gap-2">
+                            <span id="cache-stat-total-allocated" class="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0 MB</span>
+                            <span id="cache-stat-total-allocated-gb" class="text-xs font-mono text-zinc-500">(0.0 GB)</span>
+                        </div>
+                        <p class="text-[11px] text-zinc-400 mt-1">Kapasitas RAM Server Dicadangkan</p>
+                    </div>
+
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 shadow-2xs">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">RAM Cache Terpakai</span>
+                        <div class="flex items-baseline gap-2">
+                            <span id="cache-stat-total-used" class="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0 MB</span>
+                            <span id="cache-stat-used-pct" class="text-xs font-mono text-zinc-500">(0%)</span>
+                        </div>
+                        <div class="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 mt-2 overflow-hidden">
+                            <div id="cache-used-progress-bar" class="bg-indigo-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 shadow-2xs">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">Global Hit Rate</span>
+                        <div class="flex items-baseline gap-2">
+                            <span id="cache-stat-hit-rate" class="text-xl sm:text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">0.0%</span>
+                            <span class="text-[11px] text-zinc-400">Direct RAM Read</span>
+                        </div>
+                        <p class="text-[11px] text-zinc-400 mt-1">Efisiensi I/O Klien Tanpa Akses Storage</p>
+                    </div>
+
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 shadow-2xs">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">Total Hits / Misses</span>
+                        <div class="flex items-baseline gap-2">
+                            <span id="cache-stat-total-hits" class="text-lg font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0</span>
+                            <span class="text-xs text-zinc-400">/</span>
+                            <span id="cache-stat-total-misses" class="text-sm font-mono text-zinc-500">0</span>
+                        </div>
+                        <p class="text-[11px] text-zinc-400 mt-1">Akumulasi Request Pembacaan Sektor</p>
+                    </div>
+                </div>
+
+                <!-- Quick Presets Info Banner -->
+                <div class="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-lg p-3 sm:p-3.5 mb-5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                        <span class="font-semibold text-zinc-900 dark:text-zinc-100">💡 Quick Presets:</span>
+                        <span>Pilihan ukuran memori cepat tanpa perlu kalkulasi byte manual:</span>
+                        <div class="inline-flex items-center gap-1.5 ml-1 font-mono">
+                            <span class="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">512 MB</span>
+                            <span class="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">1 GB</span>
+                            <span class="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">2 GB</span>
+                            <span class="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">4 GB</span>
+                            <span class="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">8 GB</span>
+                            <span class="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">16 GB</span>
+                        </div>
+                    </div>
+                    <span class="text-[11px] text-zinc-500 font-mono">Retensi TTI: 8 Jam (28,800s) | Eviction: LRU</span>
+                </div>
+
+                <!-- Per-Disk Cache Table -->
+                <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden shadow-2xs">
+                    <div class="p-4 sm:p-5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-sm sm:text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Daftar Pool Cache Per-Disk</h2>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Alokasi memori terpisah untuk Game Physical Disks dan Shared Read Cache Base OS Image.</p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs sm:text-sm">
+                            <thead class="bg-zinc-50 dark:bg-zinc-900/50 text-zinc-500 dark:text-zinc-400 text-xs uppercase tracking-wider font-medium border-b border-zinc-200 dark:border-zinc-800">
+                                <tr>
+                                    <th class="px-4 py-3">Disk / Target</th>
+                                    <th class="px-4 py-3">Tipe & Path</th>
+                                    <th class="px-4 py-3">Alokasi RAM</th>
+                                    <th class="px-4 py-3">Terpakai</th>
+                                    <th class="px-4 py-3">Hit Rate</th>
+                                    <th class="px-4 py-3">Hits / Misses</th>
+                                    <th class="px-4 py-3 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cache-disks-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80 font-normal">
+                                <tr>
+                                    <td colspan="7" class="px-4 py-8 text-center text-zinc-500">
+                                        <div class="flex flex-col items-center justify-center gap-2">
+                                            <span class="animate-spin text-lg">⏳</span>
+                                            <span>Memuat statistik cache per-disk...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -853,6 +973,54 @@
                     <div id="vhd-merge-progress-bar" class="bg-zinc-900 dark:bg-zinc-100 h-1.5 rounded-full transition-all duration-300" style="width: 0%;"></div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDIT RAM CACHE -->
+    <div id="modal-edit-cache" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto" style="display: none;">
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl my-auto">
+            <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+                <h3 class="text-sm sm:text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+                    <span>⚡</span>
+                    <span id="modal-edit-cache-title">Ubah Alokasi RAM Cache</span>
+                </h3>
+                <button type="button" onclick="closeEditCacheModal()" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-base cursor-pointer">✕</button>
+            </div>
+            
+            <form onsubmit="submitEditCache(event)" class="space-y-4">
+                <input type="hidden" id="edit-cache-disk-id">
+                
+                <div>
+                    <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Target Disk</label>
+                    <input type="text" id="edit-cache-disk-name" readonly class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-950/80 text-zinc-600 dark:text-zinc-400 font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Quick Presets</label>
+                    <div class="grid grid-cols-3 gap-2 mb-2">
+                        <button type="button" onclick="setPresetSize('512M')" class="preset-btn px-2.5 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">512 MB</button>
+                        <button type="button" onclick="setPresetSize('1G')" class="preset-btn px-2.5 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">1 GB</button>
+                        <button type="button" onclick="setPresetSize('2G')" class="preset-btn px-2.5 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">2 GB</button>
+                        <button type="button" onclick="setPresetSize('4G')" class="preset-btn px-2.5 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">4 GB</button>
+                        <button type="button" onclick="setPresetSize('8G')" class="preset-btn px-2.5 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">8 GB</button>
+                        <button type="button" onclick="setPresetSize('16G')" class="preset-btn px-2.5 py-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-mono font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">16 GB</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Kapasitas RAM Cache (MB)</label>
+                    <div class="relative">
+                        <input type="number" id="edit-cache-mb-input" min="0" step="128" required class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/60 text-zinc-900 dark:text-zinc-100 font-mono focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none">
+                        <span class="absolute right-3 top-2 text-xs text-zinc-400 font-mono">MB</span>
+                    </div>
+                    <p class="text-[11px] text-zinc-400 mt-1">Ketik nilai dalam MB (contoh: 2048) atau klik tombol preset di atas.</p>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                    <button type="button" onclick="closeEditCacheModal()" class="px-3.5 py-1.5 text-xs font-medium rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer">Batal</button>
+                    <button type="submit" class="btn-primary px-4 py-1.5 text-xs font-medium shadow-2xs transition-all cursor-pointer">💾 Simpan Alokasi</button>
+                </div>
+            </form>
         </div>
     </div>
 
