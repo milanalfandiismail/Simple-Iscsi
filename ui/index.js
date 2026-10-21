@@ -1210,9 +1210,37 @@ function openPartitionModal(letter, currentRole) {
     mountInput.value = letter;
     mountInput.dataset.physicalDisk = physicalDisk;
 
+    // Cari existing gamedisk cache allocation jika partisi ini sudah berstatus gamedisk
+    let existingGdCache = 2048;
+    if (configObj && Array.isArray(configObj.gamedisk)) {
+        const normalizeDisk = (p) => (p || '').replace(/\\+/g, '\\').toLowerCase().trim();
+        const normTargetPhys = normalizeDisk(physicalDisk);
+        const normLetterVol = normalizeDisk(`\\\\.\\${letter}:`);
+        const matched = configObj.gamedisk.find(gd => {
+            if (!gd || !gd.physical_disk) return false;
+            const normGd = normalizeDisk(gd.physical_disk);
+            return (normTargetPhys && normGd === normTargetPhys) || normGd === normLetterVol || normGd.includes(letter.toLowerCase() + ':');
+        });
+        if (matched && matched.ram_cache_mb !== undefined && matched.ram_cache_mb !== null) {
+            existingGdCache = matched.ram_cache_mb;
+        }
+    }
+    const gdCacheInput = document.getElementById('partition-gamedisk-ram-cache');
+    if (gdCacheInput) gdCacheInput.value = existingGdCache;
+
+    const cacheBox = document.getElementById('partition-gamedisk-cache-box');
+    if (cacheBox) {
+        cacheBox.style.display = (currentRole === 'gamedisk') ? 'block' : 'none';
+    }
+
     const radios = document.querySelectorAll('input[name="partition-role"]');
     radios.forEach(r => {
         r.checked = (r.value === currentRole);
+        r.onchange = () => {
+            if (cacheBox) {
+                cacheBox.style.display = (r.checked && r.value === 'gamedisk') ? 'block' : 'none';
+            }
+        };
     });
 }
 
@@ -1275,13 +1303,16 @@ async function savePartitionRoleAction() {
         configObj.writeback.writeback_dirs.push(`${letter}:\\writeback`);
     } else if (role === 'gamedisk') {
         const targetDiskPath = physicalDisk ? physicalDisk : `\\\\.\\${letter}:`;
+        const ramCacheInput = document.getElementById('partition-gamedisk-ram-cache');
+        const ramCacheVal = ramCacheInput ? (parseInt(ramCacheInput.value, 10) || 0) : 2048;
         if (!configObj.gamedisk) configObj.gamedisk = [];
         configObj.gamedisk.push({
             physical_disk: targetDiskPath,
             block_size: 512,
             vendor_id: "RUSTISCS",
             product_id: `GameDisk-${configObj.gamedisk.length}`,
-            product_revision: "1.00"
+            product_revision: "1.00",
+            ram_cache_mb: ramCacheVal
         });
     }
 

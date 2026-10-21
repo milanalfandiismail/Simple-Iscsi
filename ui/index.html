@@ -843,12 +843,28 @@
                 
                 <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
                     <input type="radio" name="partition-role" value="gamedisk" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
-                    <div class="min-w-0">
+                    <div class="min-w-0 flex-1">
                         <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                             <span>🎮</span>
                             <span>Gamedisk Storage Target</span>
                         </span>
                         <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Disk game iSCSI block target terdistribusi.</span>
+
+                        <!-- RAM Cache Configuration for GameDisk -->
+                        <div id="partition-gamedisk-cache-box" class="mt-2.5 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60" style="display: none;">
+                            <label class="block text-[11px] font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                                Alokasi Server RAM Cache (MB):
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="partition-gamedisk-ram-cache" min="0" step="256" value="2048" class="w-28 px-2.5 py-1 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-400">
+                                <span class="text-xs text-zinc-500 font-mono">MB</span>
+                                <div class="flex items-center gap-1 text-[10.5px]">
+                                    <button type="button" onclick="document.getElementById('partition-gamedisk-ram-cache').value=1024" class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">1G</button>
+                                    <button type="button" onclick="document.getElementById('partition-gamedisk-ram-cache').value=2048" class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">2G</button>
+                                    <button type="button" onclick="document.getElementById('partition-gamedisk-ram-cache').value=4096" class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">4G</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </label>
                 
