@@ -63,10 +63,10 @@ pub fn init_child_vhd(
     // Resolve parent/base VHD path via image_manager config
     let base_path = writeback_super::resolve_base_path(config, target_suffix);
 
-    // Ambil alokasi per-disk ram_cache_mb untuk windows image, fallback ke server.read_cache_gb
+    // Ambil alokasi per-disk ram_cache_mb untuk windows image, default 0 (Zero Auto-Assign)
     let ram_cache_mb = config.windows.as_ref()
         .and_then(|w| w.ram_cache_mb)
-        .unwrap_or(config.server.read_cache_gb * 1024);
+        .unwrap_or(0);
 
     let shared_cache = get_or_create_image_cache(&base_path, ram_cache_mb);
 

@@ -155,6 +155,8 @@ pub struct WritebackConfig {
     pub max_cache_per_client_gb: u64,
     #[serde(default)]
     pub max_write_speed_mbps: u64,
+    #[serde(default)]
+    pub ram_cache_mb: Option<u64>,
 }
 
 impl Default for WritebackConfig {
@@ -163,6 +165,7 @@ impl Default for WritebackConfig {
             writeback_dirs: vec!["C:\\writeback".to_string()],
             max_cache_per_client_gb: 10,
             max_write_speed_mbps: 20,
+            ram_cache_mb: None,
         }
     }
 }

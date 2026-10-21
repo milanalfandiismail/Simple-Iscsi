@@ -1877,65 +1877,177 @@ function closeSuperClientDisableModal() {
 // VHD Merge Progress Widget Controller
 let mergePollingTimer = null;
 
-function showMergeProgressWidget(pct = 0, msg = 'Mempersiapkan merge...') {
-    const widget = document.getElementById('vhd-merge-progress-widget');
-    if (!widget) return;
-    widget.style.display = 'block';
-    setTimeout(() => {
-        widget.classList.remove('translate-y-32', 'opacity-0', 'pointer-events-none');
-        widget.classList.add('translate-y-0', 'opacity-100', 'pointer-events-auto');
-    }, 20);
+function showMergeModal(targetInfo = 'Base OS Image') {
+    const modal = document.getElementById('modal-superclient-merge');
+    if (!modal) return;
 
-    updateMergeProgressWidget(pct, msg);
+    const iconEl = document.getElementById('merge-modal-icon');
+    const badgeEl = document.getElementById('merge-modal-status-badge');
+    const targetInfoEl = document.getElementById('merge-modal-target-info');
+    const pctEl = document.getElementById('merge-modal-pct');
+    const barEl = document.getElementById('merge-modal-bar');
+    const blocksEl = document.getElementById('merge-modal-blocks');
+    const sizeEl = document.getElementById('merge-modal-size');
+    const msgEl = document.getElementById('merge-modal-msg');
+    const safetyNotice = document.getElementById('merge-modal-safety-notice');
+    const successBox = document.getElementById('merge-modal-success-box');
+    const errorBox = document.getElementById('merge-modal-error-box');
+    const actionBtn = document.getElementById('merge-modal-action-btn');
+    const btnText = document.getElementById('merge-modal-btn-text');
+    const spinner = document.getElementById('merge-modal-spinner');
+
+    if (iconEl) {
+        iconEl.textContent = '⚡';
+        iconEl.className = 'animate-pulse text-amber-500';
+    }
+    if (badgeEl) {
+        badgeEl.textContent = 'Sedang Berjalan';
+        badgeEl.className = 'px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shrink-0';
+    }
+    if (targetInfoEl) targetInfoEl.textContent = `Target: ${targetInfo}`;
+    if (pctEl) pctEl.textContent = '0%';
+    if (barEl) barEl.style.width = '0%';
+    if (blocksEl) blocksEl.textContent = 'Blok: 0 / 0';
+    if (sizeEl) sizeEl.textContent = '0 MB / 0 MB';
+    if (msgEl) msgEl.textContent = 'Mempersiapkan snapshot & backup metadata...';
+
+    if (safetyNotice) safetyNotice.classList.remove('hidden');
+    if (successBox) successBox.classList.add('hidden');
+    if (errorBox) errorBox.classList.add('hidden');
+
+    if (actionBtn) {
+        actionBtn.disabled = true;
+        actionBtn.className = 'w-full py-2.5 px-4 rounded-lg bg-zinc-200 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 text-xs sm:text-sm font-semibold cursor-not-allowed flex items-center justify-center gap-2 transition-all';
+        actionBtn.onclick = null;
+    }
+    if (spinner) spinner.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Sedang Menggabungkan VHD...';
+
+    modal.style.display = 'flex';
 }
 
-function updateMergeProgressWidget(pct, msg) {
-    const pctEl = document.getElementById('vhd-merge-progress-pct');
-    const msgEl = document.getElementById('vhd-merge-progress-msg');
-    const barEl = document.getElementById('vhd-merge-progress-bar');
-    
-    if (pctEl) pctEl.textContent = `${pct}%`;
-    if (msgEl) msgEl.textContent = msg;
-    if (barEl) barEl.style.width = `${pct}%`;
+function updateMergeModal(pct, currentBlock, totalBlocks, msg) {
+    const pctEl = document.getElementById('merge-modal-pct');
+    const barEl = document.getElementById('merge-modal-bar');
+    const blocksEl = document.getElementById('merge-modal-blocks');
+    const sizeEl = document.getElementById('merge-modal-size');
+    const msgEl = document.getElementById('merge-modal-msg');
+
+    const pctNum = Math.min(100, Math.max(0, parseInt(pct, 10) || 0));
+    if (pctEl) pctEl.textContent = `${pctNum}%`;
+    if (barEl) barEl.style.width = `${pctNum}%`;
+
+    const curB = currentBlock || 0;
+    const totB = totalBlocks || 0;
+    if (blocksEl) blocksEl.textContent = `Blok: ${curB.toLocaleString()} / ${totB.toLocaleString()}`;
+
+    // Dynamic VHD blocks are 2MB each
+    const curMb = (curB * 2).toFixed(1);
+    const totMb = (totB * 2).toFixed(1);
+    if (sizeEl) sizeEl.textContent = `${curMb} MB / ${totMb} MB`;
+
+    if (msgEl && msg) msgEl.textContent = msg;
 }
 
-function hideMergeProgressWidget() {
-    const widget = document.getElementById('vhd-merge-progress-widget');
-    if (!widget) return;
-    widget.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto');
-    widget.classList.add('translate-y-32', 'opacity-0', 'pointer-events-none');
-    setTimeout(() => {
-        widget.style.display = 'none';
-    }, 350);
+function setMergeModalSuccess(msg) {
+    updateMergeModal(100, 0, 0, msg || 'Commit Super Client selesai. Perubahan berhasil digabungkan.');
+
+    const iconEl = document.getElementById('merge-modal-icon');
+    const badgeEl = document.getElementById('merge-modal-status-badge');
+    const safetyNotice = document.getElementById('merge-modal-safety-notice');
+    const successBox = document.getElementById('merge-modal-success-box');
+    const errorBox = document.getElementById('merge-modal-error-box');
+    const actionBtn = document.getElementById('merge-modal-action-btn');
+    const btnText = document.getElementById('merge-modal-btn-text');
+    const spinner = document.getElementById('merge-modal-spinner');
+
+    if (iconEl) {
+        iconEl.textContent = '✅';
+        iconEl.className = 'text-emerald-500 text-lg';
+    }
+    if (badgeEl) {
+        badgeEl.textContent = 'Selesai 100%';
+        badgeEl.className = 'px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0';
+    }
+
+    if (safetyNotice) safetyNotice.classList.add('hidden');
+    if (errorBox) errorBox.classList.add('hidden');
+    if (successBox) successBox.classList.remove('hidden');
+
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Selesai & Tutup';
+
+    if (actionBtn) {
+        actionBtn.disabled = false;
+        actionBtn.className = 'w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2';
+        actionBtn.onclick = closeMergeModal;
+    }
 }
 
-function startMergeProgressPolling() {
+function setMergeModalError(errMsg) {
+    const iconEl = document.getElementById('merge-modal-icon');
+    const badgeEl = document.getElementById('merge-modal-status-badge');
+    const safetyNotice = document.getElementById('merge-modal-safety-notice');
+    const errorBox = document.getElementById('merge-modal-error-box');
+    const errorMsgEl = document.getElementById('merge-modal-error-msg');
+    const actionBtn = document.getElementById('merge-modal-action-btn');
+    const btnText = document.getElementById('merge-modal-btn-text');
+    const spinner = document.getElementById('merge-modal-spinner');
+
+    if (iconEl) {
+        iconEl.textContent = '❌';
+        iconEl.className = 'text-rose-500 text-lg';
+    }
+    if (badgeEl) {
+        badgeEl.textContent = 'Gagal';
+        badgeEl.className = 'px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 shrink-0';
+    }
+
+    if (safetyNotice) safetyNotice.classList.add('hidden');
+    if (errorBox) errorBox.classList.remove('hidden');
+    if (errorMsgEl) errorMsgEl.textContent = errMsg || 'Terjadi kesalahan internal saat menggabungkan differencing VHD';
+
+    if (spinner) spinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Tutup (Error)';
+
+    if (actionBtn) {
+        actionBtn.disabled = false;
+        actionBtn.className = 'w-full py-2.5 px-4 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs sm:text-sm font-semibold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2';
+        actionBtn.onclick = closeMergeModal;
+    }
+}
+
+function closeMergeModal() {
+    const modal = document.getElementById('modal-superclient-merge');
+    if (modal) modal.style.display = 'none';
+}
+
+function startMergeProgressPolling(targetInfo = 'Base OS Image') {
     if (mergePollingTimer) {
         clearInterval(mergePollingTimer);
         mergePollingTimer = null;
     }
 
-    showMergeProgressWidget(0, 'Memulai proses merge VHD di background...');
+    showMergeModal(targetInfo);
 
     mergePollingTimer = setInterval(async () => {
         const data = await apiGet('/api/vhd/merge_status');
         if (!data) return;
 
         if (data.is_merging) {
-            updateMergeProgressWidget(data.progress || 0, data.message || 'Menggabungkan differencing VHD...');
+            updateMergeModal(data.progress || 0, data.current_block || 0, data.total_blocks || 0, data.message || 'Menggabungkan differencing VHD...');
         } else {
             // Selesai atau Error
             clearInterval(mergePollingTimer);
             mergePollingTimer = null;
 
             if (data.error) {
-                updateMergeProgressWidget(data.progress || 0, `Gagal: ${data.error}`);
+                setMergeModalError(data.error);
                 showToast(`Gagal merge VHD Super Client: ${data.error}`, 'error');
-                setTimeout(() => hideMergeProgressWidget(), 5000);
             } else {
-                updateMergeProgressWidget(100, 'Merge Selesai! Mode Super Client dinonaktifkan.');
+                setMergeModalSuccess(data.message || 'Commit Super Client berhasil! Master VHD telah diperbarui.');
                 showToast('Commit Super Client berhasil! Master VHD telah diperbarui.', 'success');
-                
+
                 // Pastikan status config & tabel di-refresh secara penuh
                 if (!configObj) configObj = {};
                 if (!configObj.windows) configObj.windows = {};
@@ -1947,17 +2059,15 @@ function startMergeProgressPolling() {
                 renderClientsManagerTable();
                 renderDashboardClientsTable();
                 renderVhdTable();
-
-                setTimeout(() => hideMergeProgressWidget(), 3000);
             }
         }
-    }, 750);
+    }, 600);
 }
 
 async function checkInitialMergeStatus() {
     const data = await apiGet('/api/vhd/merge_status');
     if (data && data.is_merging) {
-        startMergeProgressPolling();
+        startMergeProgressPolling(data.image_key || 'Base OS');
     }
 }
 
@@ -1975,7 +2085,20 @@ async function handleSuperClientDisableChoice(choice) {
         showToast(`Memproses Commit Super Client (${hostname})...`, 'info');
         const res = await apiPost('/api/superclient/commit', { ip, hostname }, 15000);
         if (res && res.status === 'ok') {
-            startMergeProgressPolling();
+            if (res.requires_merge === false) {
+                showToast(res.message || 'Mode Super Client berhasil dinonaktifkan.', 'success');
+                if (!configObj) configObj = {};
+                if (!configObj.windows) configObj.windows = {};
+                configObj.windows.super_client_ip = '';
+                configObj.windows.super_client_action = '';
+                renderedDashboardIps = [];
+                await loadConfigJson();
+                await loadClientsJson();
+                renderClientsManagerTable();
+                renderDashboardClientsTable();
+            } else {
+                startMergeProgressPolling(hostname || ip);
+            }
         } else {
             showToast((res && res.message) ? res.message : 'Gagal memproses commit Super Client', 'error');
         }
@@ -2145,6 +2268,10 @@ async function loadCacheStats() {
         }
 
         tbody.innerHTML = data.disks.map(disk => {
+            const isReadCache = disk.disk_type === 'imagedisk_read' || disk.disk_type === 'gamedisk_read' || disk.disk_type === 'imagedisk' || disk.disk_type === 'gamedisk';
+            const isWriteback = disk.disk_type === 'writeback_write' || disk.disk_type === 'writeback';
+            const isOff = !disk.ram_cache_mb || disk.ram_cache_mb === 0;
+
             const hitRate = Number(disk.hit_rate_pct || 0);
             const hitRateStr = hitRate.toFixed(1);
             let barColor = 'bg-emerald-500';
@@ -2158,9 +2285,18 @@ async function loadCacheStats() {
                 badgeColor = 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800';
             }
 
-            const typeBadge = disk.disk_type === 'imagedisk'
-                ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 whitespace-nowrap">💿 Base OS</span>`
-                : `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 whitespace-nowrap">💽 GameDisk</span>`;
+            let typeBadge = '';
+            let diskIcon = '💿';
+            if (disk.disk_type === 'imagedisk_read' || disk.disk_type === 'imagedisk') {
+                diskIcon = '💿';
+                typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 whitespace-nowrap">💿 Image Disk (Read)</span>`;
+            } else if (disk.disk_type === 'gamedisk_read' || disk.disk_type === 'gamedisk') {
+                diskIcon = '💽';
+                typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 whitespace-nowrap">💽 GameDisk (Read)</span>`;
+            } else if (isWriteback) {
+                diskIcon = '💾';
+                typeBadge = `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 whitespace-nowrap">💾 Writeback (Write)</span>`;
+            }
 
             const allocGb = (disk.ram_cache_mb / 1024).toFixed(1);
 
@@ -2168,7 +2304,7 @@ async function loadCacheStats() {
                 <tr class="hover:bg-zinc-50/70 dark:hover:bg-zinc-900/40 transition-colors">
                     <td class="px-2 py-2">
                         <div class="font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 truncate" title="${escapeHtml(disk.name)}">
-                            <span class="shrink-0">${disk.disk_type === 'imagedisk' ? '💿' : '💽'}</span>
+                            <span class="shrink-0">${diskIcon}</span>
                             <span class="truncate">${escapeHtml(disk.name)}</span>
                         </div>
                         <div class="text-[11px] font-mono text-zinc-400 mt-0.5 truncate">${escapeHtml(disk.disk_id)}</div>
@@ -2178,32 +2314,55 @@ async function loadCacheStats() {
                         <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate" title="${escapeHtml(disk.path)}">${escapeHtml(disk.path)}</div>
                     </td>
                     <td class="px-2 py-2 font-mono">
-                        <div class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${disk.ram_cache_mb.toLocaleString()} MB</div>
-                        <div class="text-[11px] text-zinc-400 truncate">(${allocGb} GB)</div>
+                        ${isOff
+                            ? `<div class="font-semibold text-zinc-400 dark:text-zinc-500 truncate">0 MB</div>
+                               <div class="text-[10px] text-zinc-400 truncate">⚪ Nonaktif</div>`
+                            : `<div class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${disk.ram_cache_mb.toLocaleString()} MB</div>
+                               <div class="text-[11px] text-zinc-400 truncate">(${allocGb} GB)</div>`
+                        }
                     </td>
                     <td class="px-2 py-2 font-mono">
-                        <div class="text-zinc-800 dark:text-zinc-200 truncate">${(disk.used_cache_mb || 0).toLocaleString()} MB</div>
-                        <div class="text-[10px] text-zinc-400 truncate">${(disk.entry_count || 0).toLocaleString()} chunks</div>
+                        ${isOff
+                            ? `<div class="text-zinc-400 dark:text-zinc-500 truncate">Direct Disk I/O</div>
+                               <div class="text-[10px] text-zinc-400 truncate">Tanpa Buffer</div>`
+                            : `<div class="text-zinc-800 dark:text-zinc-200 truncate">${(disk.used_cache_mb || 0).toLocaleString()} MB</div>
+                               <div class="text-[10px] text-zinc-400 truncate">${(disk.entry_count || 0).toLocaleString()} chunks</div>`
+                        }
                     </td>
                     <td class="px-2 py-2">
-                        <div class="flex items-center gap-1 mb-1">
-                            <span class="font-mono font-semibold text-xs text-zinc-900 dark:text-zinc-100">${hitRateStr}%</span>
-                            <span class="text-[9px] px-1 py-0.2 rounded border font-mono ${badgeColor}">RAM</span>
-                        </div>
-                        <div class="w-12 sm:w-16 xl:w-20 bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-200 dark:border-zinc-700">
-                            <div class="${barColor} h-1.5 rounded-full transition-all duration-300" style="width: ${hitRate}%"></div>
-                        </div>
+                        ${isOff
+                            ? `<div class="flex items-center gap-1 mb-1">
+                                   <span class="font-mono text-xs text-zinc-400">-</span>
+                                   <span class="text-[9px] px-1 py-0.2 rounded border font-mono text-zinc-400 border-zinc-200 dark:border-zinc-800">DIRECT</span>
+                               </div>
+                               <div class="w-12 sm:w-16 xl:w-20 bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                                   <div class="bg-zinc-300 dark:bg-zinc-700 h-1.5 rounded-full" style="width: 0%"></div>
+                               </div>`
+                            : `<div class="flex items-center gap-1 mb-1">
+                                   <span class="font-mono font-semibold text-xs text-zinc-900 dark:text-zinc-100">${hitRateStr}%</span>
+                                   <span class="text-[9px] px-1 py-0.2 rounded border font-mono ${badgeColor}">${isWriteback ? 'BUFFER' : 'RAM'}</span>
+                               </div>
+                               <div class="w-12 sm:w-16 xl:w-20 bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                                   <div class="${barColor} h-1.5 rounded-full transition-all duration-300" style="width: ${hitRate}%"></div>
+                               </div>`
+                        }
                     </td>
                     <td class="px-2 py-2 font-mono text-[11px]">
-                        <div class="text-emerald-600 dark:text-emerald-400 font-medium truncate">H: ${(disk.hit_count || 0).toLocaleString()}</div>
-                        <div class="text-zinc-500 dark:text-zinc-400 truncate">M: ${(disk.miss_count || 0).toLocaleString()}</div>
+                        ${isOff
+                            ? `<div class="text-zinc-400 dark:text-zinc-500 truncate">Direct I/O</div>`
+                            : isWriteback
+                            ? `<div class="text-amber-600 dark:text-amber-400 font-medium truncate">Write Buffer</div>
+                               <div class="text-zinc-500 dark:text-zinc-400 truncate">Flush Otomatis</div>`
+                            : `<div class="text-emerald-600 dark:text-emerald-400 font-medium truncate">H: ${(disk.hit_count || 0).toLocaleString()}</div>
+                               <div class="text-zinc-500 dark:text-zinc-400 truncate">M: ${(disk.miss_count || 0).toLocaleString()}</div>`
+                        }
                     </td>
                     <td class="px-2 py-2 text-right">
                         <div class="inline-flex items-center justify-end gap-1">
                             <button onclick="openEditCacheModal('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 xl:px-2 xl:py-1 text-xs font-medium rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Atur Kapasitas RAM Cache">
                                 <span>⚙️</span><span class="hidden 2xl:inline">Atur</span>
                             </button>
-                            <button onclick="clearDiskCache('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 xl:px-2 xl:py-1 text-xs font-medium rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Flush cache memori untuk disk ini">
+                            <button onclick="clearDiskCache('${escapeHtml(disk.disk_id)}')" ${isOff ? 'disabled' : ''} class="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 xl:px-2 xl:py-1 text-xs font-medium rounded ${isOff ? 'bg-zinc-50 dark:bg-zinc-900 text-zinc-300 dark:text-zinc-700 border-zinc-100 dark:border-zinc-800 cursor-not-allowed opacity-50' : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 cursor-pointer'} border transition" title="${isOff ? 'Cache nonaktif' : 'Flush cache memori untuk disk ini'}">
                                 <span>🧹</span><span class="hidden 2xl:inline">Flush</span>
                             </button>
                         </div>
@@ -2222,12 +2381,12 @@ function openEditCacheModal(diskId) {
     const modal = document.getElementById('modal-edit-cache');
     if (!modal) return;
 
-    const currentMb = disk ? disk.ram_cache_mb : 2048;
+    const currentMb = disk ? disk.ram_cache_mb : 0;
     const name = disk ? disk.name : diskId;
 
     document.getElementById('edit-cache-disk-id').value = diskId;
     document.getElementById('edit-cache-disk-name').value = `${name} (${diskId})`;
-    document.getElementById('edit-cache-mb-input').value = currentMb || 2048;
+    document.getElementById('edit-cache-mb-input').value = (currentMb !== undefined && currentMb !== null) ? currentMb : 0;
     document.getElementById('modal-edit-cache-title').textContent = `Ubah Alokasi RAM Cache: ${name}`;
 
     modal.style.display = 'flex';
@@ -2243,6 +2402,7 @@ function setPresetSize(preset) {
     if (!input) return;
 
     const map = {
+        '0M': 0,
         '512M': 512,
         '1G': 1024,
         '2G': 2048,
@@ -2250,7 +2410,7 @@ function setPresetSize(preset) {
         '8G': 8192,
         '16G': 16384,
     };
-    if (map[preset]) {
+    if (map[preset] !== undefined) {
         input.value = map[preset];
     }
 }

@@ -46,6 +46,28 @@ pub fn set_merge_image(key: &str) {
     *MERGE_IMAGE.write() = key.to_string();
 }
 
+pub fn start_merge_job(image_key: &str) {
+    IS_MERGING.store(true, Ordering::SeqCst);
+    MERGE_PROGRESS.store(0, Ordering::Relaxed);
+    MERGE_CURRENT_BLOCK.store(0, Ordering::Relaxed);
+    MERGE_TOTAL_BLOCKS.store(0, Ordering::Relaxed);
+    *MERGE_ERROR.write() = None;
+    *MERGE_IMAGE.write() = image_key.to_string();
+    *MERGE_MESSAGE.write() = "Mempersiapkan snapshot & backup metadata...".to_string();
+}
+
+pub fn finish_merge_job(success: bool, msg: String, err: Option<String>) {
+    if success {
+        MERGE_PROGRESS.store(100, Ordering::Relaxed);
+        *MERGE_MESSAGE.write() = msg;
+        *MERGE_ERROR.write() = None;
+    } else {
+        *MERGE_MESSAGE.write() = msg;
+        *MERGE_ERROR.write() = err;
+    }
+    IS_MERGING.store(false, Ordering::SeqCst);
+}
+
 /// Merge differencing VHD ke parent-nya.
 /// Block-level: untuk setiap block yang teralokasi di child → copy ke parent.
 ///
