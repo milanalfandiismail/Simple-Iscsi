@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::sync::Arc;
 use parking_lot::RwLock;
 use tracing::{info, warn, error};
@@ -47,6 +47,9 @@ impl BackendType {
     }
 
     fn vhd_needs_allocation(vhd: &VhdBackend, lba: u64, block_size: u64, buf_len: usize) -> bool {
+        if vhd.disk_type == 2 {
+            return false;
+        }
         let vhd_block_size = vhd.vhd_block_size as u64;
         let start_block = (lba * block_size) / vhd_block_size;
         let end_block = ((lba * block_size + buf_len as u64 - 1) / vhd_block_size) + 1;
