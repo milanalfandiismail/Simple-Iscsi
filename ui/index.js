@@ -246,6 +246,16 @@ async function apiPost(url, body = {}, timeoutMs = 4500) {
 }
 
 // Formatters & DOM Helpers
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -2044,6 +2054,8 @@ async function restartAllServicesAction() {
 // TAB 6: ISCSI RAM CACHE MONITOR & TELEMETRY
 // ==========================================
 
+let currentCacheDisks = [];
+
 async function loadCacheStats() {
     try {
         const data = await apiGet('/api/cache/stats');
@@ -2083,6 +2095,8 @@ async function loadCacheStats() {
 
         if (totalHitsEl) totalHitsEl.textContent = (data.total_hits || 0).toLocaleString();
         if (totalMissesEl) totalMissesEl.textContent = (data.total_misses || 0).toLocaleString();
+
+        currentCacheDisks = data.disks || [];
 
         // 2. Render Per-Disk Cache Table
         const tbody = document.getElementById('cache-disks-tbody');
@@ -2155,7 +2169,7 @@ async function loadCacheStats() {
                     </td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
                         <div class="inline-flex items-center gap-1.5">
-                            <button onclick="openEditCacheModal('${escapeHtml(disk.disk_id)}', ${disk.ram_cache_mb}, '${escapeHtml(disk.name)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Atur Kapasitas RAM Cache">
+                            <button onclick="openEditCacheModal('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Atur Kapasitas RAM Cache">
                                 ⚙️ <span>Atur</span>
                             </button>
                             <button onclick="clearDiskCache('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Flush cache memori untuk disk ini">
@@ -2172,9 +2186,13 @@ async function loadCacheStats() {
     }
 }
 
-function openEditCacheModal(diskId, currentMb, name) {
+function openEditCacheModal(diskId) {
+    const disk = currentCacheDisks.find(d => d.disk_id === diskId);
     const modal = document.getElementById('modal-edit-cache');
     if (!modal) return;
+
+    const currentMb = disk ? disk.ram_cache_mb : 2048;
+    const name = disk ? disk.name : diskId;
 
     document.getElementById('edit-cache-disk-id').value = diskId;
     document.getElementById('edit-cache-disk-name').value = `${name} (${diskId})`;
