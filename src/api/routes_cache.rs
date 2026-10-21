@@ -47,56 +47,92 @@ pub fn handle_get_cache_stats(
     let mut total_hits = 0u64;
     let mut total_misses = 0u64;
 
-    // 1. Ambil data Gamedisk backends
+    // 1. Ambil data Gamedisk dari konfigurasi dan sinkronkan dengan backends jika aktif
     let backends_lock = service_manager.get_backends();
     let backends = backends_lock.read().unwrap();
+    let mut processed_luns = std::collections::HashSet::new();
 
-    for (lun_id, backend) in backends.iter() {
-        let gd_cfg = cfg.gamedisk.get(*lun_id as usize);
-        let path = gd_cfg.map(|g| g.physical_disk.clone()).unwrap_or_else(|| format!("LUN-{}", lun_id));
+    for (lun_idx, gd_cfg) in cfg.gamedisk.iter().enumerate() {
+        let lun_id = lun_idx as u8;
+        processed_luns.insert(lun_id);
+        let path = gd_cfg.physical_disk.clone();
         let name = format!("GameDisk LUN {}", lun_id);
+        let configured_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
 
-        if let Some(cache) = backend.read_cache() {
-            let stats = cache.stats();
-            total_allocated_mb += stats.ram_cache_mb;
-            total_used_mb += stats.used_cache_mb;
-            total_hits += stats.hit_count;
-            total_misses += stats.miss_count;
+        if let Some(backend) = backends.get(&lun_id) {
+            if let Some(cache) = backend.read_cache() {
+                let stats = cache.stats();
+                total_allocated_mb += stats.ram_cache_mb;
+                total_used_mb += stats.used_cache_mb;
+                total_hits += stats.hit_count;
+                total_misses += stats.miss_count;
 
-            disks.push(DiskCacheStatItem {
-                disk_id: format!("gamedisk_{}", lun_id),
-                name,
-                path,
-                disk_type: "gamedisk".to_string(),
-                ram_cache_mb: stats.ram_cache_mb,
-                used_cache_mb: stats.used_cache_mb,
-                entry_count: stats.entry_count,
-                total_chunks: stats.total_chunks,
-                hit_count: stats.hit_count,
-                miss_count: stats.miss_count,
-                hit_rate_pct: stats.hit_rate_pct,
-                cached_read_bytes: stats.cached_read_bytes,
-                direct_read_bytes: stats.direct_read_bytes,
-            });
-        } else {
-            let configured_mb = gd_cfg
-                .and_then(|g| g.ram_cache_mb)
-                .unwrap_or(0);
-            disks.push(DiskCacheStatItem {
-                disk_id: format!("gamedisk_{}", lun_id),
-                name,
-                path,
-                disk_type: "gamedisk".to_string(),
-                ram_cache_mb: configured_mb,
-                used_cache_mb: 0,
-                entry_count: 0,
-                total_chunks: 0,
-                hit_count: 0,
-                miss_count: 0,
-                hit_rate_pct: 0.0,
-                cached_read_bytes: 0,
-                direct_read_bytes: 0,
-            });
+                disks.push(DiskCacheStatItem {
+                    disk_id: format!("gamedisk_{}", lun_id),
+                    name,
+                    path,
+                    disk_type: "gamedisk".to_string(),
+                    ram_cache_mb: stats.ram_cache_mb,
+                    used_cache_mb: stats.used_cache_mb,
+                    entry_count: stats.entry_count,
+                    total_chunks: stats.total_chunks,
+                    hit_count: stats.hit_count,
+                    miss_count: stats.miss_count,
+                    hit_rate_pct: stats.hit_rate_pct,
+                    cached_read_bytes: stats.cached_read_bytes,
+                    direct_read_bytes: stats.direct_read_bytes,
+                });
+                continue;
+            }
+        }
+
+        // Tampilkan slot GameDisk terkonfigurasi meskipun service / disk sedang offline
+        total_allocated_mb += configured_mb;
+        disks.push(DiskCacheStatItem {
+            disk_id: format!("gamedisk_{}", lun_id),
+            name,
+            path,
+            disk_type: "gamedisk".to_string(),
+            ram_cache_mb: configured_mb,
+            used_cache_mb: 0,
+            entry_count: 0,
+            total_chunks: (configured_mb * 1024 * 1024) / (256 * 1024),
+            hit_count: 0,
+            miss_count: 0,
+            hit_rate_pct: 0.0,
+            cached_read_bytes: 0,
+            direct_read_bytes: 0,
+        });
+    }
+
+    // Periksa backend tambahan jika ada yang tidak terdaftar di cfg.gamedisk
+    for (lun_id, backend) in backends.iter() {
+        if !processed_luns.contains(lun_id) {
+            let path = format!("LUN-{}", lun_id);
+            let name = format!("GameDisk LUN {}", lun_id);
+            if let Some(cache) = backend.read_cache() {
+                let stats = cache.stats();
+                total_allocated_mb += stats.ram_cache_mb;
+                total_used_mb += stats.used_cache_mb;
+                total_hits += stats.hit_count;
+                total_misses += stats.miss_count;
+
+                disks.push(DiskCacheStatItem {
+                    disk_id: format!("gamedisk_{}", lun_id),
+                    name,
+                    path,
+                    disk_type: "gamedisk".to_string(),
+                    ram_cache_mb: stats.ram_cache_mb,
+                    used_cache_mb: stats.used_cache_mb,
+                    entry_count: stats.entry_count,
+                    total_chunks: stats.total_chunks,
+                    hit_count: stats.hit_count,
+                    miss_count: stats.miss_count,
+                    hit_rate_pct: stats.hit_rate_pct,
+                    cached_read_bytes: stats.cached_read_bytes,
+                    direct_read_bytes: stats.direct_read_bytes,
+                });
+            }
         }
     }
 
@@ -240,7 +276,7 @@ pub struct UpdateCacheConfigRequest {
 pub fn handle_post_cache_config(
     body: &str,
     config: &SharedConfig,
-    _service_manager: &Arc<ServiceManager>,
+    service_manager: &Arc<ServiceManager>,
 ) -> String {
     let req: UpdateCacheConfigRequest = match serde_json::from_str(body) {
         Ok(r) => r,
@@ -259,10 +295,24 @@ pub fn handle_post_cache_config(
 
     if req.disk_id.starts_with("gamedisk_") {
         let lun_str = &req.disk_id["gamedisk_".len()..];
-        if let Ok(lun_id) = lun_str.parse::<usize>() {
-            if let Some(gd) = current_cfg.gamedisk.get_mut(lun_id) {
+        if let Ok(lun_id) = lun_str.parse::<u8>() {
+            let lun_idx = lun_id as usize;
+            if let Some(gd) = current_cfg.gamedisk.get_mut(lun_idx) {
                 gd.ram_cache_mb = Some(target_mb);
                 info!("Mengubah RAM cache Gamedisk LUN {} menjadi {} MB", lun_id, target_mb);
+
+                // Live dynamic update on running backend!
+                let backends_lock = service_manager.get_backends();
+                let backends = backends_lock.read().unwrap();
+                if let Some(backend) = backends.get(&lun_id) {
+                    let new_cache = if target_mb > 0 {
+                        crate::read_ahead::ReadAheadCache::new_mb(target_mb, 256 * 1024).map(Arc::new)
+                    } else {
+                        None
+                    };
+                    backend.set_read_cache(new_cache);
+                    info!("Live dynamic cache backend LUN {} berhasil diubah ke {} MB", lun_id, target_mb);
+                }
             } else {
                 return build_response(404, "Not Found", "application/json", r#"{"error":"LUN Gamedisk tidak ditemukan"}"#);
             }
@@ -352,8 +402,8 @@ max_cache_per_client_gb = 10
 
         // Siapkan dummy backend dengan cache
         let mut backends_map: HashMap<u8, Arc<Backend>> = HashMap::new();
-        let mut dummy = Backend::new_dummy("TEST", "CACHE", "1.0");
-        dummy.read_cache = crate::read_ahead::ReadAheadCache::new_mb(1024, 256 * 1024).map(Arc::new);
+        let dummy = Backend::new_dummy("TEST", "CACHE", "1.0");
+        dummy.set_read_cache(crate::read_ahead::ReadAheadCache::new_mb(1024, 256 * 1024).map(Arc::new));
         let arc_backend = Arc::new(dummy);
         backends_map.insert(0, Arc::clone(&arc_backend));
 
@@ -385,6 +435,7 @@ max_cache_per_client_gb = 10
         );
         assert!(config_resp.starts_with("HTTP/1.1 200 OK"));
         assert_eq!(shared_cfg.read().gamedisk[0].ram_cache_mb, Some(4096));
+        assert_eq!(arc_backend.read_cache().unwrap().stats().ram_cache_mb, 4096);
 
         // Cleanup
         let _ = std::fs::remove_file(cfg_path);

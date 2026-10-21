@@ -120,7 +120,7 @@ pub struct Backend {
     pub vendor_id: String,
     pub product_id: String,
     pub product_revision: String,
-    pub read_cache: Option<Arc<ReadAheadCache>>,
+    pub read_cache: RwLock<Option<Arc<ReadAheadCache>>>,
     pub io_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
@@ -194,7 +194,7 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
-            read_cache,
+            read_cache: RwLock::new(read_cache),
             io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
@@ -251,7 +251,7 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
-            read_cache: shared_cache,
+            read_cache: RwLock::new(shared_cache),
             io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
@@ -359,7 +359,7 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
-            read_cache: shared_cache,
+            read_cache: RwLock::new(shared_cache),
             io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
@@ -382,12 +382,17 @@ impl Backend {
     }
 
     pub fn read_cache(&self) -> Option<Arc<ReadAheadCache>> {
-        self.read_cache.clone()
+        self.read_cache.read().clone()
+    }
+
+    pub fn set_read_cache(&self, new_cache: Option<Arc<ReadAheadCache>>) {
+        *self.read_cache.write() = new_cache;
     }
 
     pub fn try_read_from_cache(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<()> {
         let bs = self.block_size;
-        let cache = self.read_cache.as_ref()?;
+        let cache_opt = self.read_cache.read().clone();
+        let cache = cache_opt.as_ref()?;
 
         let chunk_size_bytes = 256 * 1024;
         let start_byte = lba * bs;
@@ -440,7 +445,8 @@ impl Backend {
         let num = num_blocks.min(max_blocks);
         let actual_len = (num as u64) * bs;
 
-        let cache = match &self.read_cache {
+        let cache_opt = self.read_cache.read().clone();
+        let cache = match &cache_opt {
             Some(c) => c,
             None => {
                 let inner = self.inner.read();
@@ -500,7 +506,7 @@ impl Backend {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer terlalu kecil untuk write"));
         }
 
-        if let Some(ref cache) = self.read_cache {
+        if let Some(ref cache) = self.read_cache.read().clone() {
             cache.invalidate_range(lba * bs, write_len);
         }
 
@@ -592,7 +598,7 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
-            read_cache: None,
+            read_cache: RwLock::new(None),
             io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         }
     }
