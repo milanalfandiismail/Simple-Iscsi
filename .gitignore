@@ -51,3 +51,10 @@ package-lock.json
 # Local Configurations (Personal Data)
 config.toml
 clients.toml
+
+# CCBoot local logs, dumps, and ini files
+/dump/
+/Log/
+CCBoot*
+*.dmp
+*.ini
