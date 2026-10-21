@@ -188,7 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let lun_id = i as u8;
         info!("Membuka storage backend raw: {}", gd_cfg.physical_disk);
 
-        let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(config.server.read_cache_gb * 1024);
+        let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
         match Backend::new_raw_mb(
             &gd_cfg.physical_disk,
             gd_cfg.block_size,

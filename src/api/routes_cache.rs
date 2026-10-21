@@ -14,7 +14,7 @@ pub struct DiskCacheStatItem {
     pub disk_id: String,
     pub name: String,
     pub path: String,
-    pub disk_type: String, // "gamedisk" | "imagedisk"
+    pub disk_type: String, // "imagedisk_read" | "gamedisk_read" | "writeback_write"
     pub ram_cache_mb: u64,
     pub used_cache_mb: u64,
     pub entry_count: u64,
@@ -47,56 +47,120 @@ pub fn handle_get_cache_stats(
     let mut total_hits = 0u64;
     let mut total_misses = 0u64;
 
-    // 1. Ambil data Gamedisk dari konfigurasi dan sinkronkan dengan backends jika aktif
+    // 1. Image Disk (Base OS) - Driverless Read Cache
+    if let Some(ref win) = cfg.windows {
+        let win_mb = win.ram_cache_mb.unwrap_or(0);
+        total_allocated_mb += win_mb;
+
+        let mut used_cache_mb = 0u64;
+        let mut entry_count = 0u64;
+        let mut hit_count = 0u64;
+        let mut miss_count = 0u64;
+        let mut cached_read_bytes = 0u64;
+        let mut direct_read_bytes = 0u64;
+
+        if win_mb > 0 {
+            let image_registry = get_image_cache_registry();
+            for entry in image_registry.iter() {
+                let st = entry.value().stats();
+                used_cache_mb += st.used_cache_mb;
+                entry_count += st.entry_count;
+                hit_count += st.hit_count;
+                miss_count += st.miss_count;
+                cached_read_bytes += st.cached_read_bytes;
+                direct_read_bytes += st.direct_read_bytes;
+            }
+        }
+
+        total_used_mb += used_cache_mb;
+        total_hits += hit_count;
+        total_misses += miss_count;
+
+        let total_reqs = hit_count + miss_count;
+        let hit_rate_pct = if total_reqs > 0 {
+            (hit_count as f64 / total_reqs as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let total_chunks = if win_mb > 0 {
+            (win_mb * 1024 * 1024) / (256 * 1024)
+        } else {
+            0
+        };
+
+        disks.push(DiskCacheStatItem {
+            disk_id: "disk_image".to_string(),
+            name: "Image Disk (Base OS)".to_string(),
+            path: win.vhd_dir.clone(),
+            disk_type: "imagedisk_read".to_string(),
+            ram_cache_mb: win_mb,
+            used_cache_mb,
+            entry_count,
+            total_chunks,
+            hit_count,
+            miss_count,
+            hit_rate_pct,
+            cached_read_bytes,
+            direct_read_bytes,
+        });
+    }
+
+    // 2. GameDisk LUNs - Driverless Read Cache
     let backends_lock = service_manager.get_backends();
     let backends = backends_lock.read().unwrap();
-    let mut processed_luns = std::collections::HashSet::new();
 
     for (lun_idx, gd_cfg) in cfg.gamedisk.iter().enumerate() {
         let lun_id = lun_idx as u8;
-        processed_luns.insert(lun_id);
         let path = gd_cfg.physical_disk.clone();
         let name = format!("GameDisk LUN {}", lun_id);
         let configured_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
 
-        if let Some(backend) = backends.get(&lun_id) {
-            if let Some(cache) = backend.read_cache() {
-                let stats = cache.stats();
-                total_allocated_mb += stats.ram_cache_mb;
-                total_used_mb += stats.used_cache_mb;
-                total_hits += stats.hit_count;
-                total_misses += stats.miss_count;
+        if configured_mb > 0 {
+            if let Some(backend) = backends.get(&lun_id) {
+                if let Some(cache) = backend.read_cache() {
+                    let stats = cache.stats();
+                    total_allocated_mb += stats.ram_cache_mb;
+                    total_used_mb += stats.used_cache_mb;
+                    total_hits += stats.hit_count;
+                    total_misses += stats.miss_count;
 
-                disks.push(DiskCacheStatItem {
-                    disk_id: format!("gamedisk_{}", lun_id),
-                    name,
-                    path,
-                    disk_type: "gamedisk".to_string(),
-                    ram_cache_mb: stats.ram_cache_mb,
-                    used_cache_mb: stats.used_cache_mb,
-                    entry_count: stats.entry_count,
-                    total_chunks: stats.total_chunks,
-                    hit_count: stats.hit_count,
-                    miss_count: stats.miss_count,
-                    hit_rate_pct: stats.hit_rate_pct,
-                    cached_read_bytes: stats.cached_read_bytes,
-                    direct_read_bytes: stats.direct_read_bytes,
-                });
-                continue;
+                    disks.push(DiskCacheStatItem {
+                        disk_id: format!("gamedisk_{}", lun_id),
+                        name,
+                        path,
+                        disk_type: "gamedisk_read".to_string(),
+                        ram_cache_mb: stats.ram_cache_mb,
+                        used_cache_mb: stats.used_cache_mb,
+                        entry_count: stats.entry_count,
+                        total_chunks: stats.total_chunks,
+                        hit_count: stats.hit_count,
+                        miss_count: stats.miss_count,
+                        hit_rate_pct: stats.hit_rate_pct,
+                        cached_read_bytes: stats.cached_read_bytes,
+                        direct_read_bytes: stats.direct_read_bytes,
+                    });
+                    continue;
+                }
             }
         }
 
-        // Tampilkan slot GameDisk terkonfigurasi meskipun service / disk sedang offline
         total_allocated_mb += configured_mb;
+        let total_chunks = if configured_mb > 0 {
+            (configured_mb * 1024 * 1024) / (256 * 1024)
+        } else {
+            0
+        };
+
         disks.push(DiskCacheStatItem {
             disk_id: format!("gamedisk_{}", lun_id),
             name,
             path,
-            disk_type: "gamedisk".to_string(),
+            disk_type: "gamedisk_read".to_string(),
             ram_cache_mb: configured_mb,
             used_cache_mb: 0,
             entry_count: 0,
-            total_chunks: (configured_mb * 1024 * 1024) / (256 * 1024),
+            total_chunks,
             hit_count: 0,
             miss_count: 0,
             hit_rate_pct: 0.0,
@@ -105,94 +169,32 @@ pub fn handle_get_cache_stats(
         });
     }
 
-    // Periksa backend tambahan jika ada yang tidak terdaftar di cfg.gamedisk
-    for (lun_id, backend) in backends.iter() {
-        if !processed_luns.contains(lun_id) {
-            let path = format!("LUN-{}", lun_id);
-            let name = format!("GameDisk LUN {}", lun_id);
-            if let Some(cache) = backend.read_cache() {
-                let stats = cache.stats();
-                total_allocated_mb += stats.ram_cache_mb;
-                total_used_mb += stats.used_cache_mb;
-                total_hits += stats.hit_count;
-                total_misses += stats.miss_count;
+    // 3. Writeback Storage Disks - Driverless Write Cache / Buffer
+    let wb_mb = cfg.writeback.ram_cache_mb.unwrap_or(0);
+    total_allocated_mb += wb_mb;
 
-                disks.push(DiskCacheStatItem {
-                    disk_id: format!("gamedisk_{}", lun_id),
-                    name,
-                    path,
-                    disk_type: "gamedisk".to_string(),
-                    ram_cache_mb: stats.ram_cache_mb,
-                    used_cache_mb: stats.used_cache_mb,
-                    entry_count: stats.entry_count,
-                    total_chunks: stats.total_chunks,
-                    hit_count: stats.hit_count,
-                    miss_count: stats.miss_count,
-                    hit_rate_pct: stats.hit_rate_pct,
-                    cached_read_bytes: stats.cached_read_bytes,
-                    direct_read_bytes: stats.direct_read_bytes,
-                });
-            }
-        }
-    }
-
-    // 2. Ambil data Shared Base Image backends dari IMAGE_CACHE_REGISTRY
-    let image_registry = get_image_cache_registry();
-    for entry in image_registry.iter() {
-        let path = entry.key().clone();
-        let cache = entry.value();
-        let stats = cache.stats();
-
-        total_allocated_mb += stats.ram_cache_mb;
-        total_used_mb += stats.used_cache_mb;
-        total_hits += stats.hit_count;
-        total_misses += stats.miss_count;
-
-        let filename = std::path::Path::new(&path)
-            .file_name()
-            .map(|f| f.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.clone());
-
-        let disk_id = format!("image_{}", filename.replace('.', "_"));
+    for (idx, dir) in cfg.writeback.writeback_dirs.iter().enumerate() {
+        let name = if cfg.writeback.writeback_dirs.len() == 1 {
+            "Writeback Storage".to_string()
+        } else {
+            format!("Writeback Storage {}", idx + 1)
+        };
 
         disks.push(DiskCacheStatItem {
-            disk_id,
-            name: format!("Base Image ({})", filename),
-            path,
-            disk_type: "imagedisk".to_string(),
-            ram_cache_mb: stats.ram_cache_mb,
-            used_cache_mb: stats.used_cache_mb,
-            entry_count: stats.entry_count,
-            total_chunks: stats.total_chunks,
-            hit_count: stats.hit_count,
-            miss_count: stats.miss_count,
-            hit_rate_pct: stats.hit_rate_pct,
-            cached_read_bytes: stats.cached_read_bytes,
-            direct_read_bytes: stats.direct_read_bytes,
+            disk_id: format!("writeback_{}", idx),
+            name,
+            path: dir.clone(),
+            disk_type: "writeback_write".to_string(),
+            ram_cache_mb: wb_mb,
+            used_cache_mb: 0,
+            entry_count: 0,
+            total_chunks: if wb_mb > 0 { (wb_mb * 1024 * 1024) / (64 * 1024) } else { 0 },
+            hit_count: 0,
+            miss_count: 0,
+            hit_rate_pct: 0.0,
+            cached_read_bytes: 0,
+            direct_read_bytes: 0,
         });
-    }
-
-    // Jika image belum pernah di-boot oleh klien tapi terkonfigurasi, tampilkan slot statusnya
-    if image_registry.is_empty() {
-        if let Some(ref win) = cfg.windows {
-            let win_mb = win.ram_cache_mb.unwrap_or(cfg.server.read_cache_gb * 1024);
-            disks.push(DiskCacheStatItem {
-                disk_id: "image_windows_base".to_string(),
-                name: "Base Image (Master VHD)".to_string(),
-                path: win.vhd_dir.clone(),
-                disk_type: "imagedisk".to_string(),
-                ram_cache_mb: win_mb,
-                used_cache_mb: 0,
-                entry_count: 0,
-                total_chunks: (win_mb * 1024 * 1024) / (256 * 1024),
-                hit_count: 0,
-                miss_count: 0,
-                hit_rate_pct: 0.0,
-                cached_read_bytes: 0,
-                direct_read_bytes: 0,
-            });
-            total_allocated_mb += win_mb;
-        }
     }
 
     let total_all = total_hits + total_misses;
@@ -243,16 +245,9 @@ pub fn handle_post_cache_clear(
     }
 
     // Check imagedisks
-    let image_registry = get_image_cache_registry();
-    for entry in image_registry.iter() {
-        let path = entry.key();
-        let filename = std::path::Path::new(path)
-            .file_name()
-            .map(|f| f.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.clone());
-        let cur_id = format!("image_{}", filename.replace('.', "_"));
-
-        if target_id == "all" || target_id == cur_id || target_id == "image_windows_base" {
+    if target_id == "all" || target_id == "disk_image" || target_id.starts_with("image") {
+        let image_registry = get_image_cache_registry();
+        for entry in image_registry.iter() {
             entry.value().clear();
             cleared_count += 1;
         }
@@ -319,16 +314,26 @@ pub fn handle_post_cache_config(
         } else {
             return build_response(400, "Bad Request", "application/json", r#"{"error":"Format disk_id tidak valid"}"#);
         }
-    } else if req.disk_id.starts_with("image_") {
+    } else if req.disk_id == "disk_image" || req.disk_id.starts_with("image") {
         if let Some(ref mut win) = current_cfg.windows {
             win.ram_cache_mb = Some(target_mb);
             info!("Mengubah RAM cache Base Image menjadi {} MB", target_mb);
         } else {
             return build_response(404, "Not Found", "application/json", r#"{"error":"Konfigurasi Windows image tidak ditemukan"}"#);
         }
-        // Invalidate entry di registry agar diinisialisasi ulang dengan ukuran baru pada boot berikutnya
         let image_registry = get_image_cache_registry();
-        image_registry.clear();
+        if target_mb == 0 {
+            image_registry.clear();
+        } else {
+            for mut entry in image_registry.iter_mut() {
+                if let Some(new_cache) = crate::read_ahead::ReadAheadCache::new_mb(target_mb, 256 * 1024) {
+                    *entry.value_mut() = Arc::new(new_cache);
+                }
+            }
+        }
+    } else if req.disk_id.starts_with("writeback_") || req.disk_id == "writeback" {
+        current_cfg.writeback.ram_cache_mb = Some(target_mb);
+        info!("Mengubah RAM cache Writeback menjadi {} MB", target_mb);
     } else {
         return build_response(400, "Bad Request", "application/json", r#"{"error":"Target disk_id tidak dikenali"}"#);
     }
@@ -394,13 +399,13 @@ ram_cache_mb = 2048
 [writeback]
 writeback_dirs = ['C:\writeback']
 max_cache_per_client_gb = 10
+ram_cache_mb = 512
 "#;
         std::fs::write(&cfg_path, initial_toml).unwrap();
         let cfg = crate::config::load_config(cfg_str).unwrap();
         let shared_cfg = SharedConfig::new(cfg);
         let stats = ServerStats::new();
 
-        // Siapkan dummy backend dengan cache
         let mut backends_map: HashMap<u8, Arc<Backend>> = HashMap::new();
         let dummy = Backend::new_dummy("TEST", "CACHE", "1.0");
         dummy.set_read_cache(crate::read_ahead::ReadAheadCache::new_mb(1024, 256 * 1024).map(Arc::new));
@@ -418,9 +423,15 @@ max_cache_per_client_gb = 10
         assert!(resp.starts_with("HTTP/1.1 200 OK"));
         let json_body = resp.split("\r\n\r\n").nth(1).unwrap();
         let val: serde_json::Value = serde_json::from_str(json_body).unwrap();
-        assert!(val.get("disks").unwrap().as_array().unwrap().len() >= 1);
-        let allocated = val.get("total_allocated_mb").unwrap().as_u64().unwrap();
-        assert!(allocated >= 1024);
+        let disks = val.get("disks").unwrap().as_array().unwrap();
+        // Should have 3 assigned disks: disk_image, gamedisk_0, writeback_0
+        assert_eq!(disks.len(), 3);
+        assert_eq!(disks[0]["disk_id"], "disk_image");
+        assert_eq!(disks[0]["disk_type"], "imagedisk_read");
+        assert_eq!(disks[1]["disk_id"], "gamedisk_0");
+        assert_eq!(disks[1]["disk_type"], "gamedisk_read");
+        assert_eq!(disks[2]["disk_id"], "writeback_0");
+        assert_eq!(disks[2]["disk_type"], "writeback_write");
 
         // 2. Test POST /api/cache/clear
         let clear_resp = handle_post_cache_clear(r#"{"disk_id":"all"}"#, &sm);

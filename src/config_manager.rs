@@ -151,7 +151,7 @@ pub fn start_config_watcher(
                             
                             if !reused {
                                 info!("Memuat ulang / menambahkan Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
-                                let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(new_config.server.read_cache_gb * 1024);
+                                let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
                                 match crate::backend::Backend::new_raw_mb(
                                     &gd_cfg.physical_disk,
                                     gd_cfg.block_size,

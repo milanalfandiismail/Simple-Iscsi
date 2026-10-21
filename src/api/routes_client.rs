@@ -272,7 +272,9 @@ pub fn post_superclient_commit(
                 let config_path = "config.toml".to_string();
                 let cfg_clone = config.clone();
                 let img_key_clone = image_key.clone();
-                crate::vhd_merge::set_merge_image(&img_key_clone);
+                
+                // Synchronously set IS_MERGING to true and init progress to 0 BEFORE responding!
+                crate::vhd_merge::start_merge_job(&img_key_clone);
 
                 tokio::spawn(async move {
                     // 1. Buat snapshot metadata di background sebelum merge
@@ -288,15 +290,26 @@ pub fn post_superclient_commit(
                             let _ = crate::writeback_super::delete_super(&super_path);
                             let _ = crate::config_manager::clear_super_client_config(&config_path);
                             cfg_clone.clear_super_client();
+                            crate::vhd_merge::finish_merge_job(
+                                true,
+                                "Commit Super Client selesai. Perubahan berhasil digabungkan.".to_string(),
+                                None,
+                            );
                             tracing::info!("Merge Super Client untuk image '{}' berhasil, konfigurasi super client dinonaktifkan.", img_key_clone);
                         }
                         Err(e) => {
+                            crate::vhd_merge::finish_merge_job(
+                                false,
+                                format!("Merge gagal: {}", e),
+                                Some(e.to_string()),
+                            );
                             tracing::error!("Merge Super Client gagal untuk image '{}': {}", img_key_clone, e);
                         }
                     }
                 });
                 let resp = serde_json::json!({
                     "status": "ok",
+                    "requires_merge": true,
                     "message": "Proses merge VHD Super Client sedang berjalan di background"
                 });
                 crate::server_api::build_response(200, "OK", "application/json", &resp.to_string())
@@ -306,6 +319,7 @@ pub fn post_superclient_commit(
                 config.clear_super_client();
                 let resp = serde_json::json!({
                     "status": "ok",
+                    "requires_merge": false,
                     "message": "Tidak ada file differencing VHD (klien belum melakukan perubahan). Mode Super Client berhasil dinonaktifkan."
                 });
                 crate::server_api::build_response(200, "OK", "application/json", &resp.to_string())

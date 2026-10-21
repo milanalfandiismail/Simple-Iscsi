@@ -211,8 +211,12 @@ pub fn post_vhd_merge(body: &str) -> String {
         Ok(json_body) => {
             let child = json_body["child"].as_str().unwrap_or("").to_string();
             let parent = json_body["parent"].as_str().unwrap_or("").to_string();
+            crate::vhd_merge::start_merge_job("vhd_merge");
             tokio::spawn(async move {
-                let _ = vhd_merge::merge_vhd(child, parent).await;
+                match vhd_merge::merge_vhd(child, parent).await {
+                    Ok(_) => vhd_merge::finish_merge_job(true, "Merge VHD selesai.".to_string(), None),
+                    Err(e) => vhd_merge::finish_merge_job(false, format!("Merge gagal: {}", e), Some(e.to_string())),
+                }
             });
             build_response(200, "OK", "text/plain", "Merge VHD task spawned in background")
         }
