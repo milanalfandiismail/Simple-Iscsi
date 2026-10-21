@@ -4,3 +4,4 @@ pub mod routes_vhd;
 pub mod routes_disk;
 pub mod routes_tftp;
 pub mod static_files;
+pub mod routes_cache;

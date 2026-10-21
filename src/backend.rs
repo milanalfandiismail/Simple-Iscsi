@@ -120,12 +120,12 @@ pub struct Backend {
     pub vendor_id: String,
     pub product_id: String,
     pub product_revision: String,
-    read_cache: Option<ReadAheadCache>,
+    pub read_cache: Option<Arc<ReadAheadCache>>,
     pub io_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 impl Backend {
-    pub fn new_raw(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
+    pub fn new_raw_mb(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, ram_cache_mb: u64) -> io::Result<Self> {
         info!("Membuka storage backend raw: {}", path);
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
@@ -184,7 +184,7 @@ impl Backend {
             backend: BackendType::RawDisk(ov_file),
         };
 
-        let read_cache = ReadAheadCache::new(read_cache_gb, 256 * 1024);
+        let read_cache = ReadAheadCache::new_mb(ram_cache_mb, 256 * 1024).map(Arc::new);
 
         Ok(Backend {
             inner: Arc::new(RwLock::new(inner)),
@@ -199,8 +199,12 @@ impl Backend {
         })
     }
 
+    pub fn new_raw(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
+        Self::new_raw_mb(path, block_size, vendor, product, rev, read_cache_gb * 1024)
+    }
+
     #[allow(dead_code)]
-    pub fn new_vhd(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
+    pub fn new_vhd_with_shared_cache(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, shared_cache: Option<Arc<ReadAheadCache>>) -> io::Result<Self> {
         info!("Membuka storage backend VHD: {}", path);
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
@@ -239,8 +243,6 @@ impl Backend {
             backend: BackendType::Vhd(vhd),
         };
 
-        let read_cache = ReadAheadCache::new(read_cache_gb, 256 * 1024);
-
         Ok(Backend {
             inner: Arc::new(RwLock::new(inner)),
             block_size,
@@ -249,12 +251,21 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
-            read_cache,
+            read_cache: shared_cache,
             io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
     }
 
-    pub fn new_vhd_diff(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
+    pub fn new_vhd_mb(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, ram_cache_mb: u64) -> io::Result<Self> {
+        let read_cache = ReadAheadCache::new_mb(ram_cache_mb, 256 * 1024).map(Arc::new);
+        Self::new_vhd_with_shared_cache(path, block_size, vendor, product, rev, read_cache)
+    }
+
+    pub fn new_vhd(path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
+        Self::new_vhd_mb(path, block_size, vendor, product, rev, read_cache_gb * 1024)
+    }
+
+    pub fn new_vhd_diff_with_shared_cache(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, shared_cache: Option<Arc<ReadAheadCache>>) -> io::Result<Self> {
         info!("Membuka VHD differencing child: {}, parent: {}", child_path, parent_path);
 
         let mut child_options = std::fs::OpenOptions::new();
@@ -340,8 +351,6 @@ impl Backend {
             backend: BackendType::VhdDiff { child, parent },
         };
 
-        let read_cache = ReadAheadCache::new(read_cache_gb, 256 * 1024);
-
         Ok(Backend {
             inner: Arc::new(RwLock::new(inner)),
             block_size,
@@ -350,9 +359,18 @@ impl Backend {
             vendor_id: vendor.to_string(),
             product_id: product.to_string(),
             product_revision: rev.to_string(),
-            read_cache,
+            read_cache: shared_cache,
             io_semaphore: Arc::new(tokio::sync::Semaphore::new(32)),
         })
+    }
+
+    pub fn new_vhd_diff_mb(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, ram_cache_mb: u64) -> io::Result<Self> {
+        let read_cache = ReadAheadCache::new_mb(ram_cache_mb, 256 * 1024).map(Arc::new);
+        Self::new_vhd_diff_with_shared_cache(child_path, parent_path, block_size, vendor, product, rev, read_cache)
+    }
+
+    pub fn new_vhd_diff(child_path: &str, parent_path: &str, block_size: u64, vendor: &str, product: &str, rev: &str, read_cache_gb: u64) -> io::Result<Self> {
+        Self::new_vhd_diff_mb(child_path, parent_path, block_size, vendor, product, rev, read_cache_gb * 1024)
     }
 
     pub fn block_size(&self) -> u64 {
@@ -361,6 +379,10 @@ impl Backend {
 
     pub fn total_size(&self) -> u64 {
         self.total_size
+    }
+
+    pub fn read_cache(&self) -> Option<Arc<ReadAheadCache>> {
+        self.read_cache.clone()
     }
 
     pub fn try_read_from_cache(&self, lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<()> {
@@ -445,7 +467,7 @@ impl Backend {
             let read_end = end_byte.min(chunk_end_byte);
             let bytes_to_copy = (read_end - read_start) as usize;
 
-            let chunk_data = match cache.cache.try_get_with(chunk_id, || {
+            let chunk_data = match cache.try_get_or_load(chunk_id, || {
                 let mut chunk_buf = vec![0u8; chunk_size_bytes as usize];
                 let chunk_lba = chunk_start_byte / bs;
                 let chunk_blocks = if chunk_lba + blocks_per_chunk > total_blocks {
@@ -456,10 +478,10 @@ impl Backend {
 
                 let inner = self.inner.read();
                 inner.backend.read_exact_at(chunk_lba, bs, &mut chunk_buf[.. (chunk_blocks as u64 * bs) as usize])?;
-                Ok::<Arc<Vec<u8>>, std::io::Error>(Arc::new(chunk_buf))
+                Ok(Arc::new(chunk_buf))
             }) {
                 Ok(data) => data,
-                Err(e) => return Err(std::io::Error::new(e.kind(), e.to_string())),
+                Err(e) => return Err(e),
             };
 
             let offset_in_chunk = (read_start - chunk_start_byte) as usize;

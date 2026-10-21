@@ -124,6 +124,8 @@ pub struct GamediskConfig {
     pub product_id: String,
     #[serde(default = "default_product_revision")]
     pub product_revision: String,
+    #[serde(default)]
+    pub ram_cache_mb: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -143,6 +145,8 @@ pub struct WindowsConfig {
     pub super_client_ip: String,
     #[serde(default)]
     pub super_client_action: String,
+    #[serde(default)]
+    pub ram_cache_mb: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -391,6 +395,26 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
     Ok(())
 }
 
+/// Mengonversi input ramah pengguna seperti "512M", "1G", "2GB", "4G", atau "2048" ke MB murni.
+pub fn parse_human_cache_size(val: &str) -> u64 {
+    let s = val.trim().to_uppercase();
+    if s.ends_with("GB") {
+        let num_str = s.trim_end_matches("GB").trim();
+        num_str.parse::<u64>().unwrap_or(0) * 1024
+    } else if s.ends_with('G') {
+        let num_str = s.trim_end_matches('G').trim();
+        num_str.parse::<u64>().unwrap_or(0) * 1024
+    } else if s.ends_with("MB") {
+        let num_str = s.trim_end_matches("MB").trim();
+        num_str.parse::<u64>().unwrap_or(0)
+    } else if s.ends_with('M') {
+        let num_str = s.trim_end_matches('M').trim();
+        num_str.parse::<u64>().unwrap_or(0)
+    } else {
+        s.parse::<u64>().unwrap_or(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,5 +424,14 @@ mod tests {
         let res = load_config("config.toml");
         println!("load_config result: {:?}", res);
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_parse_human_cache_size() {
+        assert_eq!(parse_human_cache_size("512M"), 512);
+        assert_eq!(parse_human_cache_size("1G"), 1024);
+        assert_eq!(parse_human_cache_size("2GB"), 2048);
+        assert_eq!(parse_human_cache_size("4G"), 4096);
+        assert_eq!(parse_human_cache_size("2048"), 2048);
     }
 }

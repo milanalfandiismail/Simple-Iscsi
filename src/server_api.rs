@@ -149,6 +149,18 @@ async fn handle_request(
 
     // API Routing
     match (method, path) {
+        ("GET", "/api/cache/stats") => {
+            crate::api::routes_cache::handle_get_cache_stats(config, service_manager)
+        }
+
+        ("POST", "/api/cache/clear") => {
+            crate::api::routes_cache::handle_post_cache_clear(&body, service_manager)
+        }
+
+        ("POST", "/api/cache/config") => {
+            crate::api::routes_cache::handle_post_cache_config(&body, config, service_manager)
+        }
+
         ("GET", "/api/stats") => {
             let payload = crate::api::routes_stats::get_stats_payload(config, stats);
             build_response(200, "OK", "application/json", &payload.to_string())

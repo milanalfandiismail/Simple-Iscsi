@@ -496,6 +496,78 @@ Di [`src/scsi_imagedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_imag
 * **VPD Page 0x83 (Device Identification):** Mengembalikan deskriptor NAA IEEE Registered Extended 16-byte (Type 3) serta Target IQN SCSI Name String (Type 8), memastikan Windows Boot Manager dan `disk.sys` mengenali disk boot secara konsisten.
 * **VPD Page 0xB0 (Block Limits):** Menetapkan `Optimal Transfer Granularity = 8` (4K alignment) dan `Maximum Transfer Length = 8192 sectors` (4 MB) yang selaras dengan ukuran blok VHD 2 MB.
 
+## 6.5 Arsitektur Per-Disk Server RAM Cache & Real-Time Telemetry Monitor (CCBoot Parity)
+
+Berdasarkan hasil analisis reverse engineering terhadap `CCBoot.exe`, `CCacheX.dll`, dan skema konfigurasi `CCBoot.xml`, CCBoot mengandalkan arsitektur **Server L1 RAM Cache Per-Disk** yang fleksibel (`disk_cache_ram_size_m`) dan pemanfaatan **Shared Read Cache** lintas sesi klien yang mem-boot citra VHD yang sama. 
+
+Simple-Iscsi mengadopsi dan menyempurnakan arsitektur ini secara murni pada sisi server (server-side caching) tanpa memerlukan driver kernel klien berpemilik (*zero client-driver footprint*).
+
+```mermaid
+flowchart TD
+    subgraph Clients ["PC Clients Diskless (PC-01 .. PC-50)"]
+        CL1["Client PC-01 (Booting Windows)"]
+        CL2["Client PC-02 (Booting Windows)"]
+        CL3["Client PC-03 (Gaming LUN 0)"]
+    end
+
+    subgraph Server_Cache ["Server Memory Cache Pools (Rust Arc<ReadAheadCache>)"]
+        IMG_CACHE["Shared Base Image Pool (ram_cache_mb: 2048 MB)
+Retensi 8 Jam, Berbagi Antara PC-01..PC-50"]
+        GAME_CACHE1["GameDisk LUN 0 Pool (ram_cache_mb: 4096 MB)
+PhysicalDrive1 Dedicated Cache"]
+        GAME_CACHE2["GameDisk LUN 1 Pool (ram_cache_mb: 2048 MB)
+PhysicalDrive2 Dedicated Cache"]
+    end
+
+    subgraph Storage ["Penyimpanan Fisik Server"]
+        MASTER_VHD["Master OS VHD (Win11.vhd)"]
+        PHYS_DISK1["Game NVMe/SSD Physical Drive 1"]
+        PHYS_DISK2["Game NVMe/SSD Physical Drive 2"]
+    end
+
+    subgraph Telemetry ["Telemetry & Web Dashboard"]
+        COUNTERS["Atomic Telemetry (Hits, Misses, Hit Rate %, Bytes Read)"]
+        API["REST API: /api/cache/stats & /api/cache/config"]
+        UI_TAB["Web Dashboard: Tab iSCSI Cache & Quick Presets"]
+    end
+
+    CL1 -->|"1. Read winload.efi / ntoskrnl"| IMG_CACHE
+    IMG_CACHE -->|"Miss -> Baca Disk"| MASTER_VHD
+    CL2 -->|"2. Read winload.efi / ntoskrnl"| IMG_CACHE
+    IMG_CACHE -->|"HIT: 0.01 ms Langsung dari RAM"| CL2
+
+    CL3 -->|"Read Sektor Game"| GAME_CACHE1
+    GAME_CACHE1 -->|"Miss"| PHYS_DISK1
+
+    IMG_CACHE -.->|"Emit Hit/Miss Event"| COUNTERS
+    GAME_CACHE1 -.->|"Emit Hit/Miss Event"| COUNTERS
+    COUNTERS --> API --> UI_TAB
+```
+
+### 1. Alokasi Memori Granular Berbasis Megabyte (`ram_cache_mb`)
+Sebelumnya, sistem Simple-Iscsi hanya menyediakan satu konfigurasi global `read_cache_gb` yang diterapkan seragam ke seluruh drive. Mulai versi ini, setiap target storage memiliki parameter alokasi independen:
+* **Gamedisk Config:** `[[gamedisk]] ram_cache_mb = 4096` (e.g. 4 GB untuk game populer LUN 0, 1024 MB untuk LUN 1).
+* **Windows Config:** `[windows] ram_cache_mb = 2048` (e.g. 2 GB khusus OS Base Image).
+* **Parser Ukuran Manusiawi (`parse_human_cache_size`):** Mendukung penulisan fleksibel seperti `"512M"`, `"1G"`, `"2G"`, `"4G"`, `"8G"`, atau `"16G"`, menghindarkan administrator dari kesalahan perkalian byte manual.
+
+### 2. Shared Base Image Read Cache Lintas Klien Multi-Sesi
+Pada lingkungan diskless iCafe atau lab komputer dengan 30–100 PC:
+* Setiap klien memiliki file writeback terisolasi, namun membaca dari Base OS VHD master yang identik.
+* Sistem kini mengelola **`IMAGE_CACHE_REGISTRY`** berbasis `OnceLock<DashMap<String, Arc<ReadAheadCache>>>`.
+* Saat Klien 1 melakukan cold boot, blok sektor sistem operasi (winload.efi, ntoskrnl.exe, drivers, system registry) dibaca dari VHD dan disimpan ke pool cache memori.
+* Saat Klien 2 hingga Klien 50 melakukan boot beberapa detik atau jam kemudian, pembacaan blok OS tersebut menghasilkan **100% Cache Hit langsung dari RAM server**, memangkas waktu boot Windows hingga di bawah 15 detik dan mengeliminasi *I/O storm* pada drive VHD server.
+
+### 3. Retensi Ekstensi 8 Jam (28,800 Detik) & LRU Eviction
+* Cache moka dikonfigurasi dengan `time_to_idle(Duration::from_secs(28800))` (8 jam).
+* Data blok yang telah dimuat ke memori dipertahankan selama sesi operasional panjang tanpa *cache drop* prematur.
+* Jika memori mencapai batas alokasi (`max_capacity`), sistem secara otomatis menjalankan algoritma TinyLFU/LRU untuk membuang blok yang paling jarang diakses.
+
+### 4. Telemetri Real-Time & Tab Baru "iSCSI Cache" di Web Dashboard
+Dashboard web kini dilengkapi antarmuka pemantauan mandiri pada tab **`iSCSI Cache`**:
+* **Kartu Ringkasan:** Menampilkan total alokasi memori (MB/GB), kapasitas terpakai, rata-rata rasio hit rate global, serta perbandingan total Hits vs Misses.
+* **Quick Presets Buttons:** Pilihan instan `512 MB`, `1 GB`, `2 GB`, `4 GB`, `8 GB`, `16 GB` yang langsung terisi ke modal tuning.
+* **Tabel Pemantauan Per-Disk:** Memvisualisasikan performa tiap LUN gamedisk dan Base VHD dengan *progress bar* hit rate dinamis (Hijau $\ge 90\%$, Kuning $\ge 70\%$, Abu-abu $< 70\%$), serta tombol aksi **Atur Ukuran** (mengubah kapasitas instan) dan **Flush Cache** (mengosongkan pool memori secara aman).
+
 ---
 
 # BAB 7: WINDOWS CLIENT BOOT HELPER (DUAL-STAGE ARCHITECTURE & NETWORK ALIGNMENT)

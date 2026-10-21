@@ -151,13 +151,14 @@ pub fn start_config_watcher(
                             
                             if !reused {
                                 info!("Memuat ulang / menambahkan Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
-                                match crate::backend::Backend::new_raw(
+                                let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(new_config.server.read_cache_gb * 1024);
+                                match crate::backend::Backend::new_raw_mb(
                                     &gd_cfg.physical_disk,
                                     gd_cfg.block_size,
                                     &gd_cfg.vendor_id,
                                     &gd_cfg.product_id,
                                     &gd_cfg.product_revision,
-                                    new_config.server.read_cache_gb,
+                                    ram_cache_mb,
                                 ) {
                                     Ok(b) => {
                                         new_map.insert(lun_id, Arc::new(b));
