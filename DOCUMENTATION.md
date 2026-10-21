@@ -475,6 +475,29 @@ flowchart TD
 
 ---
 
+## 6.4 Kompatibilitas Format VHD & CCBoot Parity (Fixed VHD & Granular Sector Bitmap Check)
+
+Berdasarkan hasil reverse engineering biner CCBoot (`CCBoot.exe` & `CCBoot OLD.exe`) dan spesifikasi teknis Microsoft Virtual Hard Disk (VHD), diimplementasikan mesin parser VHD berstandar enterprise pada [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) dan [`src/scsi_imagedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_imagedisk.rs):
+
+### 1. Deteksi Dual-Location Footer & Dukungan Penuh Fixed VHD
+* **Spesifikasi Microsoft VHD:** Footer kanonikal 512-byte terletak di `file_len - 512`. Pada Dynamic/Differencing VHD, footer ini disalin ke Offset 0 (Sector 0 Header). Namun pada **Fixed VHD** (`disk_type == 2`), sektor payload dimulai langsung pada Offset 0 dan footer **hanya berada di akhir file** (`file_len - 512`).
+* **Implementasi Simple-Iscsi:** Parser sekarang secara deterministik membaca `file_len - 512` terlebih dahulu. Bila footer bertipe Fixed VHD (`disk_type == 2`), engine langsung memetakan operasi I/O ke file mentah tanpa alokasi dinamis atau lookup BAT, mencegah kegagalan deteksi signature VHD yang sebelumnya terjadi.
+
+### 2. Resolusi Granular Sector Bitmap pada Differencing VHD (Pencegah BSOD 0x7B)
+* **Akar Masalah BSOD 0x7B / `INACCESSIBLE_BOOT_DEVICE`:** Saat block telah dialokasikan di child differencing disk (`child_bat != 0xFFFFFFFF`), implementasi umum keliru menganggap seluruh blok 2 MB berada di child. Padahal, hanya sektor-sektor dengan bit bernilai `1` pada *512-byte Sector Bitmap* yang benar-benar tersimpan di child; sektor dengan bit `0` **wajib dibaca dari parent disk**.
+* **Mekanisme Granular Read (`diff_read_blocks`):**
+  1. *Fast-Path All Child:* Bila seluruh bit pada bitmap bernilai `0xFF`, seluruh data dibaca langsung dari child disk.
+  2. *Fast-Path All Parent:* Bila seluruh bit bernilai `0x00`, seluruh data dibaca langsung dari parent disk.
+  3. *Granular Blending:* Bila blok berstatus campuran (*partial-written*), sistem memindai bit per bit secara presisi dan menggabungkan sektor child dan parent ke dalam satu buffer kontinu, menjamin data OS tidak rusak/hilang saat booting.
+
+### 3. Penyelarasan Respon SCSI INQUIRY & VPD Pages (Storport Parity)
+Di [`src/scsi_imagedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_imagedisk.rs), SCSI INQUIRY (Opcode `0x12`) diselaraskan dengan standar Microsoft Storport:
+* **`CmdQue = 1` pada Standard INQUIRY:** Mengaktifkan Tagged Command Queuing (TCQ) dengan kedalaman 32–64 antrean, mengeliminasi timeout reset driver diskless pada saat booting berat.
+* **VPD Page 0x83 (Device Identification):** Mengembalikan deskriptor NAA IEEE Registered Extended 16-byte (Type 3) serta Target IQN SCSI Name String (Type 8), memastikan Windows Boot Manager dan `disk.sys` mengenali disk boot secara konsisten.
+* **VPD Page 0xB0 (Block Limits):** Menetapkan `Optimal Transfer Granularity = 8` (4K alignment) dan `Maximum Transfer Length = 8192 sectors` (4 MB) yang selaras dengan ukuran blok VHD 2 MB.
+
+---
+
 # BAB 7: WINDOWS CLIENT BOOT HELPER (DUAL-STAGE ARCHITECTURE & NETWORK ALIGNMENT)
 
 Untuk menjamin keandalan booting diskless dan kompatibilitas penuh dengan server DHCP serta iBFT firmware, Simple-Iscsi menerapkan arsitektur **Dual-Stage Boot Helper**:
