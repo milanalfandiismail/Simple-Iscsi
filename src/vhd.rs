@@ -33,10 +33,21 @@ pub fn calculate_vhd_checksum(data: &[u8], checksum_offset: usize) -> u32 {
 
 impl VhdBackend {
     pub fn open(mut file: File) -> io::Result<Self> {
-        // Read footer copy (first 512 bytes — dynamic/diff VHD has footer at offset 0)
+        let file_len = file.metadata()?.len();
+        if file_len < 512 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "File VHD terlalu kecil (< 512 bytes)"));
+        }
+
+        // 1. Coba baca footer kanonikal dari EOF - 512 (spesifikasi resmi Microsoft VHD)
         let mut footer = [0u8; 512];
-        file.seek(SeekFrom::Start(0))?;
+        file.seek(SeekFrom::Start(file_len - 512))?;
         file.read_exact(&mut footer)?;
+
+        // 2. Jika di EOF bukan "conectix", coba fallback ke offset 0 (copy footer pada dynamic/diff VHD)
+        if &footer[0..8] != b"conectix" {
+            file.seek(SeekFrom::Start(0))?;
+            file.read_exact(&mut footer)?;
+        }
 
         let cookie = &footer[0..8];
         if cookie != b"conectix" {
@@ -44,18 +55,41 @@ impl VhdBackend {
         }
 
         let disk_type = u32::from_be_bytes(footer[60..64].try_into().unwrap());
-        if disk_type != 3 && disk_type != 4 {
+        if disk_type != 2 && disk_type != 3 && disk_type != 4 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Only Dynamic (3) and Differencing (4) VHD supported, got type {}", disk_type),
+                format!("Only Fixed (2), Dynamic (3), and Differencing (4) VHD supported, got type {}", disk_type),
             ));
         }
 
         let current_size = u64::from_be_bytes(footer[48..56].try_into().unwrap());
+        let data_offset = u64::from_be_bytes(footer[16..24].try_into().unwrap());
 
-        // Read dynamic header (starts at offset 512)
+        // Handle Fixed VHD (type 2) — raw flat sectors, no BAT, no dynamic header
+        if disk_type == 2 {
+            info!("VHD Info (Fixed VHD): size={} bytes", current_size);
+            return Ok(Self {
+                file,
+                bat: Vec::new(),
+                vhd_block_size: 512,
+                sector_bitmap_size: 0,
+                current_size,
+                disk_type,
+                table_offset: 0,
+                max_table_entries: 0,
+                parent_path: None,
+                parent_uuid: None,
+            });
+        }
+
+        // Read dynamic header (mengikuti data_offset dari footer, default 512)
+        let header_offset = if data_offset >= 512 && data_offset < file_len && data_offset != 0xFFFFFFFFFFFFFFFF {
+            data_offset
+        } else {
+            512
+        };
         let mut header = [0u8; 1024];
-        file.seek(SeekFrom::Start(512))?;
+        file.seek(SeekFrom::Start(header_offset))?;
         file.read_exact(&mut header)?;
 
         let header_cookie = &header[0..8];
@@ -288,8 +322,12 @@ impl VhdBackend {
     }
 
 
-    /// Read from single VHD (dynamic or simple)
+    /// Read from single VHD (dynamic, fixed, or simple)
         pub fn read_blocks(&self, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+            if self.disk_type == 2 {
+                let offset = lba * block_size;
+                return file_read_exact_at(&self.file, offset, buf);
+            }
             let mut buf_offset = 0;
             let mut current_byte_offset = lba * block_size;
             let vhd_block_size = self.vhd_block_size as u64;
@@ -318,8 +356,12 @@ impl VhdBackend {
             Ok(())
         }
 
-    /// Read from differencing disk: child first, fallback to parent, fallback to zeros
+    /// Read from differencing disk: child first with sector bitmap check, fallback to parent, fallback to zeros
         pub fn diff_read_blocks(&self, parent: &Option<VhdBackend>, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
+            if self.disk_type == 2 {
+                let offset = lba * block_size;
+                return file_read_exact_at(&self.file, offset, buf);
+            }
             let mut buf_offset = 0;
             let mut current_byte_offset = lba * block_size;
             let vhd_block_size = self.vhd_block_size as u64;
@@ -335,9 +377,57 @@ impl VhdBackend {
     
                 let child_bat = *self.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
                 if child_bat != 0xFFFFFFFF {
-                    // Read from child
-                    let physical_offset = (child_bat as u64) * 512 + (self.sector_bitmap_size as u64) + offset_in_vhd_block;
-                    file_read_exact_at(&self.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                    // Check sector bitmap in child: only sectors with bit 1 are valid in child.
+                    // Sectors with bit 0 must be read from parent (per Microsoft VHD spec).
+                    let sec_start = (offset_in_vhd_block / 512) as usize;
+                    let sec_count = ((bytes_to_read + 511) / 512) as usize;
+                    let bitmap_phys = (child_bat as u64) * 512;
+                    let bm_len = (self.sector_bitmap_size as usize).min(512);
+                    let mut bitmap = [0u8; 512];
+                    file_read_exact_at(&self.file, bitmap_phys, &mut bitmap[..bm_len])?;
+
+                    let mut all_set = true;
+                    let mut all_clear = true;
+                    for s in sec_start..(sec_start + sec_count) {
+                        let bit_set = (bitmap[s / 8] & (0x80 >> (s % 8))) != 0;
+                        if bit_set {
+                            all_clear = false;
+                        } else {
+                            all_set = false;
+                        }
+                    }
+
+                    if all_set {
+                        let physical_offset = (child_bat as u64) * 512 + (self.sector_bitmap_size as u64) + offset_in_vhd_block;
+                        file_read_exact_at(&self.file, physical_offset, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                    } else if all_clear {
+                        let cur_lba = current_byte_offset / block_size;
+                        let _cur_blocks = (bytes_to_read as u64 + block_size - 1) / block_size;
+                        if let Some(ref p) = parent {
+                            p.read_blocks(cur_lba, block_size, &mut buf[buf_offset..buf_offset + bytes_to_read])?;
+                        } else {
+                            for b in &mut buf[buf_offset..buf_offset + bytes_to_read] { *b = 0; }
+                        }
+                    } else {
+                        // Mixed: resolve sector by sector
+                        for s_idx in 0..sec_count {
+                            let s = sec_start + s_idx;
+                            let bit_set = (bitmap[s / 8] & (0x80 >> (s % 8))) != 0;
+                            let sec_buf_start = buf_offset + s_idx * 512;
+                            let sec_buf_len = 512.min(buf.len() - sec_buf_start);
+                            if bit_set {
+                                let phys_sec = (child_bat as u64) * 512 + (self.sector_bitmap_size as u64) + (s as u64) * 512;
+                                file_read_exact_at(&self.file, phys_sec, &mut buf[sec_buf_start..sec_buf_start + sec_buf_len])?;
+                            } else {
+                                let cur_lba = (current_byte_offset + s_idx as u64 * 512) / block_size;
+                                if let Some(ref p) = parent {
+                                    p.read_blocks(cur_lba, block_size, &mut buf[sec_buf_start..sec_buf_start + sec_buf_len])?;
+                                } else {
+                                    for b in &mut buf[sec_buf_start..sec_buf_start + sec_buf_len] { *b = 0; }
+                                }
+                            }
+                        }
+                    }
                 } else if let Some(ref parent) = parent {
                     let parent_bat = *parent.bat.get(vhd_block_idx as usize).unwrap_or(&0xFFFFFFFF);
                     if parent_bat != 0xFFFFFFFF {
@@ -431,6 +521,10 @@ impl VhdBackend {
 
     /// Write blocks to VHD — allocate new BAT entries, update sector bitmap
         pub fn write_blocks(&mut self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+            if self.disk_type == 2 {
+                let offset = lba * block_size;
+                return file_write_all_at(&self.file, offset, buf);
+            }
             let vhd_block_size = self.vhd_block_size as u64;
             let bitmap_size = self.sector_bitmap_size as u64;
             let start_block = (lba * block_size) / vhd_block_size;
@@ -484,6 +578,10 @@ impl VhdBackend {
         }
 
     pub fn write_blocks_concurrent(&self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+            if self.disk_type == 2 {
+                let offset = lba * block_size;
+                return file_write_all_at(&self.file, offset, buf);
+            }
             let vhd_block_size = self.vhd_block_size as u64;
             let bitmap_size = self.sector_bitmap_size as u64;
             let mut buf_offset = 0;
@@ -510,4 +608,151 @@ impl VhdBackend {
             }
             Ok(())
         }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_fixed_vhd_detection_and_read() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_fixed.vhd");
+        let path_str = path.to_str().unwrap();
+
+        // Create a mock fixed VHD: 1 MB data + 512-byte footer at EOF
+        {
+            let mut file = File::create(&path).unwrap();
+            let data = vec![0xABu8; 1024 * 1024]; // 1MB payload
+            file.write_all(&data).unwrap();
+
+            let mut footer = vec![0u8; 512];
+            footer[0..8].copy_from_slice(b"conectix");
+            footer[16..24].copy_from_slice(&0xFFFFFFFFFFFFFFFFu64.to_be_bytes()); // data_offset for fixed
+            footer[48..56].copy_from_slice(&(1024 * 1024u64).to_be_bytes());
+            footer[60..64].copy_from_slice(&2u32.to_be_bytes()); // type 2 = Fixed
+            file.write_all(&footer).unwrap();
+        }
+
+        // Open and read
+        let file = File::open(&path).unwrap();
+        let vhd = VhdBackend::open(file).unwrap();
+        assert_eq!(vhd.disk_type, 2);
+        assert_eq!(vhd.current_size, 1024 * 1024);
+
+        let mut buf = vec![0u8; 1024];
+        vhd.read_blocks(0, 512, &mut buf).unwrap();
+        assert_eq!(buf[0], 0xAB);
+        assert_eq!(buf[1023], 0xAB);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_diff_vhd_sector_bitmap_resolution() {
+        let dir = std::env::temp_dir();
+        let parent_path = dir.join("test_parent.vhd");
+        let child_path = dir.join("test_child.vhd");
+
+        let block_size: u32 = 2 * 1024 * 1024; // 2MB
+        let sectors_per_block = block_size / 512; // 4096
+        let _bitmap_bytes: u32 = 512;
+
+        // 1. Create Parent VHD with block 0 filled with 0x11
+        {
+            let mut f = File::create(&parent_path).unwrap();
+            // Footer at start
+            let mut footer = vec![0u8; 512];
+            footer[0..8].copy_from_slice(b"conectix");
+            footer[16..24].copy_from_slice(&512u64.to_be_bytes());
+            footer[48..56].copy_from_slice(&(block_size as u64).to_be_bytes());
+            footer[60..64].copy_from_slice(&3u32.to_be_bytes()); // dynamic
+            f.write_all(&footer).unwrap();
+
+            // Dynamic header
+            let mut header = vec![0u8; 1024];
+            header[0..8].copy_from_slice(b"cxsparse");
+            header[16..24].copy_from_slice(&1536u64.to_be_bytes()); // table_offset
+            header[28..32].copy_from_slice(&1u32.to_be_bytes());   // max_entries
+            header[32..36].copy_from_slice(&block_size.to_be_bytes());
+            f.write_all(&header).unwrap();
+
+            // BAT: entry 0 points to sector 4 (byte 2048)
+            f.write_all(&4u32.to_be_bytes()).unwrap();
+            // Pad BAT to 512 boundary
+            f.write_all(&vec![0u8; 508]).unwrap();
+
+            // Data block at byte 2048:
+            // Sector bitmap (all 1s)
+            f.write_all(&vec![0xFFu8; 512]).unwrap();
+            // 2MB data filled with 0x11
+            f.write_all(&vec![0x11u8; block_size as usize]).unwrap();
+
+            // Footer at EOF
+            f.write_all(&footer).unwrap();
+        }
+
+        // 2. Create Child Differencing VHD:
+        // Sector bitmap has bit 1 set (sector 1 modified with 0x22), but bit 0 is CLEAR (must read from parent 0x11)
+        {
+            let mut f = File::create(&child_path).unwrap();
+            // Footer at start
+            let mut footer = vec![0u8; 512];
+            footer[0..8].copy_from_slice(b"conectix");
+            footer[16..24].copy_from_slice(&512u64.to_be_bytes());
+            footer[48..56].copy_from_slice(&(block_size as u64).to_be_bytes());
+            footer[60..64].copy_from_slice(&4u32.to_be_bytes()); // diff
+            f.write_all(&footer).unwrap();
+
+            // Dynamic header
+            let mut header = vec![0u8; 1024];
+            header[0..8].copy_from_slice(b"cxsparse");
+            header[16..24].copy_from_slice(&1536u64.to_be_bytes());
+            header[28..32].copy_from_slice(&1u32.to_be_bytes());
+            header[32..36].copy_from_slice(&block_size.to_be_bytes());
+            f.write_all(&header).unwrap();
+
+            // BAT: entry 0 points to sector 4
+            f.write_all(&4u32.to_be_bytes()).unwrap();
+            f.write_all(&vec![0u8; 508]).unwrap();
+
+            // Data block at byte 2048:
+            // Sector bitmap: byte 0 = 0b01000000 (0x40 -> bit 1 is set for sector 1, bit 0 is clear for sector 0)
+            let mut bitmap = vec![0u8; 512];
+            bitmap[0] = 0x40; // Sector 1 is modified, sector 0 is not!
+            f.write_all(&bitmap).unwrap();
+
+            // Block data: Sector 0 = 0x00, Sector 1 = 0x22
+            let mut block_data = vec![0u8; block_size as usize];
+            for i in 512..1024 {
+                block_data[i] = 0x22;
+            }
+            f.write_all(&block_data).unwrap();
+
+            // Footer at EOF
+            f.write_all(&footer).unwrap();
+        }
+
+        // Test reading through diff_read_blocks
+        let parent_file = File::open(&parent_path).unwrap();
+        let parent_backend = VhdBackend::open(parent_file).unwrap();
+
+        let child_file = File::open(&child_path).unwrap();
+        let child_backend = VhdBackend::open(child_file).unwrap();
+
+        let mut read_buf = vec![0u8; 1024]; // 2 sectors: sector 0 and sector 1
+        child_backend.diff_read_blocks(&Some(parent_backend), 0, 512, &mut read_buf).unwrap();
+
+        // Sector 0 (first 512 bytes) must have come from parent (0x11)!
+        assert_eq!(read_buf[0], 0x11, "Sector 0 must be read from parent disk (0x11)");
+        assert_eq!(read_buf[511], 0x11, "Sector 0 end must be read from parent disk (0x11)");
+
+        // Sector 1 (next 512 bytes) must have come from child (0x22)!
+        assert_eq!(read_buf[512], 0x22, "Sector 1 must be read from child disk (0x22)");
+        assert_eq!(read_buf[1023], 0x22, "Sector 1 end must be read from child disk (0x22)");
+
+        let _ = std::fs::remove_file(parent_path);
+        let _ = std::fs::remove_file(child_path);
+    }
 }
