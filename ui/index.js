@@ -2159,52 +2159,52 @@ async function loadCacheStats() {
             }
 
             const typeBadge = disk.disk_type === 'imagedisk'
-                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">💿 Base OS Image</span>`
-                : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">💽 GameDisk</span>`;
+                ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 whitespace-nowrap">💿 Base OS</span>`
+                : `<span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 whitespace-nowrap">💽 GameDisk</span>`;
 
             const allocGb = (disk.ram_cache_mb / 1024).toFixed(1);
 
             return `
                 <tr class="hover:bg-zinc-50/70 dark:hover:bg-zinc-900/40 transition-colors">
-                    <td class="px-4 py-3">
-                        <div class="font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                            <span>${disk.disk_type === 'imagedisk' ? '💿' : '💽'}</span>
-                            <span>${escapeHtml(disk.name)}</span>
+                    <td class="px-2 py-2">
+                        <div class="font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 truncate" title="${escapeHtml(disk.name)}">
+                            <span class="shrink-0">${disk.disk_type === 'imagedisk' ? '💿' : '💽'}</span>
+                            <span class="truncate">${escapeHtml(disk.name)}</span>
                         </div>
-                        <div class="text-[11px] font-mono text-zinc-400 mt-0.5">${escapeHtml(disk.disk_id)}</div>
+                        <div class="text-[11px] font-mono text-zinc-400 mt-0.5 truncate">${escapeHtml(disk.disk_id)}</div>
                     </td>
-                    <td class="px-4 py-3">
-                        <div class="mb-1">${typeBadge}</div>
-                        <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 max-w-xs truncate" title="${escapeHtml(disk.path)}">${escapeHtml(disk.path)}</div>
+                    <td class="px-2 py-2">
+                        <div class="mb-0.5">${typeBadge}</div>
+                        <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate" title="${escapeHtml(disk.path)}">${escapeHtml(disk.path)}</div>
                     </td>
-                    <td class="px-4 py-3 font-mono">
-                        <div class="font-semibold text-zinc-900 dark:text-zinc-100">${disk.ram_cache_mb.toLocaleString()} MB</div>
-                        <div class="text-[11px] text-zinc-400">(${allocGb} GB)</div>
+                    <td class="px-2 py-2 font-mono">
+                        <div class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${disk.ram_cache_mb.toLocaleString()} MB</div>
+                        <div class="text-[11px] text-zinc-400 truncate">(${allocGb} GB)</div>
                     </td>
-                    <td class="px-4 py-3 font-mono">
-                        <div class="text-zinc-800 dark:text-zinc-200">${(disk.used_cache_mb || 0).toLocaleString()} MB</div>
-                        <div class="text-[11px] text-zinc-400">${(disk.entry_count || 0).toLocaleString()} chunks (256KB)</div>
+                    <td class="px-2 py-2 font-mono">
+                        <div class="text-zinc-800 dark:text-zinc-200 truncate">${(disk.used_cache_mb || 0).toLocaleString()} MB</div>
+                        <div class="text-[10px] text-zinc-400 truncate">${(disk.entry_count || 0).toLocaleString()} chunks</div>
                     </td>
-                    <td class="px-4 py-3">
-                        <div class="flex items-center gap-2 mb-1">
+                    <td class="px-2 py-2">
+                        <div class="flex items-center gap-1 mb-1">
                             <span class="font-mono font-semibold text-xs text-zinc-900 dark:text-zinc-100">${hitRateStr}%</span>
-                            <span class="text-[10px] px-1.5 py-0.2 rounded border font-mono ${badgeColor}">RAM Hit</span>
+                            <span class="text-[9px] px-1 py-0.2 rounded border font-mono ${badgeColor}">RAM</span>
                         </div>
-                        <div class="w-24 bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                        <div class="w-12 sm:w-16 xl:w-20 bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden border border-zinc-200 dark:border-zinc-700">
                             <div class="${barColor} h-1.5 rounded-full transition-all duration-300" style="width: ${hitRate}%"></div>
                         </div>
                     </td>
-                    <td class="px-4 py-3 font-mono text-xs">
-                        <div class="text-emerald-600 dark:text-emerald-400 font-medium">Hits: ${(disk.hit_count || 0).toLocaleString()}</div>
-                        <div class="text-zinc-500 dark:text-zinc-400">Miss: ${(disk.miss_count || 0).toLocaleString()}</div>
+                    <td class="px-2 py-2 font-mono text-[11px]">
+                        <div class="text-emerald-600 dark:text-emerald-400 font-medium truncate">H: ${(disk.hit_count || 0).toLocaleString()}</div>
+                        <div class="text-zinc-500 dark:text-zinc-400 truncate">M: ${(disk.miss_count || 0).toLocaleString()}</div>
                     </td>
-                    <td class="px-4 py-3 text-right whitespace-nowrap">
-                        <div class="inline-flex items-center gap-1.5">
-                            <button onclick="openEditCacheModal('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Atur Kapasitas RAM Cache">
-                                ⚙️ <span>Atur</span>
+                    <td class="px-2 py-2 text-right">
+                        <div class="inline-flex items-center justify-end gap-1">
+                            <button onclick="openEditCacheModal('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 xl:px-2 xl:py-1 text-xs font-medium rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Atur Kapasitas RAM Cache">
+                                <span>⚙️</span><span class="hidden 2xl:inline">Atur</span>
                             </button>
-                            <button onclick="clearDiskCache('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Flush cache memori untuk disk ini">
-                                🧹 <span>Flush</span>
+                            <button onclick="clearDiskCache('${escapeHtml(disk.disk_id)}')" class="inline-flex items-center justify-center gap-1 px-1.5 py-0.5 xl:px-2 xl:py-1 text-xs font-medium rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" title="Flush cache memori untuk disk ini">
+                                <span>🧹</span><span class="hidden 2xl:inline">Flush</span>
                             </button>
                         </div>
                     </td>
