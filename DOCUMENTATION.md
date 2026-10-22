@@ -945,6 +945,33 @@ Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
 
 ---
 
+## 10. Kompatibilitas Driver CCBoot (`CCBootPNPX.sys`)
+
+Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga mendukung **driver CCBoot asli** di client. Keduanya bisa dipakai bergantian tergantung kebutuhan image.
+
+| Aspek | Driverless | CCBoot Driver |
+|---|---|---|
+| Driver client | Tidak ada | `CCBootPNPX.sys` |
+| IQN suffix `:0XX` | Tidak wajib | **Wajib** (divalidasi driver) |
+| Manipulasi registry | Native/helper | Dilakukan driver CCBoot |
+| Provisioning | Tanpa driver | Copy driver + service key |
+
+**Syarat utama mode CCBoot driver:**
+
+1. Target IQN berakhiran **`:0XX`** (4 karakter terakhir; `:` di len-4 dan `0` di len-3).
+2. Tabel **iBFT** tersedia (dibuat iPXE `sanboot` / firmware UEFI).
+3. **Hostname** valid (opsi 12) untuk `ComputerName`/`NV Hostname`.
+4. VHD **bootable** (UEFI → GPT/EFI; Legacy → MBR) + writeback overlay.
+5. `CCBootPNPX.sys` dipasang sebagai service `Start=0`, `Type=1`.
+6. Gate `CCBootPnP` (`PCIDPNP`, `HookPCINic`, `FindPCI`) aktif.
+7. Rename/registry dipicu dari **kernel-mode** (user-mode diabaikan driver).
+
+Panduan rinci, contoh konfigurasi, troubleshooting, dan acceptance test:
+
+**[docs/panduan-kompatibilitas-driver-ccboot.md](docs/panduan-kompatibilitas-driver-ccboot.md)**
+
+---
+
 ## 15. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
 
 Simple-Iscsi menyertakan beberapa file binary bootloader jaringan yang telah dikompilasi sebelumnya (*pre-compiled binaries*) di dalam folder `pxe/` untuk memfasilitasi UEFI PXE Network Booting:
