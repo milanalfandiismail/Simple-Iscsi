@@ -32,6 +32,57 @@ fn parse_mac(mac: &str) -> Option<[u8; 6]> {
     Some(bytes)
 }
 
+/// Ambil angka desimal di akhir hostname, mis. "PC-07" -> 7.
+fn trailing_number(s: &str) -> Option<u32> {
+    let digits: String = s
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    if digits.is_empty() { None } else { digits.parse().ok() }
+}
+
+/// Hash FNV-1a 32-bit untuk kode client yang stabil dari MAC.
+fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c9dc5;
+    for b in bytes {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    h
+}
+
+/// Suffix yang divalidasi CCBootPNPX.sys: ':' di len-4 dan '0' di len-3.
+fn ccboot_iqn_suffix(client: Option<&ClientConfig>) -> String {
+    let code = client
+        .and_then(|c| c.hostname.as_deref())
+        .and_then(trailing_number)
+        .or_else(|| client.map(|c| fnv1a(c.mac.as_bytes())))
+        .unwrap_or(0);
+    format!(":0{:02X}", (code & 0xFF) as u8)
+}
+
+fn with_ccboot_suffix(iqn: &str, client: Option<&ClientConfig>) -> String {
+    let b = iqn.as_bytes();
+    if b.len() >= 4 && b[b.len() - 4] == b':' && b[b.len() - 3] == b'0' {
+        return iqn.to_string();
+    }
+    format!("{}{}", iqn, ccboot_iqn_suffix(client))
+}
+
+/// Hostname DHCP yang aman (maks 15 char, alfanumerik + '-').
+fn sanitize_hostname(raw: &str) -> String {
+    let out: String = raw
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(15)
+        .collect();
+    if out.is_empty() { "PC-01".to_string() } else { out }
+}
+
 impl DhcpServer {
     pub async fn new(
         config: SharedConfig,
@@ -403,9 +454,18 @@ impl DhcpServer {
             resp.options.insert(3, router.octets().to_vec());
         }
 
-        if let Some(ref hostname) = client_conf.as_ref().and_then(|c| c.hostname.clone()) {
-            resp.options.insert(12, hostname.as_bytes().to_vec());
-        }
+        let hostname = client_conf
+            .as_ref()
+            .and_then(|c| c.hostname.clone())
+            .map(|h| sanitize_hostname(&h))
+            .unwrap_or_else(|| {
+                let code = client_conf
+                    .as_ref()
+                    .map(|c| fnv1a(c.mac.as_bytes()) & 0xFF)
+                    .unwrap_or(1);
+                format!("PC-{:02}", code)
+            });
+        resp.options.insert(12, hostname.as_bytes().to_vec());
 
         let dns_str = client_conf.as_ref()
             .and_then(|c| c.dns.clone())
@@ -443,11 +503,13 @@ impl DhcpServer {
                     .cloned()
                     .unwrap_or_else(|| "windows_10".to_string())
             });
-        let iscsi_iqn = if let Some(ref win) = self.config.read().windows {
+        let iscsi_iqn_base = if let Some(ref win) = self.config.read().windows {
             format!("{}{}", win.target_iqn_prefix, image_name)
         } else {
             image_name.clone()
         };
+        // CCBootPNPX.sys memvalidasi s[len-4]==':' dan s[len-3]=='0'.
+        let iscsi_iqn = with_ccboot_suffix(&iscsi_iqn_base, client_conf.as_ref());
         resp.options.insert(169, iscsi_iqn.as_bytes().to_vec());
 
         // Option 17: Root-Path (RFC 4173 iSCSI root path standard with configured port)
@@ -506,5 +568,32 @@ impl DhcpServer {
             }
             // info!("Sukses mengirim {:?} ke {} (Bootfile: {})", msg_type, dest, bootfile);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suffix_has_colon_zero_at_required_positions() {
+        let iqn = with_ccboot_suffix("iqn.2024-01.com.tmdebug:windows_10", None);
+        let b = iqn.as_bytes();
+        assert_eq!(b[b.len() - 4], b':');
+        assert_eq!(b[b.len() - 3], b'0');
+    }
+
+    #[test]
+    fn suffix_is_not_applied_twice() {
+        let once = with_ccboot_suffix("iqn.2024-01.com.tmdebug:windows_10", None);
+        let twice = with_ccboot_suffix(&once, None);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn hostname_is_sanitized_and_nonempty() {
+        assert_eq!(sanitize_hostname("PC 01/abc"), "PC01abc");
+        assert!(!sanitize_hostname("").is_empty());
+        assert!(sanitize_hostname("abcdefghijklmnopqrstuvwxyz").len() <= 15);
     }
 }
