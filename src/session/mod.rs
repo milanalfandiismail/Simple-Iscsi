@@ -23,6 +23,16 @@ pub mod scsi_handler_imagedisk;
 pub mod pdu_io;
 pub mod login;
 
+/// Buang suffix CCBoot ":0XX" di akhir nama target (divalidasi CCBootPNPX.sys).
+fn strip_ccboot_suffix(name: &str) -> &str {
+    let b = name.as_bytes();
+    if b.len() >= 4 && b[b.len() - 4] == b':' && b[b.len() - 3] == b'0' {
+        &name[..b.len() - 4]
+    } else {
+        name
+    }
+}
+
 pub struct PendingWrite {
     pub lun_id: u8,
     pub lba: u64,
@@ -239,14 +249,15 @@ impl Session {
             let config_guard = self.config.read();
             let win = config_guard.windows.as_ref().unwrap();
             self.is_imagedisk = true;
-            let suffix = &self.target_iqn[win.target_iqn_prefix.len()..];
-            target_name = suffix.to_string();
+            let raw_suffix = &self.target_iqn[win.target_iqn_prefix.len()..];
+            let suffix = strip_ccboot_suffix(raw_suffix).to_string();
+            target_name = suffix.clone();
 
             self.is_super = self.client_ip == win.super_client_ip;
             match writeback_imagedisk::init_child_vhd(
                 &config_guard,
                 &self.client_ip,
-                suffix,
+                &suffix,
                 self.is_super,
             ) {
                 Ok(result) => {
@@ -469,5 +480,23 @@ impl Session {
 
         info!("Koneksi dengan client {} selesai.", peer_addr);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_ccboot_suffix() {
+        assert_eq!(strip_ccboot_suffix("w11:0A3"), "w11");
+        assert_eq!(strip_ccboot_suffix("w11:001"), "w11");
+        assert_eq!(strip_ccboot_suffix("iqn.2026-01.com.example:win-w11:0AB"), "iqn.2026-01.com.example:win-w11");
+    }
+
+    #[test]
+    fn keeps_name_without_suffix() {
+        assert_eq!(strip_ccboot_suffix("w11"), "w11");
+        assert_eq!(strip_ccboot_suffix("iqn:x:0"), "iqn:x:0");
     }
 }
