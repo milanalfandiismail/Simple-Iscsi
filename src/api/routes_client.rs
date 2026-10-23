@@ -1,5 +1,5 @@
 use std::fs;
-use crate::config::ClientsConfig;
+use crate::config::{normalize_client_cache, ClientsConfig};
 
 pub fn get_clients_json() -> String {
     match fs::read_to_string("clients.toml") {
@@ -20,7 +20,12 @@ pub fn get_clients_json() -> String {
 
 pub fn post_clients_json(body: &str) -> String {
     match serde_json::from_str::<ClientsConfig>(body) {
-        Ok(clients_cfg) => {
+        Ok(mut clients_cfg) => {
+            for client in &mut clients_cfg.clients {
+                if let Err(e) = normalize_client_cache(client) {
+                    return crate::server_api::build_response(400, "Bad Request", "text/plain", &e);
+                }
+            }
             if clients_cfg.clients.is_empty() {
                 // If there are no clients, write a template instead of `client = []`
                 // because `client = []` followed by manual `[[client]]` causes a TOML syntax error.
@@ -37,6 +42,9 @@ pub fn post_clients_json(body: &str) -> String {
 #   pxe             = "sb-custom"
 #   next_server     = "192.168.137.1"
 #   image_manager   = "windows_11"
+#   driver          = "native"   # "native" | "ccboot"
+#   cache_enabled   = false      # true hanya untuk driver ccboot
+#   cache_size_mb   = 0          # 0 = auto 20% RAM; 32-8192; kelipatan 16
 "#;
                 if let Err(e) = fs::write("clients.toml", default_clients) {
                     crate::server_api::build_response(500, "Internal Server Error", "text/plain", &e.to_string())

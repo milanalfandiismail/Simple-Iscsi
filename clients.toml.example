@@ -11,6 +11,11 @@ pxe = "sb-custom"
 next_server = "192.168.1.2"
 image_manager = "win10"
 
+# Cache client CCacheX (hanya untuk driver CCBoot)
+driver = "ccboot"
+cache_enabled = true
+cache_size_mb = 2048   # 0 = auto 20% RAM; 32-8192; kelipatan 16
+
 [[client]]
 hostname = "PC-02"
 mac = "00:11:22:33:44:56"

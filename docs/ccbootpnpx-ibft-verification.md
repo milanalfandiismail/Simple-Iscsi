@@ -13,7 +13,7 @@
 | Target IQN harus punya ':' di posisi len-4 | TERVERIFIKASI | 0x140014131, 0x1400072E0, 0x140007CEE, 0x1400329C1 |
 | Karakter berikutnya harus '0' (len-3) | TERVERIFIKASI | 0x140014228, 0x140007441, 0x140007E33, 0x140032ACF |
 | Dua karakter terakhir wajib digit | BELUM TERVERIFIKASI | tidak ditemukan pemeriksaan isdigit di jalur ini |
-| Hostname wajib format <Hostname>(<Number>-<Hostname>-0) | TIDAK DIDUKUNG | tidak ada perbandingan '(' / ')' / '-' di binary |
+| Hostname wajib format <code>&lt;Hostname&gt;(&lt;Number&gt;-&lt;Hostname&gt;-0)</code> | TIDAK DIVALIDASI, DIPOTONG DI '(' | <code>FUN_14000ecc0</code> memanggil <code>strstr(hostname,"(")</code> lalu menulis NUL; suffix dipakai <code>CCacheX</code> |
 
 ## 2. Parser iBFT (FUN_140001DF0)
 
@@ -88,15 +88,16 @@ Lokasi lengkap:
 
 Implikasi: target IQN harus berakhir dengan pola ':0' pada posisi len-4 dan len-3, misalnya '...:0AB' atau '...:001'. Dua karakter terakhir belum terbukti wajib digit.
 
-## 5. Hostname (klaim lama TIDAK DIDUKUNG)
+## 5. Hostname (dipotong di '(')
 
-- Tidak ada perbandingan karakter '(' (0x28), ')' (0x29), atau '-' (0x2D) di seluruh binary (pencarian byte 83 F8 28 / 80 F8 28 / 3C 28 = 0 hasil).
-- Driver hanya menyalin string hostname iBFT ke:
-  - HKLM/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName
-  - HKLM/SYSTEM/CurrentControlSet/Services/Tcpip/Parameters (NV Hostname)
-  - value Hostname
-  (FUN_14000ECC0, string 'NV Hostname' 0x1400FAD7E, 'ComputerName' 0x1400FADB0)
-- Maka format '<Hostname>(<Number>-<Hostname>-0)' BUKAN validasi driver. Jangan implementasikan format aneh atas nama driver.
+- <code>FUN_14000ecc0</code> memanggil <code>strstr(hostname, "(")</code> (wrapper <code>FUN_14001f020</code>; string "(" di <code>0x1400F90FE</code>) lalu menulis NUL di posisi itu.
+- Artinya driver **tidak memvalidasi** format <code>(Mode-Size-0)</code>, tetapi **memotong** suffix sebelum menulis ke:
+  - <code>HKLM/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName</code>
+  - <code>HKLM/SYSTEM/CurrentControlSet/Services/Tcpip/Parameters</code> (<code>NV Hostname</code>)
+  - value <code>Hostname</code>
+- Format <code>(Mode-Size-0)</code> dipakai <code>CCacheX.sys</code> untuk cache client; bukan validasi <code>CCBootPNPX.sys</code>.
+- Jadi base hostname tetap harus valid (maks 15 karakter, alfanumerik + <code>-</code>); suffix hanya untuk CCacheX.
+
 
 ## 6. Versi
 
@@ -109,7 +110,7 @@ Implikasi: target IQN harus berakhir dengan pola ':0' pada posisi len-4 dan len-
 1. Option 169 / root-path harus mengirim target IQN yang berakhiran ':0XX' (minimal ':0' di posisi len-4/len-3).
 2. Server harus menerima IQN bersuffix dan memetakan ke image yang sama (strip suffix).
 3. iBFT NIC entry harus menunjuk NIC yang benar (PCI BDF cocok).
-4. Hostname: gunakan hostname valid biasa; tidak perlu format khusus.
+4. Hostname: gunakan base valid; suffix <code>(Mode-Size-0)</code> hanya untuk <code>CCacheX</code> dan akan dipotong <code>CCBootPNPX</code> sebelum <code>ComputerName</code>.
 
 ## 8. Bukti / Evidence ID
 

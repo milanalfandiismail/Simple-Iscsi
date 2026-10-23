@@ -970,6 +970,8 @@ Panduan rinci, contoh konfigurasi, troubleshooting, dan acceptance test:
 
 **[docs/panduan-kompatibilitas-driver-ccboot.md](docs/panduan-kompatibilitas-driver-ccboot.md)**
 
+**Cache client (opsional):** client CCBoot dapat memakai cache read-only <code>CCacheX.sys</code> lewat hostname iBFT <code>Hostname(1-SizeMB-0)</code>. Vendor ID iSCSI harus mengandung <code>CCBoot</code>, <code>CCDisk</code>, atau <code>VMware</code>; set <code>[windows] vendor_id = "CCBoot"</code>. Cache default off, hanya aktif jika <code>driver = "ccboot"</code> dan <code>cache_enabled = true</code> di <code>clients.toml</code>. Detail: [docs/ccachex-cache-analysis.md](docs/ccachex-cache-analysis.md).
+
 ---
 
 ## 15. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
