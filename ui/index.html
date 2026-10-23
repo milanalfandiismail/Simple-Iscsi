@@ -648,7 +648,7 @@
                     <div class="px-3 py-2 sm:px-3.5 sm:py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                         <div>
                             <h2 class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Daftar Pool Cache Per-Disk</h2>
-                            <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Alokasi memori terpisah untuk Game Physical Disks dan Shared Read Cache Base OS Image.</p>
+                            <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Alokasi memori terpisah untuk Game Disks dan Shared Read Cache Base OS Image.</p>
                         </div>
                     </div>
                     <div class="w-full overflow-x-auto lg:overflow-x-hidden overflow-y-auto max-h-[calc(100vh-310px)] lg:max-h-[calc(100vh-325px)] xl:max-h-[calc(100vh-345px)] 2xl:max-h-[calc(100vh-365px)]">
@@ -853,67 +853,51 @@
             <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 leading-relaxed" id="partition-modal-desc">Pilih fungsi atau lepas alokasi untuk partisi disk.</p>
             <input type="hidden" id="partition-mount-point">
             
-            <div class="space-y-2.5 mb-5">
-                <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
-                    <input type="radio" name="partition-role" value="boot" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
-                    <div class="min-w-0">
-                        <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                            <span>💿</span>
-                            <span>Booting Images (VHD)</span>
-                        </span>
-                        <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Menyimpan direktori master image OS klien (<code class="font-mono text-[10px] text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">&lt;Drive&gt;:\vhd</code>).</span>
-                    </div>
-                </label>
-                
-                <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
-                    <input type="radio" name="partition-role" value="writeback" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
-                    <div class="min-w-0">
-                        <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                            <span>⚡</span>
-                            <span>Writeback Cache</span>
-                        </span>
-                        <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Menampung file write diskless klien (<code class="font-mono text-[10px] text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded">&lt;Drive&gt;:\writeback</code>).</span>
-                    </div>
-                </label>
-                
-                <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
-                    <input type="radio" name="partition-role" value="gamedisk" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
-                    <div class="min-w-0 flex-1">
-                        <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                            <span>🎮</span>
-                            <span>Gamedisk Storage Target</span>
-                        </span>
-                        <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Disk game iSCSI block target terdistribusi.</span>
-
-                        <!-- RAM Cache Configuration for GameDisk -->
-                        <div id="partition-gamedisk-cache-box" class="mt-2.5 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60" style="display: none;">
-                            <label class="block text-[11px] font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                                Alokasi Server RAM Cache (MB):
-                            </label>
-                            <div class="flex items-center gap-2">
-                                <input type="number" id="partition-gamedisk-ram-cache" min="0" step="256" value="2048" class="w-28 px-2.5 py-1 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-400">
-                                <span class="text-xs text-zinc-500 font-mono">MB</span>
-                                <div class="flex items-center gap-1 text-[10.5px]">
-                                    <button type="button" onclick="document.getElementById('partition-gamedisk-ram-cache').value=1024" class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">1G</button>
-                                    <button type="button" onclick="document.getElementById('partition-gamedisk-ram-cache').value=2048" class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">2G</button>
-                                    <button type="button" onclick="document.getElementById('partition-gamedisk-ram-cache').value=4096" class="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">4G</button>
-                                </div>
-                            </div>
+                <div class="space-y-2.5 mb-5">
+                    <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
+                        <input type="radio" name="partition-role" value="boot" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
+                        <div class="min-w-0">
+                            <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                                <span>💿</span>
+                                <span>Image Disk (Base OS Image)</span>
+                            </span>
+                            <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Menyimpan direktori master image boot OS diskless</span>
                         </div>
-                    </div>
-                </label>
-                
-                <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
-                    <input type="radio" name="partition-role" value="none" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
-                    <div class="min-w-0">
-                        <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                            <span>⚪</span>
-                            <span>Lepas Alokasi (None / Unassigned)</span>
-                        </span>
-                        <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Hapus seluruh fungsi alokasi dari partisi disk ini.</span>
-                    </div>
-                </label>
-            </div>
+                    </label>
+
+                    <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
+                        <input type="radio" name="partition-role" value="writeback" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
+                        <div class="min-w-0">
+                            <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                                <span>⚡</span>
+                                <span>Writeback Cache</span>
+                            </span>
+                            <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Menampung file write diskless klien</span>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
+                        <input type="radio" name="partition-role" value="gamedisk" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
+                        <div class="min-w-0">
+                            <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                                <span>🎮</span>
+                                <span>Gamedisk Storage Target</span>
+                            </span>
+                            <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Disk game iSCSI block target klien (konfigurasi cache di tab iSCSI Cache)</span>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
+                        <input type="radio" name="partition-role" value="none" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
+                        <div class="min-w-0">
+                            <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                                <span>⚪</span>
+                                <span>Lepas Alokasi (None / Unassigned)</span>
+                            </span>
+                            <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Hapus seluruh peran yang melekat pada drive ini</span>
+                        </div>
+                    </label>
+                </div>
 
             <div class="flex items-center justify-end gap-2 pt-3.5 border-t border-zinc-100 dark:border-zinc-800">
                 <button type="button" class="btn-secondary inline-flex items-center justify-center px-3.5 py-2 text-xs sm:text-sm font-medium cursor-pointer" onclick="closePartitionModal()">Batal</button>

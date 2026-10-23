@@ -162,7 +162,7 @@ pub struct WritebackConfig {
 impl Default for WritebackConfig {
     fn default() -> Self {
         Self {
-            writeback_dirs: vec!["C:\\writeback".to_string()],
+            writeback_dirs: Vec::new(),
             max_cache_per_client_gb: 10,
             max_write_speed_mbps: 20,
             ram_cache_mb: None,

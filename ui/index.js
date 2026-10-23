@@ -1134,6 +1134,27 @@ async function loadDiskPartitions() {
     }
 }
 
+function formatDriveDisplay(path) {
+    if (!path) return '-';
+    const match = path.match(/([a-zA-Z]):/);
+    if (match) {
+        return `Drive ${match[1].toUpperCase()}`;
+    }
+    if (window._systemDrivesMap) {
+        const norm = (path || '').replace(/\\+/g, '\\').toLowerCase().trim();
+        for (const [letter, d] of Object.entries(window._systemDrivesMap)) {
+            if (d && d.physical_disk && d.physical_disk.replace(/\\+/g, '\\').toLowerCase().trim() === norm) {
+                return `Drive ${letter.toUpperCase()}`;
+            }
+        }
+    }
+    const physMatch = path.match(/PhysicalDrive(\d+)/i);
+    if (physMatch) {
+        return `Drive Disk ${physMatch[1]}`;
+    }
+    return path;
+}
+
 function renderDiskGrid(drives) {
     const container = document.getElementById('disk-grid-container');
     if (!container) return;
@@ -1150,6 +1171,7 @@ function renderDiskGrid(drives) {
 
     drives.forEach(drive => {
         const letter = (drive.letter || '').toUpperCase();
+        if (letter === 'C') return; // Eksklusi mutlak Drive C:
         window._systemDrivesMap[letter] = drive;
         let currentRole = 'none';
 
@@ -1232,8 +1254,7 @@ function renderDiskGrid(drives) {
                             🗄️
                         </div>
                         <div class="min-w-0 flex-1">
-                            <h3 class="font-semibold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 leading-tight">Drive ${drive.letter}:\\</h3>
-                            <p class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 break-all leading-tight">${drive.physical_disk || 'Logical Volume (Direct)'}</p>
+                            <h3 class="font-semibold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 leading-tight">Drive ${drive.letter}</h3>
                         </div>
                     </div>
                     <span class="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border shrink-0 ${roleConfig.badgeClass}">
@@ -1263,46 +1284,22 @@ function renderDiskGrid(drives) {
 }
 
 function openPartitionModal(letter, currentRole) {
+    if (letter.toUpperCase() === 'C') {
+        showToast('Drive C: adalah drive sistem host dan dilarang untuk iSCSI', 'error');
+        return;
+    }
     const drive = (window._systemDrivesMap && window._systemDrivesMap[letter]) || { letter, physical_disk: '' };
     const physicalDisk = drive.physical_disk || '';
     const modal = document.getElementById('partition-modal');
     modal.style.display = 'flex';
-    document.getElementById('partition-modal-desc').textContent = `Pilih fungsi atau lepas alokasi untuk Drive ${letter}:\\ (${physicalDisk || 'Logical Volume'}).`;
+    document.getElementById('partition-modal-desc').textContent = `Pilih fungsi atau lepas alokasi untuk Drive ${letter}.`;
     const mountInput = document.getElementById('partition-mount-point');
     mountInput.value = letter;
     mountInput.dataset.physicalDisk = physicalDisk;
 
-    // Cari existing gamedisk cache allocation jika partisi ini sudah berstatus gamedisk
-    let existingGdCache = 2048;
-    if (configObj && Array.isArray(configObj.gamedisk)) {
-        const normalizeDisk = (p) => (p || '').replace(/\\+/g, '\\').toLowerCase().trim();
-        const normTargetPhys = normalizeDisk(physicalDisk);
-        const normLetterVol = normalizeDisk(`\\\\.\\${letter}:`);
-        const matched = configObj.gamedisk.find(gd => {
-            if (!gd || !gd.physical_disk) return false;
-            const normGd = normalizeDisk(gd.physical_disk);
-            return (normTargetPhys && normGd === normTargetPhys) || normGd === normLetterVol || normGd.includes(letter.toLowerCase() + ':');
-        });
-        if (matched && matched.ram_cache_mb !== undefined && matched.ram_cache_mb !== null) {
-            existingGdCache = matched.ram_cache_mb;
-        }
-    }
-    const gdCacheInput = document.getElementById('partition-gamedisk-ram-cache');
-    if (gdCacheInput) gdCacheInput.value = existingGdCache;
-
-    const cacheBox = document.getElementById('partition-gamedisk-cache-box');
-    if (cacheBox) {
-        cacheBox.style.display = (currentRole === 'gamedisk') ? 'block' : 'none';
-    }
-
     const radios = document.querySelectorAll('input[name="partition-role"]');
     radios.forEach(r => {
         r.checked = (r.value === currentRole);
-        r.onchange = () => {
-            if (cacheBox) {
-                cacheBox.style.display = (r.checked && r.value === 'gamedisk') ? 'block' : 'none';
-            }
-        };
     });
 }
 
@@ -1312,6 +1309,10 @@ function closePartitionModal() {
 
 async function savePartitionRoleAction() {
     const letter = (document.getElementById('partition-mount-point').value || '').toUpperCase();
+    if (letter === 'C') {
+        showToast('Drive C: adalah drive sistem host dan dilarang untuk iSCSI', 'error');
+        return;
+    }
     const drive = (window._systemDrivesMap && window._systemDrivesMap[letter]) || {};
     const physicalDisk = drive.physical_disk || document.getElementById('partition-mount-point').dataset.physicalDisk || '';
     const selectedRadio = document.querySelector('input[name="partition-role"]:checked');
@@ -1320,7 +1321,7 @@ async function savePartitionRoleAction() {
     if (!configObj) configObj = {};
     if (!configObj.windows) configObj.windows = {
         target_iqn_prefix: "iqn.2024-01.com.tmdebug:vhd-",
-        vhd_dir: "C:\\vhd",
+        vhd_dir: "",
         block_size: 512,
         vendor_id: "RUSTISCS",
         product_id: "WindowsBoot",
@@ -1330,7 +1331,7 @@ async function savePartitionRoleAction() {
         super_client_action: "none"
     };
     if (!configObj.writeback) configObj.writeback = {
-        writeback_dirs: ["C:\\writeback"],
+        writeback_dirs: [],
         max_cache_per_client_gb: 10,
         max_write_speed_mbps: 100000
     };
@@ -1339,6 +1340,21 @@ async function savePartitionRoleAction() {
     const normalizeDisk = (p) => (p || '').replace(/\\+/g, '\\').toLowerCase().trim();
     const normTargetPhys = normalizeDisk(physicalDisk);
     const normLetterVol = normalizeDisk(`\\\\.\\${letter}:`);
+
+    // Catat ram_cache_mb existing jika disk ini sudah pernah dialokasikan sebagai gamedisk
+    let previousRamCache = 0;
+    if (configObj.gamedisk && Array.isArray(configObj.gamedisk)) {
+        const existingGd = configObj.gamedisk.find(gd => {
+            if (!gd || !gd.physical_disk) return false;
+            const normGd = normalizeDisk(gd.physical_disk);
+            const matchPhys = normTargetPhys && normGd === normTargetPhys;
+            const matchVol = normGd === normLetterVol || normGd.includes(letter.toLowerCase() + ":");
+            return matchPhys || matchVol;
+        });
+        if (existingGd && existingGd.ram_cache_mb !== undefined && existingGd.ram_cache_mb !== null) {
+            previousRamCache = existingGd.ram_cache_mb;
+        }
+    }
 
     // 1. Clear previous role for this drive letter
     if (configObj.windows && configObj.windows.vhd_dir && configObj.windows.vhd_dir.toUpperCase().startsWith(letter)) {
@@ -1359,14 +1375,12 @@ async function savePartitionRoleAction() {
 
     // 2. Apply new role if not 'none'
     if (role === 'boot') {
-        configObj.windows.vhd_dir = `${letter}:\\vhd`;
+        configObj.windows.vhd_dir = `${letter}:\\`;
     } else if (role === 'writeback') {
         if (!configObj.writeback.writeback_dirs) configObj.writeback.writeback_dirs = [];
         configObj.writeback.writeback_dirs.push(`${letter}:\\writeback`);
     } else if (role === 'gamedisk') {
         const targetDiskPath = physicalDisk ? physicalDisk : `\\\\.\\${letter}:`;
-        const ramCacheInput = document.getElementById('partition-gamedisk-ram-cache');
-        const ramCacheVal = ramCacheInput ? (parseInt(ramCacheInput.value, 10) || 0) : 2048;
         if (!configObj.gamedisk) configObj.gamedisk = [];
         configObj.gamedisk.push({
             physical_disk: targetDiskPath,
@@ -1374,7 +1388,7 @@ async function savePartitionRoleAction() {
             vendor_id: "RUSTISCS",
             product_id: `GameDisk-${configObj.gamedisk.length}`,
             product_revision: "1.00",
-            ram_cache_mb: ramCacheVal
+            ram_cache_mb: previousRamCache
         });
     }
 
@@ -1388,7 +1402,13 @@ async function savePartitionRoleAction() {
         closePartitionModal();
         await loadConfigJson();
         await loadDiskPartitions();
-        showToast(role === 'none' ? `Alokasi peran Drive ${letter}: berhasil dilepas` : `Peran Drive ${letter}: berhasil diubah ke ${role.toUpperCase()}`, 'success');
+        const roleLabels = {
+            boot: 'IMAGE DISK',
+            writeback: 'WRITEBACK',
+            gamedisk: 'GAMEDISK'
+        };
+        const roleName = roleLabels[role] || role.toUpperCase();
+        showToast(role === 'none' ? `Alokasi peran Drive ${letter}: berhasil dilepas` : `Peran Drive ${letter}: berhasil diubah ke ${roleName}`, 'success');
     } else {
         showToast(`Gagal menyimpan alokasi partisi Drive ${letter}:`, 'error');
     }
@@ -1400,7 +1420,7 @@ async function saveGlobalStorageParams() {
 
     if (!configObj) configObj = {};
     if (!configObj.writeback) configObj.writeback = {
-        writeback_dirs: ["C:\\writeback"],
+        writeback_dirs: [],
         max_cache_per_client_gb: 10,
         max_write_speed_mbps: 100000
     };
@@ -2373,7 +2393,7 @@ async function loadCacheStats() {
                     </td>
                     <td class="px-2 py-2">
                         <div class="mb-0.5">${typeBadge}</div>
-                        <div class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate" title="${escapeHtml(disk.path)}">${escapeHtml(disk.path)}</div>
+                        <div class="text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate" title="${escapeHtml(disk.path)}">${escapeHtml(formatDriveDisplay(disk.path))}</div>
                     </td>
                     <td class="px-2 py-2 font-mono">
                         ${isOff

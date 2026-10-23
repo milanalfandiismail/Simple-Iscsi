@@ -52,6 +52,7 @@ pub fn get_logical_drives_detail() -> String {
 
     let mut details = Vec::new();
     for c in b'A'..=b'Z' {
+        if c == b'C' { continue; } // Drive C: adalah host system volume, dilarang di Disk Management
         let letter = (c as char).to_string();
         let path = format!("{}:\\", letter);
         if std::path::Path::new(&path).exists() {
