@@ -68,7 +68,7 @@ pub fn resolve_base_path(config: &Config, image_key: &str) -> String {
             if std::path::Path::new(&vhd_filename).is_absolute() {
                 vhd_filename
             } else if let Some(ref win) = config.windows {
-                format!("{}\\{}", win.vhd_dir, vhd_filename)
+                std::path::Path::new(&win.vhd_dir).join(&vhd_filename).to_string_lossy().to_string()
             } else {
                 vhd_filename // Fallback, let it error later if needed
             }

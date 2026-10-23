@@ -48,71 +48,90 @@ pub fn handle_get_cache_stats(
     let mut total_misses = 0u64;
 
     // 1. Image Disk (Base OS) - Driverless Read Cache
+    // Hanya sertakan jika disk sudah di-assign (vhd_dir terisi) dan BUKAN di drive C:
     if let Some(ref win) = cfg.windows {
-        let win_mb = win.ram_cache_mb.unwrap_or(0);
-        total_allocated_mb += win_mb;
+        let vhd_dir = win.vhd_dir.trim();
+        let is_c_drive = vhd_dir.starts_with("c:") || vhd_dir.starts_with("C:")
+            || vhd_dir.starts_with(r"\\.\c:") || vhd_dir.starts_with(r"\\.\C:");
 
-        let mut used_cache_mb = 0u64;
-        let mut entry_count = 0u64;
-        let mut hit_count = 0u64;
-        let mut miss_count = 0u64;
-        let mut cached_read_bytes = 0u64;
-        let mut direct_read_bytes = 0u64;
+        if !vhd_dir.is_empty() && !is_c_drive {
+            let win_mb = win.ram_cache_mb.unwrap_or(0);
+            total_allocated_mb += win_mb;
 
-        if win_mb > 0 {
-            let image_registry = get_image_cache_registry();
-            for entry in image_registry.iter() {
-                let st = entry.value().stats();
-                used_cache_mb += st.used_cache_mb;
-                entry_count += st.entry_count;
-                hit_count += st.hit_count;
-                miss_count += st.miss_count;
-                cached_read_bytes += st.cached_read_bytes;
-                direct_read_bytes += st.direct_read_bytes;
+            let mut used_cache_mb = 0u64;
+            let mut entry_count = 0u64;
+            let mut hit_count = 0u64;
+            let mut miss_count = 0u64;
+            let mut cached_read_bytes = 0u64;
+            let mut direct_read_bytes = 0u64;
+
+            if win_mb > 0 {
+                let image_registry = get_image_cache_registry();
+                for entry in image_registry.iter() {
+                    let st = entry.value().stats();
+                    used_cache_mb += st.used_cache_mb;
+                    entry_count += st.entry_count;
+                    hit_count += st.hit_count;
+                    miss_count += st.miss_count;
+                    cached_read_bytes += st.cached_read_bytes;
+                    direct_read_bytes += st.direct_read_bytes;
+                }
             }
+
+            total_used_mb += used_cache_mb;
+            total_hits += hit_count;
+            total_misses += miss_count;
+
+            let total_reqs = hit_count + miss_count;
+            let hit_rate_pct = if total_reqs > 0 {
+                (hit_count as f64 / total_reqs as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            let total_chunks = if win_mb > 0 {
+                (win_mb * 1024 * 1024) / (256 * 1024)
+            } else {
+                0
+            };
+
+            let drive_letter = vhd_dir.trim_start_matches(r"\\.\").chars().next().unwrap_or('?').to_ascii_uppercase();
+            let name = format!("Image Disk (Drive {})", drive_letter);
+
+            disks.push(DiskCacheStatItem {
+                disk_id: "disk_image".to_string(),
+                name,
+                path: win.vhd_dir.clone(),
+                disk_type: "imagedisk_read".to_string(),
+                ram_cache_mb: win_mb,
+                used_cache_mb,
+                entry_count,
+                total_chunks,
+                hit_count,
+                miss_count,
+                hit_rate_pct,
+                cached_read_bytes,
+                direct_read_bytes,
+            });
         }
-
-        total_used_mb += used_cache_mb;
-        total_hits += hit_count;
-        total_misses += miss_count;
-
-        let total_reqs = hit_count + miss_count;
-        let hit_rate_pct = if total_reqs > 0 {
-            (hit_count as f64 / total_reqs as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        let total_chunks = if win_mb > 0 {
-            (win_mb * 1024 * 1024) / (256 * 1024)
-        } else {
-            0
-        };
-
-        disks.push(DiskCacheStatItem {
-            disk_id: "disk_image".to_string(),
-            name: "Image Disk (Base OS)".to_string(),
-            path: win.vhd_dir.clone(),
-            disk_type: "imagedisk_read".to_string(),
-            ram_cache_mb: win_mb,
-            used_cache_mb,
-            entry_count,
-            total_chunks,
-            hit_count,
-            miss_count,
-            hit_rate_pct,
-            cached_read_bytes,
-            direct_read_bytes,
-        });
     }
 
     // 2. GameDisk LUNs - Driverless Read Cache
+    // Hanya sertakan jika disk sudah di-assign dan BUKAN di drive C:
     let backends_lock = service_manager.get_backends();
     let backends = backends_lock.read().unwrap();
 
     for (lun_idx, gd_cfg) in cfg.gamedisk.iter().enumerate() {
         let lun_id = lun_idx as u8;
         let path = gd_cfg.physical_disk.clone();
+        let path_trim = path.trim();
+        let is_c_drive = path_trim.starts_with("c:") || path_trim.starts_with("C:")
+            || path_trim.starts_with(r"\\.\c:") || path_trim.starts_with(r"\\.\C:");
+
+        if path_trim.is_empty() || is_c_drive {
+            continue; // Abaikan unassigned atau drive C:
+        }
+
         let name = format!("GameDisk LUN {}", lun_id);
         let configured_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
 
@@ -170,33 +189,43 @@ pub fn handle_get_cache_stats(
     }
 
     // 3. Writeback Storage Disks - Driverless Write Cache / Buffer
-    let wb_mb = cfg.writeback.ram_cache_mb.unwrap_or(0);
-    total_allocated_mb += wb_mb;
+    // Hanya sertakan jika disk writeback sudah di-assign dan BUKAN di drive C:
+    let wb_dirs: Vec<&String> = cfg.writeback.writeback_dirs.iter()
+        .filter(|d| {
+            let t = d.trim();
+            !t.is_empty() && !t.starts_with("c:") && !t.starts_with("C:")
+                && !t.starts_with(r"\\.\c:") && !t.starts_with(r"\\.\C:")
+        })
+        .collect();
 
-    for (idx, dir) in cfg.writeback.writeback_dirs.iter().enumerate() {
-        let name = if cfg.writeback.writeback_dirs.len() == 1 {
-            "Writeback Storage".to_string()
-        } else {
-            format!("Writeback Storage {}", idx + 1)
-        };
+    if !wb_dirs.is_empty() {
+        let wb_mb = cfg.writeback.ram_cache_mb.unwrap_or(0);
+        total_allocated_mb += wb_mb;
 
-        disks.push(DiskCacheStatItem {
-            disk_id: format!("writeback_{}", idx),
-            name,
-            path: dir.clone(),
-            disk_type: "writeback_write".to_string(),
-            ram_cache_mb: wb_mb,
-            used_cache_mb: 0,
-            entry_count: 0,
-            total_chunks: if wb_mb > 0 { (wb_mb * 1024 * 1024) / (64 * 1024) } else { 0 },
-            hit_count: 0,
-            miss_count: 0,
-            hit_rate_pct: 0.0,
-            cached_read_bytes: 0,
-            direct_read_bytes: 0,
-        });
+        for (idx, dir) in wb_dirs.iter().enumerate() {
+            let name = if wb_dirs.len() == 1 {
+                "Writeback Storage".to_string()
+            } else {
+                format!("Writeback Storage {}", idx + 1)
+            };
+
+            disks.push(DiskCacheStatItem {
+                disk_id: format!("writeback_{}", idx),
+                name,
+                path: (*dir).clone(),
+                disk_type: "writeback_write".to_string(),
+                ram_cache_mb: wb_mb,
+                used_cache_mb: 0,
+                entry_count: 0,
+                total_chunks: if wb_mb > 0 { (wb_mb * 1024 * 1024) / (64 * 1024) } else { 0 },
+                hit_count: 0,
+                miss_count: 0,
+                hit_rate_pct: 0.0,
+                cached_read_bytes: 0,
+                direct_read_bytes: 0,
+            });
+        }
     }
-
     let total_all = total_hits + total_misses;
     let overall_hit_rate_pct = if total_all > 0 {
         (total_hits as f64 / total_all as f64) * 100.0
@@ -273,6 +302,15 @@ pub fn handle_post_cache_config(
     config: &SharedConfig,
     service_manager: &Arc<ServiceManager>,
 ) -> String {
+    handle_post_cache_config_with_path(body, config, service_manager, "config.toml")
+}
+
+pub fn handle_post_cache_config_with_path(
+    body: &str,
+    config: &SharedConfig,
+    service_manager: &Arc<ServiceManager>,
+    config_file_path: &str,
+) -> String {
     let req: UpdateCacheConfigRequest = match serde_json::from_str(body) {
         Ok(r) => r,
         Err(e) => return build_response(400, "Bad Request", "application/json", &json!({"error": e.to_string()}).to_string()),
@@ -293,6 +331,11 @@ pub fn handle_post_cache_config(
         if let Ok(lun_id) = lun_str.parse::<u8>() {
             let lun_idx = lun_id as usize;
             if let Some(gd) = current_cfg.gamedisk.get_mut(lun_idx) {
+                let p = gd.physical_disk.trim();
+                if p.starts_with("c:") || p.starts_with("C:") || p.starts_with(r"\\.\c:") || p.starts_with(r"\\.\C:") {
+                    return build_response(400, "Bad Request", "application/json", r#"{"error":"Drive C: adalah drive sistem host dan dilarang untuk iSCSI cache"}"#);
+                }
+
                 gd.ram_cache_mb = Some(target_mb);
                 info!("Mengubah RAM cache Gamedisk LUN {} menjadi {} MB", lun_id, target_mb);
 
@@ -314,10 +357,18 @@ pub fn handle_post_cache_config(
         } else {
             return build_response(400, "Bad Request", "application/json", r#"{"error":"Format disk_id tidak valid"}"#);
         }
-    } else if req.disk_id == "disk_image" || req.disk_id.starts_with("image") {
+    } else if req.disk_id == "disk_image" || req.disk_id.starts_with("image") || req.disk_id == "boot_disk" {
         if let Some(ref mut win) = current_cfg.windows {
+            let vhd_dir = win.vhd_dir.trim();
+            if vhd_dir.is_empty() {
+                return build_response(400, "Bad Request", "application/json", r#"{"error":"Belum ada disk yang di-assign sebagai Image Disk di Disk Management"}"#);
+            }
+            if vhd_dir.starts_with("c:") || vhd_dir.starts_with("C:") || vhd_dir.starts_with(r"\\.\c:") || vhd_dir.starts_with(r"\\.\C:") {
+                return build_response(400, "Bad Request", "application/json", r#"{"error":"Drive C: adalah drive sistem host dan dilarang untuk iSCSI cache"}"#);
+            }
+
             win.ram_cache_mb = Some(target_mb);
-            info!("Mengubah RAM cache Base Image menjadi {} MB", target_mb);
+            info!("Mengubah RAM cache Image Disk menjadi {} MB", target_mb);
         } else {
             return build_response(404, "Not Found", "application/json", r#"{"error":"Konfigurasi Windows image tidak ditemukan"}"#);
         }
@@ -332,21 +383,30 @@ pub fn handle_post_cache_config(
             }
         }
     } else if req.disk_id.starts_with("writeback_") || req.disk_id == "writeback" {
+        if current_cfg.writeback.writeback_dirs.is_empty() {
+            return build_response(400, "Bad Request", "application/json", r#"{"error":"Belum ada disk yang di-assign sebagai Writeback di Disk Management"}"#);
+        }
+        for dir in &current_cfg.writeback.writeback_dirs {
+            let d = dir.trim();
+            if d.starts_with("c:") || d.starts_with("C:") || d.starts_with(r"\\.\c:") || d.starts_with(r"\\.\C:") {
+                return build_response(400, "Bad Request", "application/json", r#"{"error":"Drive C: adalah drive sistem host dan dilarang untuk iSCSI cache"}"#);
+            }
+        }
+
         current_cfg.writeback.ram_cache_mb = Some(target_mb);
         info!("Mengubah RAM cache Writeback menjadi {} MB", target_mb);
     } else {
         return build_response(400, "Bad Request", "application/json", r#"{"error":"Target disk_id tidak dikenali"}"#);
     }
-
     // Simpan ke config.toml
     match toml::to_string_pretty(&current_cfg) {
         Ok(toml_str) => {
-            if let Err(e) = std::fs::write("config.toml", &toml_str) {
-                error!("Gagal menulis file config.toml: {}", e);
+            if let Err(e) = std::fs::write(config_file_path, &toml_str) {
+                error!("Gagal menulis file {}: {}", config_file_path, e);
                 return build_response(500, "Internal Server Error", "application/json", &json!({"error": e.to_string()}).to_string());
             }
             config.update(current_cfg);
-            info!("Berhasil menyimpan konfigurasi RAM cache baru ke config.toml");
+            info!("Berhasil menyimpan konfigurasi RAM cache baru ke {}", config_file_path);
             build_response(200, "OK", "application/json", &json!({
                 "status": "ok",
                 "message": format!("Alokasi cache untuk {} berhasil diubah menjadi {} MB", req.disk_id, target_mb),
@@ -391,13 +451,13 @@ ram_cache_mb = 1024
 
 [windows]
 target_iqn_prefix = "iqn.2026-01.com.example:win-"
-vhd_dir = 'C:\vhd'
+vhd_dir = 'D:\vhd'
 block_size = 512
 discovery = false
 ram_cache_mb = 2048
 
 [writeback]
-writeback_dirs = ['C:\writeback']
+writeback_dirs = ['E:\writeback']
 max_cache_per_client_gb = 10
 ram_cache_mb = 512
 "#;
@@ -438,11 +498,25 @@ ram_cache_mb = 512
         assert!(clear_resp.starts_with("HTTP/1.1 200 OK"));
         assert!(clear_resp.contains("Berhasil membersihkan"));
 
+        // 2b. Test POST /api/cache/config to drive C: must return 400 Bad Request
+        let reject_c_resp = handle_post_cache_config_with_path(
+            r#"{"disk_id":"gamedisk_0","size_str":"2G"}"#,
+            &SharedConfig::new({
+                let mut c_cfg = (*shared_cfg.read()).clone();
+                c_cfg.gamedisk[0].physical_disk = r"\\.\C:".to_string();
+                c_cfg
+            }),
+            &sm,
+            cfg_str,
+        );
+        assert!(reject_c_resp.starts_with("HTTP/1.1 400 Bad Request"));
+
         // 3. Test POST /api/cache/config (Ubah ke 4G)
-        let config_resp = handle_post_cache_config(
+        let config_resp = handle_post_cache_config_with_path(
             r#"{"disk_id":"gamedisk_0","size_str":"4G"}"#,
             &shared_cfg,
             &sm,
+            cfg_str,
         );
         assert!(config_resp.starts_with("HTTP/1.1 200 OK"));
         assert_eq!(shared_cfg.read().gamedisk[0].ram_cache_mb, Some(4096));

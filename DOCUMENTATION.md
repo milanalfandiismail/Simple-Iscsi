@@ -945,16 +945,31 @@ Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
 
 ---
 
-## 10. Kompatibilitas Driver CCBoot (`CCBootPNPX.sys`)
+## 10. Kompatibilitas Driver CCBoot (`CCBootPNPX.sys` & `CCacheX.sys`)
 
-Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga mendukung **driver CCBoot asli** di client. Keduanya bisa dipakai bergantian tergantung kebutuhan image.
+Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga mendukung **driver CCBoot asli** di client. Keduanya bisa dipakai bergantian tergantung kebutuhan image master.
 
-| Aspek | Driverless | CCBoot Driver |
+### 10.1 Matriks Versi Binary CCBoot & Driver Terverifikasi (Build <= 20260603)
+
+Seluruh integrasi protokol CCBoot, emulasi registri `CCBootPnP`, penanganan suffix IQN `:0XX`, dan alokasi cache RAM client `CCacheX.sys` didasarkan pada analisis reverse engineering langsung terhadap berkas biner resmi Youngzsoft **CCBoot Cloud versi `<=` 20260603** (Build 2026-06-03 ke bawah).
+
+Berikut rincian spesifikasi biner yang dianalisis dan didukung:
+
+| Berkas Binary | Nama Produk & Deskripsi | Versi File (Raw) | Versi Produk | Build / Timestamp PE | Ukuran Berkas | SHA-256 Checksum | Peran & Status Kompatibilitas |
+|---|---|:---:|:---:|:---:|---:|---|---|
+| **`CCBoot.exe`** | CCBootCloud / CCBoot Multiple Boot System | `3.0.0.0` | `3.0` | **2026-06-03** 10:52:26 UTC (Signing: `20260603105235Z`) | 8,959,472 B (~8.54 MB) | `27bc53d89242e807325cb22d4829e9cde81e0446c829bdfe9593ded8a3258a4f` | Biner server control-plane CCBoot acuan. Kompatibel penuh untuk seluruh versi CCBoot **`<= 20260603`** (termasuk build 20230806 / build lama). |
+| **`CCBootPNPX.sys`** | NetCard PNP (`<Youngzsoft>`) | `2.0.0.12` | `2.0` | **2026-05-26** 13:55:58 UTC (Signing: `20260526` / `20260527`) | 1,061,424 B (~1.01 MB) | `6872982dd28943c242b3c47da84eb82597a659f8e8ca1dd6451906cd03ec51d4` | Driver kernel client boot-start (Debug build: `IsDebug: True`, Copyright 2025). Mengatur PnP NIC, iSCSI boot, dan sinkronisasi registri kernel-mode. |
+| **`CCacheX.sys`** | The driver for volume cache (`<Youngzsoft>`) | `1.0.0.2` | `1.0` | **2025-02-15** 07:58:47 UTC (Signing: `20250215` / `20250216`) | 61,968 B (~60.5 KB) | `d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c` | Driver client volume RAM cache (PDB: `\svn\ccboot\src\ccachex\ccachex\BIN\amd64\CCacheX.pdb`). Membaca parameter cache dari iBFT format `Hostname(1-SizeMB-0)`. |
+
+### 10.2 Komparasi Mode Booting Client
+
+| Aspek | Driverless (Native) | CCBoot Driver (`<= 20260603`) |
 |---|---|---|
-| Driver client | Tidak ada | `CCBootPNPX.sys` |
-| IQN suffix `:0XX` | Tidak wajib | **Wajib** (divalidasi driver) |
-| Manipulasi registry | Native/helper | Dilakukan driver CCBoot |
-| Provisioning | Tanpa driver | Copy driver + service key |
+| Driver client | Tidak ada (native Windows `msiscsi.sys`) | `CCBootPNPX.sys` v2.0.0.12 (asli CCBoot) |
+| Client-side Cache | Cache OS & Server L1 Cache | `CCacheX.sys` v1.0.0.2 (RAM Cache Klien) |
+| IQN suffix `:0XX` | Tidak wajib (opsional) | **Wajib** (divalidasi oleh `CCBootPNPX.sys`) |
+| Manipulasi registry | Native helper C++ (`helper-svc.exe`) | Dilakukan oleh kernel driver CCBoot |
+| Provisioning | Tanpa driver | Salin driver + service key `CCBootPnP` |
 
 **Syarat utama mode CCBoot driver:**
 

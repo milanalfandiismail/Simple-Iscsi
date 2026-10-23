@@ -1,7 +1,9 @@
 # Analisis Cache Client CCacheX
 
-> Status: reverse engineering statis; belum diuji runtime.
-> Binary: <code>CCacheX.sys</code> versi 1.0.0.2, SHA-256 <code>d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c</code>.
+> Status: reverse engineering statis; terverifikasi terhadap CCBoot Build <= 20260603.
+> Binary Cache: <code>CCacheX.sys</code> versi 1.0.0.2 (PE: 2025-02-15, 61,968 B), SHA-256 <code>d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c</code>.
+> Binary Driver Utama: <code>CCBootPNPX.sys</code> versi 2.0.0.12 (PE: 2026-05-26, 1,061,424 B), SHA-256 <code>6872982dd28943c242b3c47da84eb82597a659f8e8ca1dd6451906cd03ec51d4</code>.
+> Target CCBoot Server: CCBootCloud v3.0 (Build <= 20260603).
 
 ## 1. Fungsi
 

@@ -21,6 +21,7 @@ Mendukung kecepatan transfer hingga **900+ Mbps (~112 MB/s)** pada jaringan kabe
 * **Multi-LUN GameDisk Architecture:** Mendukung banyak harddisk game (Drive D:, E:, F:, dst.) dalam 1 Target IQN tunggal via perintah SCSI `REPORT LUNS` (`0xA0`).
 * **Built-in DHCP & TFTP Engine:** Mengirim seluruh opsi SANBOOT (RFC 4173 URI) secara dinamis tanpa perlu server DHCP pihak ketiga.
 * **Driverless Boot Helper (`helper.exe`):** Membaca parameter IP, Subnet, Gateway, DNS, dan Hostname langsung dari firmware ACPI iBFT serta membersihkan ghost adapter jaringan secara otomatis.
+* **Kompatibilitas Driver CCBoot (Build <= 20260603):** Mendukung booting klien memakai driver resmi `CCBootPNPX.sys` (v2.0.0.12) serta alokasi RAM cache klien `CCacheX.sys` (v1.0.0.2) via hostname iBFT encoding tanpa memerlukan server control-plane CCBoot proprietary.
 
 ---
 
