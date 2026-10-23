@@ -256,6 +256,33 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
+function renderCacheBadge(c) {
+    if (!c || c.driver !== 'ccboot') return '';
+    if (!c.cache_enabled) {
+        return '<div class="mt-0.5"><span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">Cache: Off</span></div>';
+    }
+    const label = c.cache_size_mb ? escapeHtml(String(c.cache_size_mb)) + ' MB' : 'Auto';
+    return '<div class="mt-0.5"><span class="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-800">Cache: ' + label + '</span></div>';
+}
+
+function onClientDriverChange() {
+    const isCcboot = document.getElementById('client-driver').value === 'ccboot';
+    const section = document.getElementById('client-ccachex-section');
+    if (section) section.classList.toggle('hidden', !isCcboot);
+    if (!isCcboot) {
+        document.getElementById('client-cache-enabled').checked = false;
+        document.getElementById('client-cache-size-mb').value = '0';
+    }
+    onClientCacheToggle();
+}
+
+function onClientCacheToggle() {
+    const enabled = document.getElementById('client-cache-enabled').checked;
+    const size = document.getElementById('client-cache-size-mb');
+    size.disabled = !enabled;
+    if (!enabled) size.value = '0';
+}
+
 function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -602,6 +629,7 @@ function renderDashboardClientsTable() {
                     <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1 py-0.5 font-mono text-[10.5px] text-zinc-900 dark:text-zinc-100 truncate max-w-[90px] lg:max-w-[95px] xl:max-w-[130px] inline-block" title="${c.image_manager || 'None (Gamedisk)'}">${c.image_manager || 'None (Gamedisk)'}</span>
                 </div>
                 <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                ${renderCacheBadge(c)}
             </td>
             <td class="py-2 px-2.5 xl:px-3 min-w-0">
                 <div class="client-read-total text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate">${formatBytes(statsInfo.bytes_read)}</div>
@@ -684,6 +712,7 @@ function renderClientsManagerTable() {
                     <span class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1 py-0.5 font-mono text-[10.5px] text-zinc-900 dark:text-zinc-100 truncate max-w-[90px] lg:max-w-[95px] xl:max-w-[130px] inline-block" title="${c.image_manager || 'Gamedisk'}">${c.image_manager || 'Gamedisk'}</span>
                 </div>
                 <div class="text-[10.5px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5 truncate"><span class="text-zinc-400 dark:text-zinc-500 font-sans font-medium">PXE:</span> ${c.pxe || 'Default'}</div>
+                ${renderCacheBadge(c)}
             </td>
             <td class="py-2 px-2.5 xl:px-3 min-w-0">
                 <div class="client-read-total text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300 truncate">${formatBytes(statsInfo.bytes_read)}</div>
@@ -731,11 +760,19 @@ async function openClientCrudModal(client = null) {
         document.getElementById('client-next-server').value = client.next_server || '';
         document.getElementById('client-pxe').value = client.pxe || '';
         document.getElementById('client-image-manager').value = client.image_manager || '';
+        document.getElementById('client-driver').value = client.driver || 'native';
+        document.getElementById('client-cache-enabled').checked = !!client.cache_enabled;
+        document.getElementById('client-cache-size-mb').value = client.cache_size_mb || 0;
+        onClientDriverChange();
         document.getElementById('btn-client-delete').style.display = 'inline-flex';
     } else {
         document.getElementById('client-modal-title').textContent = 'Tambah Klien Baru';
         document.getElementById('client-old-mac').value = '';
         document.getElementById('client-crud-form').reset();
+        document.getElementById('client-driver').value = 'native';
+        document.getElementById('client-cache-enabled').checked = false;
+        document.getElementById('client-cache-size-mb').value = '0';
+        onClientDriverChange();
         document.getElementById('btn-client-delete').style.display = 'none';
     }
 }
@@ -780,6 +817,27 @@ async function saveClientAction(e) {
         image_manager: document.getElementById('client-image-manager').value.trim()
     };
 
+    const driver = document.getElementById('client-driver').value;
+    let cacheEnabled = document.getElementById('client-cache-enabled').checked;
+    let cacheSize = parseInt(document.getElementById('client-cache-size-mb').value || '0', 10);
+    if (Number.isNaN(cacheSize)) cacheSize = 0;
+
+    if (clientData.hostname.includes('(') || clientData.hostname.includes(')')) {
+        showToast('Hostname tidak boleh mengandung karakter kurung', 'error');
+        return;
+    }
+    if (driver !== 'ccboot') {
+        cacheEnabled = false;
+        cacheSize = 0;
+    }
+    if (cacheEnabled && !(cacheSize === 0 || (cacheSize >= 32 && cacheSize <= 8192 && cacheSize % 16 === 0))) {
+        showToast('Ukuran cache harus 0 atau 32-8192 MB, kelipatan 16 MB', 'error');
+        return;
+    }
+    clientData.driver = driver;
+    clientData.cache_enabled = cacheEnabled;
+    clientData.cache_size_mb = cacheSize;
+
     if (!clientsObj.client) clientsObj.client = [];
 
     if (oldMac) {
@@ -790,7 +848,11 @@ async function saveClientAction(e) {
         clientsObj.client.push(clientData);
     }
 
-    await saveClientsJson();
+    const saved = await saveClientsJson();
+    if (!saved) {
+        showToast('Gagal menyimpan data klien. Periksa ukuran cache / hostname.', 'error');
+        return;
+    }
     closeClientCrudModal();
     renderClientsManagerTable();
     renderDashboardClientsTable();

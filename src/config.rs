@@ -228,6 +228,26 @@ pub struct ClientsConfig {
     pub clients: Vec<ClientConfig>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BootDriver {
+    Native,
+    Ccboot,
+}
+
+impl Default for BootDriver {
+    fn default() -> Self {
+        Self::Native
+    }
+}
+
+pub fn boot_driver_str(driver: &BootDriver) -> &'static str {
+    match driver {
+        BootDriver::Native => "native",
+        BootDriver::Ccboot => "ccboot",
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ClientConfig {
     pub mac: String,
@@ -241,6 +261,45 @@ pub struct ClientConfig {
     pub bootfile_ipxe: Option<String>,
     pub next_server: Option<String>,
     pub image_manager: Option<String>,
+    #[serde(default)]
+    pub driver: BootDriver,
+    #[serde(default)]
+    pub cache_enabled: bool,
+    #[serde(default)]
+    pub cache_size_mb: u32,
+}
+
+pub fn normalize_cache_size_mb(size: u32) -> Result<u32, String> {
+    // shortcut: 8192 MB cap is a safety policy, not a CCacheX limit; raise if needed.
+    if size == 0 {
+        return Ok(0);
+    }
+    if !(32..=8192).contains(&size) {
+        return Err("cache_size_mb harus 0 atau 32-8192".to_string());
+    }
+    if size % 16 != 0 {
+        return Err("cache_size_mb harus kelipatan 16".to_string());
+    }
+    Ok(size)
+}
+
+pub fn normalize_client_cache(client: &mut ClientConfig) -> Result<(), String> {
+    if let Some(h) = client.hostname.as_deref() {
+        if h.contains('(') || h.contains(')') {
+            return Err("hostname tidak boleh mengandung '(' atau ')'".to_string());
+        }
+    }
+    if client.driver != BootDriver::Ccboot {
+        client.cache_enabled = false;
+        client.cache_size_mb = 0;
+        return Ok(());
+    }
+    if client.cache_enabled {
+        client.cache_size_mb = normalize_cache_size_mb(client.cache_size_mb)?;
+    } else {
+        client.cache_size_mb = 0;
+    }
+    Ok(())
 }
 
 pub fn load_clients(path: &str) -> Result<HashMap<String, ClientConfig>, Box<dyn std::error::Error>> {
@@ -349,7 +408,10 @@ pub fn auto_fix_duplicate_ips(clients_path: &str, start_ip: &str, end_ip: &str) 
         buf.push_str(&format!("  bootfile_legacy = \"{}\"\n", client.bootfile_legacy.as_deref().unwrap_or("")));
         buf.push_str(&format!("  bootfile_ipxe   = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
         buf.push_str(&format!("  next_server     = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
-        buf.push_str(&format!("  image_manager   = \"{}\"\n\n", client.image_manager.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  image_manager   = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
+        buf.push_str(&format!("  driver          = \"{}\"\n", boot_driver_str(&client.driver)));
+        buf.push_str(&format!("  cache_enabled   = {}\n", client.cache_enabled));
+        buf.push_str(&format!("  cache_size_mb   = {}\n\n", client.cache_size_mb));
     }
 
     fs::write(clients_path, buf)?;
@@ -391,6 +453,9 @@ pub fn append_client(path: &str, client: &ClientConfig) -> Result<(), Box<dyn st
     buf.push_str(&format!("  bootfile_ipxe   = \"{}\"\n", client.bootfile_ipxe.as_deref().unwrap_or("")));
     buf.push_str(&format!("  next_server     = \"{}\"\n", client.next_server.as_deref().unwrap_or("")));
     buf.push_str(&format!("  image_manager   = \"{}\"\n", client.image_manager.as_deref().unwrap_or("")));
+    buf.push_str(&format!("  driver          = \"{}\"\n", boot_driver_str(&client.driver)));
+    buf.push_str(&format!("  cache_enabled   = {}\n", client.cache_enabled));
+    buf.push_str(&format!("  cache_size_mb   = {}\n", client.cache_size_mb));
 
     file.write_all(buf.as_bytes())?;
     info!("Client '{}' ({}) appended to {}", 
@@ -436,5 +501,86 @@ mod tests {
         assert_eq!(parse_human_cache_size("2GB"), 2048);
         assert_eq!(parse_human_cache_size("4G"), 4096);
         assert_eq!(parse_human_cache_size("2048"), 2048);
+    }
+
+    fn sample_ccboot_client() -> ClientConfig {
+        ClientConfig {
+            mac: "00:11:22:33:44:55".to_string(),
+            ip: "192.168.1.101".to_string(),
+            hostname: Some("PC-01".to_string()),
+            gateway: None,
+            dns: None,
+            pxe: None,
+            bootfile_uefi: None,
+            bootfile_legacy: None,
+            bootfile_ipxe: None,
+            next_server: None,
+            image_manager: None,
+            driver: BootDriver::Ccboot,
+            cache_enabled: true,
+            cache_size_mb: 2048,
+        }
+    }
+
+    #[test]
+    fn test_client_config_defaults_are_native_cache_off() {
+        let cfg: ClientsConfig = toml::from_str(
+            "[[client]]\nmac = \"00:11:22:33:44:55\"\nip = \"192.168.1.101\"\n",
+        ).unwrap();
+        let c = &cfg.clients[0];
+        assert_eq!(c.driver, BootDriver::Native);
+        assert!(!c.cache_enabled);
+        assert_eq!(c.cache_size_mb, 0);
+    }
+
+    #[test]
+    fn test_normalize_cache_size_zero_auto() {
+        assert_eq!(normalize_cache_size_mb(0).unwrap(), 0);
+        assert_eq!(normalize_cache_size_mb(32).unwrap(), 32);
+        assert_eq!(normalize_cache_size_mb(1008).unwrap(), 1008);
+        assert_eq!(normalize_cache_size_mb(8192).unwrap(), 8192);
+        assert!(normalize_cache_size_mb(31).is_err());
+        assert!(normalize_cache_size_mb(33).is_err());
+        assert!(normalize_cache_size_mb(8193).is_err());
+    }
+
+    #[test]
+    fn test_normalize_native_clears_cache() {
+        let mut c = sample_ccboot_client();
+        c.driver = BootDriver::Native;
+        normalize_client_cache(&mut c).unwrap();
+        assert!(!c.cache_enabled);
+        assert_eq!(c.cache_size_mb, 0);
+    }
+
+    #[test]
+    fn test_normalize_ccboot_validates_and_keeps() {
+        let mut c = sample_ccboot_client();
+        normalize_client_cache(&mut c).unwrap();
+        assert_eq!(c.cache_size_mb, 2048);
+
+        c.cache_size_mb = 1000;
+        assert!(normalize_client_cache(&mut c).is_err());
+
+        c.cache_enabled = false;
+        normalize_client_cache(&mut c).unwrap();
+        assert_eq!(c.cache_size_mb, 0);
+    }
+
+    #[test]
+    fn test_clients_toml_roundtrip_ccachex() {
+        let cfg = ClientsConfig { clients: vec![sample_ccboot_client()] };
+        let s = toml::to_string(&cfg).unwrap();
+        let back: ClientsConfig = toml::from_str(&s).unwrap();
+        assert_eq!(back.clients[0].driver, BootDriver::Ccboot);
+        assert!(back.clients[0].cache_enabled);
+        assert_eq!(back.clients[0].cache_size_mb, 2048);
+    }
+
+    #[test]
+    fn test_normalize_rejects_hostname_parentheses() {
+        let mut c = sample_ccboot_client();
+        c.hostname = Some("PC-01(1-2048-0)".to_string());
+        assert!(normalize_client_cache(&mut c).is_err());
     }
 }

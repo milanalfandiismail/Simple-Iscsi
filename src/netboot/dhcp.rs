@@ -83,6 +83,20 @@ fn sanitize_hostname(raw: &str) -> String {
     if out.is_empty() { "PC-01".to_string() } else { out }
 }
 
+/// Hostname iBFT: suffix CCacheX hanya untuk driver CCBoot.
+/// CCBootPNPX memotong di '(' untuk ComputerName; CCacheX butuh suffix utuh.
+fn format_ccachex_hostname(raw: &str, client: &ClientConfig) -> String {
+    // shortcut: manual suffix replaced; API rejects '(' in hostname.
+    let base = sanitize_hostname(raw.split('(').next().unwrap_or(raw));
+    if client.driver == crate::config::BootDriver::Ccboot && client.cache_enabled {
+        match crate::config::normalize_cache_size_mb(client.cache_size_mb) {
+            Ok(size) => return format!("{}(1-{}-0)", base, size),
+            Err(e) => warn!("CCacheX cache diabaikan untuk {}: {}", base, e),
+        }
+    }
+    base
+}
+
 impl DhcpServer {
     pub async fn new(
         config: SharedConfig,
@@ -291,6 +305,9 @@ impl DhcpServer {
                     bootfile_ipxe: None,
                     next_server: Some(self.config.read().dhcp.as_ref().unwrap().next_server.clone()),
                     image_manager: None,
+                    driver: crate::config::BootDriver::Native,
+                    cache_enabled: false,
+                    cache_size_mb: 0,
                 };
 
                 clients_guard.insert(mac, new_client.clone());
@@ -456,8 +473,7 @@ impl DhcpServer {
 
         let hostname = client_conf
             .as_ref()
-            .and_then(|c| c.hostname.clone())
-            .map(|h| sanitize_hostname(&h))
+            .and_then(|c| c.hostname.as_deref().map(|h| format_ccachex_hostname(h, c)))
             .unwrap_or_else(|| {
                 let code = client_conf
                     .as_ref()
@@ -465,6 +481,16 @@ impl DhcpServer {
                     .unwrap_or(1);
                 format!("PC-{:02}", code)
             });
+        if client_conf.as_ref().map_or(false, |c| {
+            c.driver == crate::config::BootDriver::Ccboot && c.cache_enabled
+        }) {
+            let vendor_ok = self.config.read().windows.as_ref().map_or(false, |w| {
+                ["CCBoot", "CCDisk", "VMware"].iter().any(|v| w.vendor_id.contains(v))
+            });
+            if !vendor_ok {
+                warn!("CCacheX: vendor_id iSCSI tidak cocok (harus CCBoot/CCDisk/VMware); cache tidak akan aktif");
+            }
+        }
         resp.options.insert(12, hostname.as_bytes().to_vec());
 
         let dns_str = client_conf.as_ref()
@@ -595,5 +621,60 @@ mod tests {
         assert_eq!(sanitize_hostname("PC 01/abc"), "PC01abc");
         assert!(!sanitize_hostname("").is_empty());
         assert!(sanitize_hostname("abcdefghijklmnopqrstuvwxyz").len() <= 15);
+    }
+
+    fn test_client(driver: crate::config::BootDriver, enabled: bool, size: u32) -> ClientConfig {
+        ClientConfig {
+            mac: "00:11:22:33:44:55".to_string(),
+            ip: "192.168.1.101".to_string(),
+            hostname: Some("PC-01".to_string()),
+            gateway: None,
+            dns: None,
+            pxe: None,
+            bootfile_uefi: None,
+            bootfile_legacy: None,
+            bootfile_ipxe: None,
+            next_server: None,
+            image_manager: None,
+            driver,
+            cache_enabled: enabled,
+            cache_size_mb: size,
+        }
+    }
+
+    #[test]
+    fn hostname_native_unchanged() {
+        let c = test_client(crate::config::BootDriver::Native, true, 2048);
+        assert_eq!(format_ccachex_hostname("PC 01/abc", &c), "PC01abc");
+    }
+
+    #[test]
+    fn hostname_ccboot_cache_auto() {
+        let c = test_client(crate::config::BootDriver::Ccboot, true, 0);
+        assert_eq!(format_ccachex_hostname("PC-01", &c), "PC-01(1-0-0)");
+    }
+
+    #[test]
+    fn hostname_ccboot_cache_fixed() {
+        let c = test_client(crate::config::BootDriver::Ccboot, true, 2048);
+        assert_eq!(format_ccachex_hostname("PC-01", &c), "PC-01(1-2048-0)");
+    }
+
+    #[test]
+    fn hostname_ccboot_cache_off() {
+        let c = test_client(crate::config::BootDriver::Ccboot, false, 2048);
+        assert_eq!(format_ccachex_hostname("PC-01", &c), "PC-01");
+    }
+
+    #[test]
+    fn hostname_strips_manual_suffix() {
+        let c = test_client(crate::config::BootDriver::Ccboot, true, 1024);
+        assert_eq!(format_ccachex_hostname("PC-01(1-2048-0)", &c), "PC-01(1-1024-0)");
+    }
+
+    #[test]
+    fn hostname_invalid_size_disables_cache() {
+        let c = test_client(crate::config::BootDriver::Ccboot, true, 33);
+        assert_eq!(format_ccachex_hostname("PC-01", &c), "PC-01");
     }
 }

@@ -75,10 +75,10 @@ Artinya bentuk wajib: **`:0XX` (4 karakter)**, bukan `:0` saja.
 
 ### 3.3 Hostname
 
-- Sumber: DHCP option 12 / `net0/hostname` → field hostname iBFT.
-- Driver menyalin ke `ComputerName`, `NV Hostname`, dan `Hostname` (`FUN_14000ECC0`).
-- **Tidak ada validasi format khusus** di driver (tidak ada cek `(`, `)`, `-`). Cukup hostname valid: maks 15 karakter, alfanumerik + `-`.
-- Jangan mengarang format `<Hostname>(<Number>-<Hostname>-0)`; itu tidak didukung bukti binary.
+- Sumber: DHCP option 12 / <code>net0/hostname</code> → field hostname iBFT.
+- Driver memotong hostname di karakter <code>(</code> sebelum menulis ke <code>ComputerName</code>, <code>NV Hostname</code>, dan <code>Hostname</code> (<code>FUN_14000ECC0</code>). Jadi <code>PC-01(1-2048-0)</code> menjadi <code>PC-01</code>.
+- **Tidak ada validasi format** <code>(</code>, <code>)</code>, <code>-</code>; driver hanya butuh base hostname valid: maks 15 karakter, alfanumerik + <code>-</code>.
+- Suffix <code>(Mode-Size-0)</code> hanya dipakai <code>CCacheX.sys</code> untuk cache client; lihat 3.10.
 
 ### 3.4 DHCP & TFTP
 
@@ -141,6 +141,17 @@ Jika gate ini tidak ada/0, driver bisa tetap load tetapi manipulasi registry tid
 
 ---
 
+### 3.10 Cache Client <code>CCacheX</code>
+
+- Hanya untuk driver CCBoot; client driverless tidak memakai suffix.
+- Vendor ID iSCSI harus mengandung <code>CCBoot</code>, <code>CCDisk</code>, atau <code>VMware</code>. Default <code>RUSTISCS</code> tidak cocok; set <code>[windows] vendor_id = "CCBoot"</code> di <code>config.toml</code>.
+- Format hostname iBFT: <code>Hostname(1-SizeMB-0)</code>; mode 1 = read-cache.
+- <code>SizeMB</code>: 0 = auto 20% RAM; 32-8192; kelipatan 16.
+- Konfigurasi per client di <code>clients.toml</code>: <code>driver = "ccboot"</code>, <code>cache_enabled = true</code>, <code>cache_size_mb = 2048</code>.
+- <code>WriteBack</code> harus 0 dan <code>ClientCacheToLocal</code> harus 0. Verifikasi dengan <code>scripts/check-ccachex.ps1</code>.
+- Cache default off; suffix hanya dikirim jika <code>driver="ccboot"</code> dan <code>cache_enabled=true</code>.
+- Mode 2 (writeback) dan mode 3 (local cache) tidak dipakai.
+
 ## 4. Alur Boot
 
 ```mermaid
@@ -200,6 +211,9 @@ ip = "192.168.180.250"
 hostname = "milanrsma"
 next_server = "192.168.180.1"
 image_manager = "milannn"
+driver = "ccboot"
+cache_enabled = true
+cache_size_mb = 2048
 ```
 
 Hasil IQN: `iqn.2026-01.com.example:win-milannn:0XX`.
