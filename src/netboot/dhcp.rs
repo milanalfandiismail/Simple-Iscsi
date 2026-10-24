@@ -97,6 +97,24 @@ fn format_ccachex_hostname(raw: &str, client: &ClientConfig) -> String {
     base
 }
 
+/// Memisahkan resolusi IP TFTP server (source of truth dari config.toml)
+/// dan IP iSCSI target server (mendukung alokasi per-klien untuk multi-NIC / auto-balance).
+pub fn resolve_boot_servers(global_next_server: &str, client: Option<&ClientConfig>) -> (String, String) {
+    let tftp_server_ip_str = if global_next_server.trim().is_empty() {
+        "127.0.0.1".to_string()
+    } else {
+        global_next_server.trim().to_string()
+    };
+    let iscsi_server_str = client
+        .and_then(|c| c.next_server.as_ref())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| tftp_server_ip_str.clone());
+
+    (tftp_server_ip_str, iscsi_server_str)
+}
+
 impl DhcpServer {
     pub async fn new(
         config: SharedConfig,
@@ -418,10 +436,21 @@ impl DhcpServer {
         let len = std::cmp::min(bytes.len(), 127);
         file_buf[..len].copy_from_slice(&bytes[..len]);
 
-        let next_server_str = client_conf.as_ref()
+        let global_next = self.config.read().dhcp.as_ref().map(|d| d.next_server.clone()).unwrap_or_default();
+        let (tftp_server_ip_str, iscsi_server_str) = resolve_boot_servers(&global_next, client_conf.as_ref());
+        let tftp_server_ip = Ipv4Addr::from_str(&tftp_server_ip_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        // TFTP Server IP — Source of truth harus selalu dari [dhcp].next_server di config.toml
+        let tftp_server_ip_str = self.config.read().dhcp.as_ref()
+            .map(|d| d.next_server.clone())
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let tftp_server_ip = Ipv4Addr::from_str(&tftp_server_ip_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
+
+        // iSCSI Target Server IP — Boleh dialokasikan per-klien (misal multi-NIC / auto-allocating boot server),
+        // atau fallback ke tftp_server_ip_str jika klien tidak mengatur next_server khusus.
+        let iscsi_server_str = client_conf.as_ref()
             .and_then(|c| c.next_server.clone())
-            .unwrap_or_else(|| self.config.read().dhcp.as_ref().unwrap().next_server.clone());
-        let server_ip = Ipv4Addr::from_str(&next_server_str).unwrap_or(Ipv4Addr::UNSPECIFIED);
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| tftp_server_ip_str.clone());
 
         let mut resp = DhcpPacket {
             op: 2, // Reply
@@ -433,7 +462,7 @@ impl DhcpServer {
             flags: req.flags,
             ciaddr: req.ciaddr,
             yiaddr,
-            siaddr: server_ip,
+            siaddr: tftp_server_ip,
             giaddr: req.giaddr,
             chaddr: req.chaddr,
             sname: [0u8; 64],
@@ -447,7 +476,7 @@ impl DhcpServer {
         let dhcp_server_ip = {
             let ip = Ipv4Addr::from_str(&self.config.read().server.address.as_vec().first().cloned().unwrap_or_default()).unwrap_or(Ipv4Addr::UNSPECIFIED);
             if ip.is_unspecified() {
-                server_ip
+                tftp_server_ip
             } else {
                 ip
             }
@@ -512,12 +541,13 @@ impl DhcpServer {
         bootfile_vec.push(0);
         resp.options.insert(67, bootfile_vec);
 
-        let mut next_server_bytes = next_server_str.as_bytes().to_vec();
-        next_server_bytes.push(0);
-        resp.options.insert(66, next_server_bytes);
+        // Option 66: TFTP Server Name / IP (selalu mengacu ke server TFTP terpusat)
+        let mut tftp_server_bytes = tftp_server_ip_str.as_bytes().to_vec();
+        tftp_server_bytes.push(0);
+        resp.options.insert(66, tftp_server_bytes);
 
-        // Option 168: iSCSI Target IP (iPXE reads as ${168})
-        resp.options.insert(168, next_server_str.as_bytes().to_vec());
+        // Option 168: iSCSI Target IP (mendukung alokasi IP per-klien / multi-NIC)
+        resp.options.insert(168, iscsi_server_str.as_bytes().to_vec());
 
         // Option 169: iSCSI Target IQN (iPXE reads as ${169})
         let image_name = client_conf.as_ref()
@@ -540,14 +570,14 @@ impl DhcpServer {
 
         // Option 17: Root-Path (RFC 4173 iSCSI root path standard with configured port)
         let server_port = self.config.read().server.port;
-        let root_path = format!("iscsi:{}::{}:0:{}", next_server_str, server_port, iscsi_iqn);
+        let root_path = format!("iscsi:{}::{}:0:{}", iscsi_server_str, server_port, iscsi_iqn);
         resp.options.insert(17, root_path.as_bytes().to_vec());
 
         // Option 170: GameDisk Root-Path (RFC 4173 URI for secondary/game drive)
         if !self.config.read().gamedisk.is_empty() {
             let gd_iqn = &self.config.read().gamedisk_target.target_iqn;
             if !gd_iqn.is_empty() {
-                let gd_root_path = format!("iscsi:{}::{}:0:{}", next_server_str, server_port, gd_iqn);
+                let gd_root_path = format!("iscsi:{}::{}:0:{}", iscsi_server_str, server_port, gd_iqn);
                 resp.options.insert(170, gd_root_path.as_bytes().to_vec());
             }
         }
@@ -676,5 +706,19 @@ mod tests {
     fn hostname_invalid_size_disables_cache() {
         let c = test_client(crate::config::BootDriver::Ccboot, true, 33);
         assert_eq!(format_ccachex_hostname("PC-01", &c), "PC-01");
+    }
+
+    #[test]
+    fn test_resolve_boot_servers_separation() {
+        let mut client = test_client(crate::config::BootDriver::Native, false, 0);
+        client.next_server = Some("10.10.10.12".to_string());
+
+        let (tftp, iscsi) = resolve_boot_servers("10.10.10.10", Some(&client));
+        assert_eq!(tftp, "10.10.10.10", "TFTP must strictly use global DHCP/TFTP server IP");
+        assert_eq!(iscsi, "10.10.10.12", "iSCSI target can use client-specific multi-NIC IP");
+
+        let (tftp_fallback, iscsi_fallback) = resolve_boot_servers("10.10.10.10", None);
+        assert_eq!(tftp_fallback, "10.10.10.10");
+        assert_eq!(iscsi_fallback, "10.10.10.10");
     }
 }

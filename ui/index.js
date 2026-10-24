@@ -1460,9 +1460,9 @@ function loadDiskBrandingParams() {
 }
 
 function updateDiskBrandingPreview() {
-    const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim().toUpperCase();
+    const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim();
     const osProduct = (document.getElementById('disk-product-os')?.value || 'WindowsBoot').trim();
-    const gmVendor = (document.getElementById('disk-vendor-game')?.value || 'RUSTISCS').trim().toUpperCase();
+    const gmVendor = (document.getElementById('disk-vendor-game')?.value || 'RUSTISCS').trim();
     const gmProduct = (document.getElementById('disk-product-game')?.value || 'GameDisk-0').trim();
 
     const previewOs = document.getElementById('preview-os-disk-text');
@@ -1530,9 +1530,9 @@ async function saveDiskBrandingAction() {
     if (!configObj) configObj = {};
     if (!configObj.windows) configObj.windows = {};
 
-    const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim().toUpperCase();
+    const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim();
     const osProduct = (document.getElementById('disk-product-os')?.value || 'WindowsBoot').trim();
-    const gmVendor = (document.getElementById('disk-vendor-game')?.value || 'RUSTISCS').trim().toUpperCase();
+    const gmVendor = (document.getElementById('disk-vendor-game')?.value || 'RUSTISCS').trim();
     const gmProduct = (document.getElementById('disk-product-game')?.value || 'GameDisk-0').trim();
     const rev = (document.getElementById('disk-revision-common')?.value || '1.00').trim();
 
