@@ -60,6 +60,7 @@ impl ServerStats {
     }
 
     pub fn record_session_start(&self, ip: &str) {
+        self.active_sessions.fetch_add(1, Ordering::Relaxed);
         let stats = self.client_stats.entry(ip.to_string()).or_default();
         stats.active_sessions.fetch_add(1, Ordering::Relaxed);
         *stats.session_start_time.lock() = Some(Instant::now());
@@ -67,6 +68,7 @@ impl ServerStats {
 
     pub fn record_session_end(&self, ip: &str) {
         if let Some(stats) = self.client_stats.get(ip) {
+            self.active_sessions.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| Some(v.saturating_sub(1))).ok();
             let prev = stats.active_sessions.fetch_sub(1, Ordering::Relaxed);
             if prev <= 1 {
                 let start = stats.session_start_time.lock().take();
@@ -187,5 +189,52 @@ impl ServerStats {
                 stats.log_summary();
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_record_session_start_and_end_lifecycle() {
+        let stats = ServerStats::new();
+        assert_eq!(stats.active_sessions.load(Ordering::Relaxed), 0);
+
+        // Start session 1 (ImageDisk)
+        stats.record_session_start("192.168.1.100");
+        assert_eq!(stats.active_sessions.load(Ordering::Relaxed), 1);
+        {
+            let c = stats.client_stats.get("192.168.1.100").unwrap();
+            assert_eq!(c.active_sessions.load(Ordering::Relaxed), 1);
+            assert!(c.session_start_time.lock().is_some());
+        }
+
+        // Start session 2 from same client (GameDisk)
+        stats.record_session_start("192.168.1.100");
+        assert_eq!(stats.active_sessions.load(Ordering::Relaxed), 2);
+        {
+            let c = stats.client_stats.get("192.168.1.100").unwrap();
+            assert_eq!(c.active_sessions.load(Ordering::Relaxed), 2);
+        }
+
+        // Disconnect GameDisk
+        stats.record_session_end("192.168.1.100");
+        assert_eq!(stats.active_sessions.load(Ordering::Relaxed), 1);
+        {
+            let c = stats.client_stats.get("192.168.1.100").unwrap();
+            assert_eq!(c.active_sessions.load(Ordering::Relaxed), 1);
+            assert!(c.session_start_time.lock().is_some(), "Client still online via ImageDisk");
+        }
+
+        // Disconnect ImageDisk (last session)
+        stats.record_session_end("192.168.1.100");
+        assert_eq!(stats.active_sessions.load(Ordering::Relaxed), 0);
+        {
+            let c = stats.client_stats.get("192.168.1.100").unwrap();
+            assert_eq!(c.active_sessions.load(Ordering::Relaxed), 0);
+            assert!(c.session_start_time.lock().is_none(), "Client session ended, offline");
+            assert!(c.last_session_duration.lock().is_some());
+        }
     }
 }

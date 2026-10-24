@@ -154,10 +154,15 @@ cargo test
 
 ---
 
-## 📄 Lisensi
+## 📄 Lisensi & Atribusi Pihak Ketiga
 
-- **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](LICENSE) © 2026 **Milan Alfandi Ismail**. Ketentuan lisensi lengkap dapat dilihat pada file [**`LICENSE`**](LICENSE).
-- **Komponen Bootloader (`pxe/`):** Berisi binary pihak ketiga [iPXE](https://github.com/ipxe/ipxe) (GPLv2) dan [Shim](https://github.com/rhboot/shim) (BSD-2-Clause). Rincian lisensi lengkap lihat [**`pxe/LICENSE.md`**](pxe/LICENSE.md).
+- **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](LICENSE) © 2026 **Milan Alfandi Ismail**. Ketentuan lisensi lengkap dapat dilihat pada file [`LICENSE`](LICENSE).
+- **Komponen Bootloader (`pxe/`):** Berisi binary pihak ketiga [iPXE](https://github.com/ipxe/ipxe) (GPLv2) dan [Shim](https://github.com/rhboot/shim) (BSD-2-Clause) yang diagregasikan secara independen (*mere aggregation*). Rincian lisensi lengkap lihat [`pxe/LICENSE.md`](pxe/LICENSE.md).
 
+---
 
+## ⚖️ Penyangkalan (Disclaimer)
 
+Simple-Iscsi adalah proyek independen dan **tidak berafiliasi, disponsori, atau didukung oleh pihak ketiga mana pun** (termasuk Microsoft, Youngzsoft, iPXE, Red Hat, Intel, VMware, dll.). Semua nama merek, logo, dan produk yang disebutkan adalah milik dari masing-masing pemilik sahnya.
+
+Simple-Iscsi **tidak mendistribusikan file biner driver proprietary pihak ketiga** (seperti `CCBootPNPX.sys` atau `CCacheX.sys`). Pengguna bertanggung jawab penuh secara mandiri atas kepemilikan lisensi driver yang mereka gunakan (*Bring Your Own Driver*).

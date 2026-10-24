@@ -4,7 +4,7 @@ use crate::writeback_imagedisk;
 use crate::stats::ServerStats;
 use crate::pdu::{
     self, Pdu, OP_SCSI_CMD, OP_TMF_REQ,
-    OP_NOP_OUT, OP_LOGOUT_REQ, OP_TEXT_REQ, OP_DATA_OUT,
+    OP_NOP_OUT, OP_NOP_IN, OP_LOGOUT_REQ, OP_TEXT_REQ, OP_DATA_OUT,
 };
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -101,7 +101,6 @@ pub struct SessionContext {
 
 impl Drop for SessionContext {
     fn drop(&mut self) {
-        self.stats.active_sessions.fetch_sub(1, Ordering::Relaxed);
         self.stats.record_session_end(&self.client_ip);
     }
 }
@@ -232,7 +231,6 @@ impl Session {
         info!("Sesi baru dimulai dari client: {}", peer_addr);
 
         self.handle_login_phase().await?;
-        self.stats.record_session_start(&self.client_ip);
 
         let target_name: String;
 
@@ -350,6 +348,7 @@ impl Session {
             throttle_bytes_this_window,
             tx,
         });
+        context.stats.record_session_start(&context.client_ip);
 
         // 4. Spawn Writer Task
         let context_writer = Arc::downgrade(&context);
@@ -370,12 +369,37 @@ impl Session {
         // 5. Run Reader Loop (FFP Message Loop)
         let context_reader = Arc::clone(&context);
         let loop_result: Result<(), std::io::Error> = async {
+            let mut unreplied_pings: u32 = 0;
+            let mut ping_seq: u32 = 1;
             loop {
-                let req = match pdu::parser::read_pdu(&mut read_half).await {
-                    Ok(p) => p,
-                    Err(e) => {
+                let read_timeout = std::time::Duration::from_secs(10);
+                let req = match tokio::time::timeout(read_timeout, pdu::parser::read_pdu(&mut read_half)).await {
+                    Ok(Ok(p)) => {
+                        unreplied_pings = 0;
+                        p
+                    }
+                    Ok(Err(e)) => {
                         info!("TCP connection closed or errored: {}", e);
                         break;
+                    }
+                    Err(_) => {
+                        // 10 detik tanpa paket masuk dari client
+                        if unreplied_pings >= 2 {
+                            warn!("Client {} tidak merespons iSCSI heartbeat (NOP-In) dalam 20 detik — mengakhiri sesi yang menggantung.", context_reader.client_ip);
+                            break;
+                        }
+                        unreplied_pings += 1;
+                        let mut ping = Pdu::default();
+                        ping.opcode = OP_NOP_IN;
+                        ping.flags = 0x80;
+                        ping.initiator_task_tag = 0xFFFFFFFF;
+                        ping.expected_data_len = ping_seq; // Digunakan sebagai Target Transfer Tag di builder.rs
+                        ping_seq = ping_seq.wrapping_add(1);
+                        if let Err(e) = context_reader.tx.send(WriterMessage::Pdu(ping)).await {
+                            info!("Gagal mengirim NOP-In heartbeat ke {}: {}", context_reader.client_ip, e);
+                            break;
+                        }
+                        continue;
                     }
                 };
 

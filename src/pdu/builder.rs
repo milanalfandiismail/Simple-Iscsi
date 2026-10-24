@@ -33,7 +33,20 @@ pub fn write_bhs(pdu: &Pdu, bhs: &mut [u8; 48]) -> u32 {
     if pdu.opcode >= 0x20 {
         // Target -> Initiator PDU
         let ttt = match pdu.opcode {
-            0x20 | 0x21 | 0x22 | 0x24 | 0x25 => 0xFFFFFFFFu32,
+            0x20 => {
+                // RFC 7143 Section 11.20:
+                // Target-initiated NOP-In ping (ITT == 0xFFFFFFFF) harus memiliki TTT != 0xFFFFFFFF.
+                if pdu.initiator_task_tag == 0xFFFFFFFF {
+                    if pdu.expected_data_len != 0 && pdu.expected_data_len != 0xFFFFFFFF {
+                        pdu.expected_data_len
+                    } else {
+                        0x12345678u32
+                    }
+                } else {
+                    0xFFFFFFFFu32
+                }
+            }
+            0x21 | 0x22 | 0x24 | 0x25 => 0xFFFFFFFFu32,
             0x31 => pdu.initiator_task_tag, // R2T MUST NOT be 0xFFFFFFFF per RFC 7143 Section 11.8.3
             _ => 0xFFFFFFFFu32, // Default safe 0xFFFFFFFF per RFC 7143 Section 11.4.3 & 11.6
         };
@@ -117,5 +130,25 @@ mod tests {
         let mut bhs_tmf = [0u8; 48];
         write_bhs(&tmf_resp, &mut bhs_tmf);
         assert_eq!(&bhs_tmf[20..24], &[0xFF, 0xFF, 0xFF, 0xFF]);
+    }
+
+    #[test]
+    fn test_target_transfer_tag_nop_in() {
+        // Initiator-initiated NOP-Out response: TTT must be 0xFFFFFFFF
+        let mut nop_in_resp = Pdu::default();
+        nop_in_resp.opcode = 0x20;
+        nop_in_resp.initiator_task_tag = 0x1234;
+        let mut bhs = [0u8; 48];
+        write_bhs(&nop_in_resp, &mut bhs);
+        assert_eq!(&bhs[20..24], &[0xFF, 0xFF, 0xFF, 0xFF]);
+
+        // Target-initiated NOP-In ping: ITT is 0xFFFFFFFF, TTT must NOT be 0xFFFFFFFF
+        let mut nop_in_ping = Pdu::default();
+        nop_in_ping.opcode = 0x20;
+        nop_in_ping.initiator_task_tag = 0xFFFFFFFF;
+        nop_in_ping.expected_data_len = 0x01020304;
+        let mut bhs_ping = [0u8; 48];
+        write_bhs(&nop_in_ping, &mut bhs_ping);
+        assert_eq!(&bhs_ping[20..24], &[0x01, 0x02, 0x03, 0x04]);
     }
 }

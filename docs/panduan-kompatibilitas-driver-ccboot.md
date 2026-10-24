@@ -4,6 +4,12 @@
 > **Prinsip:** memakai driver CCBoot asli (`CCBootPNPX.sys`) tanpa helper buatan kita dan tanpa control-plane CCBoot.
 > **Ruang lingkup:** client Windows UEFI/Legacy yang boot dari iSCSI target Simple-Iscsi.
 
+> [!IMPORTANT]
+> **Penyangkalan Hak Merek & Ketentuan Lisensi Driver (Disclaimer):**
+> Panduan ini disusun murni untuk tujuan dokumentasi interoperabilitas teknis (*Nominative Fair Use*). `CCBoot`, `CCBootCloud`, `CCBootPNPX`, dan `CCacheX` adalah merek dagang dan/atau hak cipta terdaftar milik Youngzsoft Co., Ltd.
+> Simple-Iscsi adalah proyek independen dan **TIDAK berafiliasi, disponsori, atau didukung secara resmi oleh Youngzsoft Co., Ltd.**
+> Proyek Simple-Iscsi **tidak mendistribusikan atau menyertakan biner driver berpemilik (*proprietary binaries*) pihak ketiga**. Pengguna bertanggung jawab penuh secara mandiri atas kepemilikan lisensi yang sah dari vendor terkait untuk file driver yang mereka gunakan (*Bring Your Own Driver*).
+
 ---
 
 ## 1. Dua Opsi Boot Client
