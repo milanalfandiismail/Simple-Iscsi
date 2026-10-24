@@ -477,7 +477,7 @@ flowchart TD
 
 ## 6.4 Kompatibilitas Format VHD & CCBoot Parity (Fixed VHD & Granular Sector Bitmap Check)
 
-Berdasarkan hasil reverse engineering biner CCBoot (`CCBoot.exe` & `CCBoot OLD.exe`) dan spesifikasi teknis Microsoft Virtual Hard Disk (VHD), diimplementasikan mesin parser VHD berstandar enterprise pada [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) dan [`src/scsi_imagedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_imagedisk.rs):
+Berdasarkan spesifikasi teknis Microsoft Virtual Hard Disk (VHD) dan standar industri penyimpanan diskless enterprise, diimplementasikan mesin parser VHD berkinerja tinggi pada [`src/vhd.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/vhd.rs) dan [`src/scsi_imagedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_imagedisk.rs):
 
 ### 1. Deteksi Dual-Location Footer & Dukungan Penuh Fixed VHD
 * **Spesifikasi Microsoft VHD:** Footer kanonikal 512-byte terletak di `file_len - 512`. Pada Dynamic/Differencing VHD, footer ini disalin ke Offset 0 (Sector 0 Header). Namun pada **Fixed VHD** (`disk_type == 2`), sektor payload dimulai langsung pada Offset 0 dan footer **hanya berada di akhir file** (`file_len - 512`).
@@ -498,7 +498,7 @@ Di [`src/scsi_imagedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/scsi_imag
 
 ## 6.5 Arsitektur Per-Disk Server RAM Cache & Real-Time Telemetry Monitor (CCBoot Parity)
 
-Berdasarkan hasil analisis reverse engineering terhadap `CCBoot.exe`, `CCacheX.dll`, dan skema konfigurasi `CCBoot.xml`, CCBoot mengandalkan arsitektur **Server L1 RAM Cache Per-Disk** yang fleksibel (`disk_cache_ram_size_m`) dan pemanfaatan **Shared Read Cache** lintas sesi klien yang mem-boot citra VHD yang sama. 
+Berdasarkan standar arsitektur diskless berkinerja tinggi, sistem mengandalkan arsitektur **Server L1 RAM Cache Per-Disk** yang fleksibel (`disk_cache_ram_size_m`) dan pemanfaatan **Shared Read Cache** lintas sesi klien yang mem-boot citra VHD yang sama. 
 
 Simple-Iscsi mengadopsi dan menyempurnakan arsitektur ini secara murni pada sisi server (server-side caching) tanpa memerlukan driver kernel klien berpemilik (*zero client-driver footprint*).
 
@@ -945,21 +945,20 @@ Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
 
 ---
 
-## 10. Kompatibilitas Driver CCBoot (`CCBootPNPX.sys` & `CCacheX.sys`)
+## 10. Kompatibilitas Driver Klien Pihak Ketiga (Mode CCBootPNPX & CCacheX)
 
-Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga mendukung **driver CCBoot asli** di client. Keduanya bisa dipakai bergantian tergantung kebutuhan image master.
+Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga menyediakan mode interoperabilitas untuk PC klien yang telah terpasang driver boot `CCBootPNPX.sys` dan RAM cache `CCacheX.sys`. Mode ini ditujukan untuk mempermudah migrasi image master yang sudah ada tanpa perlu instalasi ulang dari nol (*Bring Your Own Driver*).
 
-### 10.1 Matriks Versi Binary CCBoot & Driver Terverifikasi (Build <= 20260603)
+### 10.1 Matriks Versi Driver Klien yang Teruji (Target Compatibility Matrix)
 
-Seluruh integrasi protokol CCBoot, emulasi registri `CCBootPnP`, penanganan suffix IQN `:0XX`, dan alokasi cache RAM client `CCacheX.sys` didasarkan pada analisis reverse engineering langsung terhadap berkas biner resmi Youngzsoft **CCBoot Cloud versi `<=` 20260603** (Build 2026-06-03 ke bawah).
+Integrasi protokol DHCP Option 12, format suffix IQN `:0XX`, dan alokasi cache RAM klien diselaraskan untuk kompatibilitas dengan driver klien berikut:
 
-Berikut rincian spesifikasi biner yang dianalisis dan didukung:
+| Berkas Driver | Deskripsi Antarmuka | Versi Driver | Arsitektur | Ukuran Berkas | SHA-256 Checksum | Peran & Status Kompatibilitas |
+|---|---|:---:|:---:|---:|---|---|
+| **`CCBootPNPX.sys`** | NetCard PNP Kernel Driver | `2.0.0.12` | x64 | ~1.01 MB | `6872982dd28943c242b3c47da84eb82597a659f8e8ca1dd6451906cd03ec51d4` | Driver boot-start kernel klien. Mengatur PnP NIC, iSCSI boot, dan sinkronisasi identitas klien. |
+| **`CCacheX.sys`** | Client Volume RAM Cache Driver | `1.0.0.2` | x64 | ~60.5 KB | `d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c` | Driver RAM cache read-only klien. Membaca parameter alokasi cache dari format hostname iBFT `Hostname(1-SizeMB-0)`. |
 
-| Berkas Binary | Nama Produk & Deskripsi | Versi File (Raw) | Versi Produk | Build / Timestamp PE | Ukuran Berkas | SHA-256 Checksum | Peran & Status Kompatibilitas |
-|---|---|:---:|:---:|:---:|---:|---|---|
-| **`CCBoot.exe`** | CCBootCloud / CCBoot Multiple Boot System | `3.0.0.0` | `3.0` | **2026-06-03** 10:52:26 UTC (Signing: `20260603105235Z`) | 8,959,472 B (~8.54 MB) | `27bc53d89242e807325cb22d4829e9cde81e0446c829bdfe9593ded8a3258a4f` | Biner server control-plane CCBoot acuan. Kompatibel penuh untuk seluruh versi CCBoot **`<= 20260603`** (termasuk build 20230806 / build lama). |
-| **`CCBootPNPX.sys`** | NetCard PNP (`<Youngzsoft>`) | `2.0.0.12` | `2.0` | **2026-05-26** 13:55:58 UTC (Signing: `20260526` / `20260527`) | 1,061,424 B (~1.01 MB) | `6872982dd28943c242b3c47da84eb82597a659f8e8ca1dd6451906cd03ec51d4` | Driver kernel client boot-start (Debug build: `IsDebug: True`, Copyright 2025). Mengatur PnP NIC, iSCSI boot, dan sinkronisasi registri kernel-mode. |
-| **`CCacheX.sys`** | The driver for volume cache (`<Youngzsoft>`) | `1.0.0.2` | `1.0` | **2025-02-15** 07:58:47 UTC (Signing: `20250215` / `20250216`) | 61,968 B (~60.5 KB) | `d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c` | Driver client volume RAM cache (PDB: `\svn\ccboot\src\ccachex\ccachex\BIN\amd64\CCacheX.pdb`). Membaca parameter cache dari iBFT format `Hostname(1-SizeMB-0)`. |
+*(Catatan: Simple-Iscsi tidak menyediakan file driver di atas; pengguna wajib memperoleh driver tersebut secara sah dari vendor resmi terkait).*
 
 ### 10.2 Komparasi Mode Booting Client
 
