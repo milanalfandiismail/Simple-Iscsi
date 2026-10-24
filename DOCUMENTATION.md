@@ -1006,6 +1006,11 @@ Teks lisensi lengkap dan panduan kompilasi kode sumber iPXE dapat dilihat pada:
 - [`pxe/COPYING.GPLv2`](pxe/COPYING.GPLv2)
 - [`pxe/LICENSE.md`](pxe/LICENSE.md)
 
+### 15.2 Penyangkalan & Kebijakan Driver (Disclaimer)
+
+Simple-Iscsi adalah perangkat lunak independen dan **tidak berafiliasi, disponsori, atau didukung oleh pihak ketiga mana pun** (termasuk Microsoft Corporation, Youngzsoft Co., Ltd., Red Hat, Inc., Intel Corporation, VMware, Inc., dll.). Semua nama merek, logo, dan produk yang disebutkan adalah milik sah dari masing-masing pemiliknya.
+
+Simple-Iscsi **tidak mendistribusikan file biner driver berpemilik (*proprietary binaries*) pihak ketiga** seperti `CCBootPNPX.sys` atau `CCacheX.sys`. Seluruh server Simple-Iscsi merupakan karya orisinal (*clean-room reimplementation*) dalam bahasa pemrograman Rust. Pengguna yang mengaktifkan mode kompatibilitas driver CCBoot bertanggung jawab penuh secara mandiri atas kepemilikan lisensi driver terkait dari vendor resmi (*Bring Your Own Driver*).
+
 ---
 *Dokumentasi ini disusun secara komprehensif berdasarkan basis kode resmi Simple-Iscsi (Rust & C++) untuk referensi pengembangan dan operasional.*
-

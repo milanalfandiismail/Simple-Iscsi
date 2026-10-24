@@ -68,7 +68,6 @@ pub async fn start_server(
                         };
 
                         stats_clone.total_connections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        stats_clone.active_sessions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                         if let Err(e) = stream.set_nodelay(true) {
                             error!("Gagal mengaktifkan TCP_NODELAY untuk {}: {}", peer, e);
@@ -81,8 +80,8 @@ pub async fn start_server(
                             unsafe {
                                 let socket = socket2::Socket::from_raw_socket(raw_socket);
                                 let keepalive = socket2::TcpKeepalive::new()
-                                    .with_time(std::time::Duration::from_secs(30))
-                                    .with_interval(std::time::Duration::from_secs(5));
+                                    .with_time(std::time::Duration::from_secs(5))
+                                    .with_interval(std::time::Duration::from_secs(2));
                                 let _ = socket.set_tcp_keepalive(&keepalive);
                                 let _ = socket.set_send_buffer_size(2 * 1024 * 1024);
                                 let _ = socket.set_recv_buffer_size(2 * 1024 * 1024);

@@ -4,6 +4,12 @@ use tracing::{error, info, warn, trace};
 
 impl SessionContext {
     pub(super) async fn handle_nop_out(&self, req: Pdu) -> Result<(), std::io::Error> {
+        // Jika Initiator Task Tag adalah 0xFFFFFFFF, ini adalah jawaban echo atas Target-Initiated NOP-In kita.
+        // Tidak perlu membalas lagi untuk menghindari infinite loop.
+        if req.initiator_task_tag == 0xFFFFFFFF {
+            return Ok(());
+        }
+
         let mut resp = Pdu::default();
         resp.opcode = OP_NOP_IN;
         resp.flags = 0x80;
