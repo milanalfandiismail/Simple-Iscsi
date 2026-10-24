@@ -19,6 +19,8 @@
 7. [BAB 7: Windows Client Boot Helper (ACPI iBFT Parser & Deep IP Cleaner)](#bab-7-windows-client-boot-helper-acpi-ibft-parser--deep-ip-cleaner)
 8. [BAB 8: Analisis Kinerja, Audit Optimasi, & Matriks Troubleshooting (10 MB/s ke 900+ Mbps)](#bab-8-analisis-kinerja-audit-optimasi--matriks-troubleshooting-10-mbs-ke-900-mbps)
 9. [BAB 9: Arsitektur & Panduan Konversi Native Driverless iSCSI (Aturan Emas Slot 0000 & NetCfgInstanceId)](#bab-9-arsitektur--panduan-konversi-native-driverless-iscsi)
+10. [BAB 10: Kompatibilitas Driver Klien Pihak Ketiga (Mode CCBootPNPX & CCacheX)](#10-kompatibilitas-driver-klien-pihak-ketiga-mode-ccbootpnpx--ccachex)
+11. [BAB 11: Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)](#11-lisensi--atribusi-komponen-pihak-ketiga-third-party-licenses)
 
 ---
 
@@ -947,7 +949,15 @@ Pada `HKLM\SYSTEM\CurrentControlSet\Services\iScsiPrt`, terdapat nilai:
 
 ## 10. Kompatibilitas Driver Klien Pihak Ketiga (Mode CCBootPNPX & CCacheX)
 
-Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga menyediakan mode interoperabilitas untuk PC klien yang telah terpasang driver boot `CCBootPNPX.sys` dan RAM cache `CCacheX.sys`. Mode ini ditujukan untuk mempermudah migrasi image master yang sudah ada tanpa perlu instalasi ulang dari nol (*Bring Your Own Driver*).
+Selain mode **Native Driverless** (BAB 9), Simple-Iscsi juga menyediakan mode interoperabilitas untuk PC klien yang telah terpasang driver boot `CCBootPNPX.sys` dan filter RAM cache `CCacheX.sys`. Mode ini ditujukan untuk mempermudah migrasi image master yang sudah ada tanpa perlu instalasi ulang dari nol (*Bring Your Own Driver*).
+
+> [!IMPORTANT]
+> **Penyangkalan Hak Merek & Ketentuan Lisensi Driver (Disclaimer):**
+> Bagian ini disusun murni untuk tujuan dokumentasi interoperabilitas teknis (*Nominative Fair Use*). `CCBoot`, `CCBootCloud`, `CCBootPNPX`, dan `CCacheX` adalah merek dagang dan/atau hak cipta terdaftar milik Youngzsoft Co., Ltd.
+> Simple-Iscsi adalah proyek independen dan **TIDAK berafiliasi, disponsori, atau didukung secara resmi oleh Youngzsoft Co., Ltd.**
+> Proyek Simple-Iscsi **tidak mendistribusikan atau menyertakan biner driver berpemilik (*proprietary binaries*) pihak ketiga**. Pengguna bertanggung jawab penuh secara mandiri atas kepemilikan lisensi yang sah dari vendor terkait untuk file driver yang mereka gunakan (*Bring Your Own Driver*).
+
+---
 
 ### 10.1 Matriks Versi Driver Klien yang Teruji (Target Compatibility Matrix)
 
@@ -960,35 +970,172 @@ Integrasi protokol DHCP Option 12, format suffix IQN `:0XX`, dan alokasi cache R
 
 *(Catatan: Simple-Iscsi tidak menyediakan file driver di atas; pengguna wajib memperoleh driver tersebut secara sah dari vendor resmi terkait).*
 
-### 10.2 Komparasi Mode Booting Client
+---
 
-| Aspek | Driverless (Native) | CCBoot Driver (`<= 20260603`) |
+### 10.2 Komparasi Mode Booting Client: Driverless vs Third-Party Driver Suite
+
+| Aspek | Driverless (Native Windows) | CCBoot Driver Suite (`CCBootPNPX` & `CCacheX`) |
 |---|---|---|
-| Driver client | Tidak ada (native Windows `msiscsi.sys`) | `CCBootPNPX.sys` v2.0.0.12 (asli CCBoot) |
-| Client-side Cache | Cache OS & Server L1 Cache | `CCacheX.sys` v1.0.0.2 (RAM Cache Klien) |
-| IQN suffix `:0XX` | Tidak wajib (opsional) | **Wajib** (divalidasi oleh `CCBootPNPX.sys`) |
-| Manipulasi registry | Native helper C++ (`helper-svc.exe`) | Dilakukan oleh kernel driver CCBoot |
-| Provisioning | Tanpa driver | Salin driver + service key `CCBootPnP` |
-
-**Syarat utama mode CCBoot driver:**
-
-1. Target IQN berakhiran **`:0XX`** (4 karakter terakhir; `:` di len-4 dan `0` di len-3).
-2. Tabel **iBFT** tersedia (dibuat iPXE `sanboot` / firmware UEFI).
-3. **Hostname** valid (opsi 12) untuk `ComputerName`/`NV Hostname`.
-4. VHD **bootable** (UEFI → GPT/EFI; Legacy → MBR) + writeback overlay.
-5. `CCBootPNPX.sys` dipasang sebagai service `Start=0`, `Type=1`.
-6. Gate `CCBootPnP` (`PCIDPNP`, `HookPCINic`, `FindPCI`) aktif.
-7. Rename/registry dipicu dari **kernel-mode** (user-mode diabaikan driver).
-
-Panduan rinci, contoh konfigurasi, troubleshooting, dan acceptance test:
-
-**[docs/panduan-kompatibilitas-driver-ccboot.md](docs/panduan-kompatibilitas-driver-ccboot.md)**
-
-**Cache client (opsional):** client CCBoot dapat memakai cache read-only <code>CCacheX.sys</code> lewat hostname iBFT <code>Hostname(1-SizeMB-0)</code>. Vendor ID iSCSI harus mengandung <code>CCBoot</code>, <code>CCDisk</code>, atau <code>VMware</code>; set <code>[windows] vendor_id = "CCBoot"</code>. Cache default off, hanya aktif jika <code>driver = "ccboot"</code> dan <code>cache_enabled = true</code> di <code>clients.toml</code>. Detail: [docs/ccachex-cache-analysis.md](docs/ccachex-cache-analysis.md).
+| Driver di Klien | Tanpa driver pihak ketiga (native Windows `msiscsi.sys`) | `CCBootPNPX.sys` (Boot/PnP) + `CCacheX.sys` (RAM Cache) |
+| Client-side Cache | Cache file system OS & Server L1 Cache | Dedicated kernel RAM Cache (`CCacheX.sys`) |
+| Format Target IQN | Suffix bebas / standar iSCSI kanonikal | **Wajib suffix `:0XX`** (divalidasi oleh `CCBootPNPX.sys`) |
+| Hostname DHCP Option 12 | Plain Hostname (misal: `PC-01`) | Hostname berkode parameter cache: `PC-01(1-2048-0)` |
+| Sinkronisasi Registry & IP | User-Mode Engine (`helper-svc.exe`) | Kernel Driver (`CCBootPNPX.sys` via `CCBootPnP` registry key) |
+| Vendor ID Storage Inquiry | Bebas (default `RUSTISCS`) | **Wajib mengandung `"CCBoot"`, `"CCDisk"`, atau `"VMware"`** |
+| Kasus Penggunaan Ideal | Instalasi bersih, image netral, performa native murni | Migrasi image lama tanpa modifikasi driver sistem |
 
 ---
 
-## 15. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
+### 10.3 Spesifikasi & Cara Kerja Driver Boot `CCBootPNPX.sys`
+
+Driver `CCBootPNPX.sys` (versi `2.0.0.12`) adalah **boot-start kernel driver** (`Start=0`, `Type=1`) yang bertugas menangani inisialisasi awal antarmuka jaringan, PnP kartu LAN (NIC), dan penyesuaian registri identitas klien saat sistem Windows boot melalui media iSCSI.
+
+#### 1. Inisialisasi Driver & Deteksi ACPI iBFT
+* Kernel Windows memuat `CCBootPNPX.sys` pada fase awal boot sistem (`DriverEntry`).
+* Driver memanggil rutinitas inisialisasi internal untuk membaca tabel **ACPI iBFT** (*iSCSI Boot Firmware Table*) yang telah dibentuk oleh iPXE saat mengeksekusi perintah `sanboot`.
+* Dari tabel iBFT, driver mengekstrak alamat IP target iSCSI, nama initiator, dan nama target IQN yang terhubung.
+
+#### 2. Validasi Ketat Suffix Target IQN (`:0XX`)
+* `CCBootPNPX.sys` menerapkan pemeriksaan ketat terhadap string nama Target IQN:
+  * 4 karakter terakhir dari IQN wajib berakhiran format **`:0XX`** (karakter pemisah titik dua `:` berada pada indeks `panjang - 4`, dan digit nol `0` berada pada indeks `panjang - 3`).
+  * Dua digit terakhir (`XX`) adalah identifier heksadesimal klien.
+* **Implementasi Simple-Iscsi:** Generator IQN pada [`src/server.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/server.rs) secara otomatis menyematkan suffix 2 karakter heksadesimal deterministik dari MAC address klien menggunakan algoritma hashing FNV-1a ketika klien dikonfigurasi dengan `driver = "ccboot"`.
+
+#### 3. Manajemen Nama Komputer & Registry Gate `CCBootPnP`
+* Driver memantau perubahan kunci registri menggunakan kernel callback `RegNtPreRenameKey`.
+* Saat booting, driver membaca profil klien dari kunci `HKLM\SYSTEM\CCBootPnP`:
+  * Nilai penting: `PCIDPNP`, `HookPCINic`, dan `FindPCI`.
+* `CCBootPNPX.sys` menyinkronkan nama komputer Windows (`ComputerName` dan `NV Hostname`) dengan membaca nama host dari konfigurasi iBFT. Jika hostname mengandung suffix parameter cache (seperti `PC-01(1-2048-0)`), `CCBootPNPX.sys` secara otomatis memotong string tepat pada karakter kurung buka `(`, sehingga nama komputer yang diterapkan ke registri Windows tetap bersih (`PC-01`).
+
+---
+
+### 10.4 Spesifikasi & Cara Kerja Driver RAM Cache Klien `CCacheX.sys`
+
+Driver `CCacheX.sys` (versi `1.0.0.2`) adalah **client-side volume cache filter driver** yang berjalan pada kernel Windows klien. Fungsinya adalah memetakan blok memori fisik RAM klien sebagai *read-only caching layer* untuk partisi sistem iSCSI (C:) guna mengurangi latensi I/O baca dan meminimalkan beban trafik jaringan ke server.
+
+#### 1. Ekstraksi Konfigurasi dari Tabel ACPI iBFT
+* Saat inisialisasi kernel, `CCacheX.sys` membaca tabel ACPI `IBFT` atau `iBFT` menggunakan API kernel `AuxKlibGetSystemFirmwareTable` (dengan fallback pemindaian fisik pada rentang alamat memori `0x80000`).
+* Driver mencari blok NIC bertipe `0x03`, memeriksa flag valid (bit 0), kemudian membaca offset hostname pada offset `0x64`.
+* Format hostname yang diharapkan oleh driver adalah:
+  $$\text{Hostname}(\text{Mode}-\text{SizeMB}-0)$$
+  * **Parameter Mode:**
+    * Mode `1`: Mengaktifkan mode **Read-Only Client RAM Cache** (`ClientCache=1`, `WriteBack=0`). Ini adalah mode standar yang didukung oleh Simple-Iscsi.
+    * Mode `2`: Mengaktifkan `WriteBack=1` (menulis ke cache lokal). *Tidak digunakan di Simple-Iscsi* karena writeback dikelola secara terpusat oleh server differencing VHD layer.
+    * Mode `3`: Mengaktifkan `ClientCacheToLocal=1` (cache ke drive lokal). *Tidak digunakan di Simple-Iscsi*.
+  * **Parameter SizeMB:**
+    * Ukuran kapasitas memori RAM klien (dalam Megabyte) yang dialokasikan khusus untuk cache disk.
+    * Nilai `0`: Driver akan mengalokasikan memori secara otomatis sebesar **20% dari total RAM fisik klien**.
+    * Nilai numerik manual: Minimum 32 MB, maksimum umumnya hingga 8192 MB (dibulatkan oleh driver ke kelipatan 16 MB terdekat).
+
+#### 2. Validasi SCSI Inquiry Vendor ID (Storage Descriptor Whitelist)
+* Sebelum memasang hook caching pada volume drive, `CCacheX.sys` memanggil `STORAGE_DEVICE_DESCRIPTOR` disk melalui I/O control request.
+* Driver memeriksa string pada offset `+0xC` (`VendorIdOffset`).
+* **Aturan Whitelist Ketat:** `CCacheX.sys` **hanya akan mengaktifkan cache** jika string Vendor ID disk mengandung salah satu dari substring berikut:
+  1. `"CCBoot"`
+  2. `"CCDisk"`
+  3. `"VMware"`
+* Jika target iSCSI menggunakan Vendor ID standar atau vendor lain (seperti bawaan Simple-Iscsi `RUSTISCS`), driver `CCacheX.sys` akan secara diam-diam **mengabaikan dan melewati inisialisasi cache**.
+* **Solusi di Simple-Iscsi:** Di file [`config.toml`](file:///c:/Project%20GIT/Simple-Iscsi/config.toml), parameter `vendor_id` wajib disetel ke `"CCBoot"`:
+  ```toml
+  [windows]
+  vendor_id = "CCBoot"
+  ```
+
+#### 3. Bypass Otomatis pada Mode Super Client
+* **Kebutuhan Teknis:** Ketika sebuah PC klien diatur sebagai **Super Client** untuk melakukan pembaruan image master (instalasi game, patch Windows, update driver), seluruh operasi penulisan disk harus langsung diteruskan secara live ke layer differencing VHD server tanpa adanya distorsi data dari cache RAM lokal yang *stale*.
+* **Mekanisme Otomatis:** Pada [`src/netboot/dhcp.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/netboot/dhcp.rs), fungsi `format_ccachex_hostname` secara otomatis memeriksa flag `is_super_client`. Jika bernilai `true`, server Simple-Iscsi akan **menghilangkan suffix cache** dari DHCP Option 12 dan hanya mengirimkan nama host murni (misal: `PC-01`).
+* Akibatnya, `CCacheX.sys` di klien mendeteksi tidak adanya parameter alokasi cache dan menonaktifkan dirinya secara penuh selama sesi Super Client berlangsung.
+
+#### 4. Kunci Registri Klien yang Terlibat
+Status aktivasi dan konfigurasi driver dapat dipantau langsung pada registri Windows klien:
+* `HKLM\SYSTEM\CurrentControlSet\Services\CCacheX\Parameters`:
+  * `CacheSize` (DWORD): Ukuran memori cache dalam satuan MB (misal: `2048`).
+  * `ClientCache` (DWORD): `1` (Aktif) atau `0` (Nonaktif).
+  * `WriteBack` (DWORD): `0` (Nonaktif, seluruh write I/O langsung ke iSCSI target).
+* `HKLM\SYSTEM\CCBootPnP`:
+  * `ClientCacheToLocal` (DWORD): `0`.
+
+---
+
+### 10.5 Panduan Konfigurasi di Simple-Iscsi
+
+Untuk mengaktifkan kompatibilitas penuh kedua driver (`CCBootPNPX.sys` dan `CCacheX.sys`), lakukan konfigurasi berikut pada server:
+
+#### 1. Pengaturan Global di `config.toml`
+Pastikan opsi SCSI Vendor ID disetel agar cocok dengan whitelist `CCacheX.sys`:
+```toml
+[windows]
+vendor_id = "CCBoot"           # Wajib agar CCacheX.sys mengaktifkan cache volume
+product_id = "Virtual Disk"
+product_rev = "1.0"
+```
+
+#### 2. Pengaturan Klien di `clients.toml`
+Konfigurasikan klien dengan mode driver `ccboot` beserta alokasi cache RAM yang diinginkan:
+```toml
+[[clients]]
+ip = "192.168.180.250"
+mac = "00:1A:4B:96:AC:2A"
+hostname = "PC-01"
+driver = "ccboot"              # Mengaktifkan suffix target IQN :0XX
+cache_enabled = true           # Mengaktifkan suffix DHCP Option 12 (1-SizeMB-0)
+cache_size_mb = 2048           # Alokasi RAM cache 2048 MB (atau 0 untuk auto 20%)
+is_super_client = false        # Jika true, cache otomatis di-bypass (off)
+```
+
+---
+
+### 10.6 Alur Boot Sequence Klien (Sequence Diagram)
+
+Diagram berikut menjelaskan urutan komunikasi jaringan dan inisialisasi kernel antara server Simple-Iscsi dan klien yang menggunakan driver `CCBootPNPX.sys` serta `CCacheX.sys`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Klien (UEFI Firmware)
+    participant D as Simple-Iscsi DHCP/TFTP
+    participant P as iPXE Engine
+    participant S as Simple-Iscsi Storage Engine
+    participant K as Kernel Windows (CCBootPNPX & CCacheX)
+
+    C->>D: DHCP Discover / Request
+    Note over D: Evaluasi clients.toml:<br/>driver="ccboot", cache_enabled=true
+    D-->>C: DHCP ACK (Option 12: "PC-01(1-2048-0)", Next-Server, Bootfile)
+    C->>D: TFTP download iPXE binary (ipxe.efi)
+    D-->>C: Transfer file bootloader
+    C->>P: Eksekusi iPXE autoexec.ipxe
+    P->>S: iSCSI Login ke Target IQN berakhiran :0XX
+    S-->>P: Login Sukses (LUN 0: VHD Master + Differencing Overlay)
+    P->>C: sanboot (Bentuk tabel ACPI iBFT berisi Hostname & Target IQN)
+    C->>K: Boot Kernel Windows (Drivers Start=0 dimuat)
+    
+    rect rgb(240, 245, 255)
+    Note over K: Inisialisasi Driver Klien:
+    K->>K: CCBootPNPX.sys membaca iBFT & validasi suffix :0XX
+    K->>K: CCBootPNPX.sys memotong hostname di "(" -> Set ComputerName="PC-01"
+    K->>S: SCSI INQUIRY 0x12 -> Server mengirimkan Vendor ID "CCBoot"
+    K->>K: CCacheX.sys membaca Vendor ID "CCBoot" & parse "(1-2048-0)"
+    K->>K: CCacheX.sys mengalokasikan 2048 MB RAM fisik sebagai Read Cache
+    end
+
+    K->>S: I/O Read/Write iSCSI aktif (Read disaring RAM Cache, Write direct ke VHD)
+```
+
+---
+
+### 10.7 Checklist Verifikasi & Pemecahan Masalah (Troubleshooting)
+
+| Masalah | Kemungkinan Penyebab | Tindakan Perbaikan |
+|---|---|---|
+| Windows *blue screen* `INACCESSIBLE_BOOT_DEVICE` (0x7B) | Suffix IQN tidak berakhiran `:0XX` atau service driver belum boot-start | Pastikan `driver = "ccboot"` di `clients.toml` dan service `CCBootPNPX` memiliki nilai `Start = 0` di registri image master. |
+| Cache klien tidak aktif sama sekali | Vendor ID iSCSI tidak cocok dengan whitelist `CCacheX.sys` | Pastikan `vendor_id = "CCBoot"` di `config.toml` pada section `[windows]`. |
+| Hostname Windows tampil dengan akhiran `(1-2048-0)` | `CCBootPNPX.sys` tidak memotong nama host atau helper service bentrok | Pastikan `CCBootPNPX.sys` terpasang secara sah sebagai boot driver dan gate `CCBootPnP` aktif di registri. |
+| Klien Super Client lambat atau pembaruan tidak tersimpan bersih | Cache RAM klien masih aktif selama sesi editing | Pastikan `is_super_client = true` disetel di `clients.toml`; server Simple-Iscsi secara otomatis akan menonaktifkan suffix cache DHCP. |
+| Alokasi memori RAM cache melebihi kapasitas fisik | Nilai `cache_size_mb` terlalu besar untuk PC dengan RAM terbatas | Setel `cache_size_mb = 0` (otomatis 20% total RAM) atau sesuaikan nilainya (misal `1024` atau `2048`). |
+
+---
+
+## 11. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
 
 Simple-Iscsi menyertakan beberapa file binary bootloader jaringan yang telah dikompilasi sebelumnya (*pre-compiled binaries*) di dalam folder `pxe/` untuk memfasilitasi UEFI PXE Network Booting:
 
