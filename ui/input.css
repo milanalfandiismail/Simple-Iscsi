@@ -77,18 +77,45 @@
     flex-direction: column;
     gap: 8px;
     pointer-events: none;
+    width: min(380px, calc(100vw - 2rem));
   }
 
   .toast-msg {
     pointer-events: auto;
     transform: translateX(120%);
     opacity: 0;
+    min-width: 280px;
+    max-width: 380px;
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
   }
 
   .toast-msg.show {
     transform: translateX(0);
     opacity: 1;
+  }
+
+  /* shortcut: mobile < lg is not optimized; breakpoints are lg/xl/2xl only. */
+  /* Client table: vertical scroll only, no horizontal */
+  @media (min-width: 1024px) {
+    #tab-clients.active {
+      display: block;
+      height: auto;
+    }
+    #clients-table-wrap {
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+    #clients-table th,
+    #clients-table td {
+      overflow: visible;
+    }
+  }
+
+  /* No-truncate: long paths/IDs wrap instead of clipping */
+  table th,
+  table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   /* Flat Minimalist Card */

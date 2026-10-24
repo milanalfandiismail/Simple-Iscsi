@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Iscsi - High Performance Diskless Boot & Storage Manager</title>
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    
     <!-- Google Fonts for Shadcn Minimalist Tech System -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+
     <!-- Compiled Tailwind CSS -->
     <link rel="stylesheet" href="tailwind.css">
 </head>
@@ -21,7 +19,7 @@
 
         <!-- SIDEBAR NAVIGATION -->
         <aside class="w-full lg:w-56 xl:w-64 bg-white dark:bg-zinc-950 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-800 flex flex-col justify-between shrink-0 sticky top-0 z-40 lg:h-screen transition-colors">
-            
+
             <!-- Brand & Navigation List -->
             <div class="p-4 sm:p-5 lg:p-4 xl:p-5">
                 <!-- Brand Header -->
@@ -39,37 +37,24 @@
 
                 <!-- Nav Tabs -->
                 <nav id="sidebar-nav" class="hidden lg:flex flex-col gap-1 text-xs sm:text-sm font-medium">
-                    <button class="nav-item active flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-800 font-medium" onclick="switchTab('dashboard', this)">
-                        <span class="text-sm">📊</span>
-                        <span>Dashboard</span>
+                    <button class="nav-item active px-3 py-2 rounded-md text-left transition-all bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50 border border-zinc-200 dark:border-zinc-800 font-medium" onclick="switchTab('dashboard', this)"><span>Dashboard</span>
                     </button>
-                    <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('clients', this)">
-                        <span class="text-sm">💻</span>
-                        <span>Klien Manager</span>
+                    <button class="nav-item px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('clients', this)"><span>Klien Manager</span>
                     </button>
-                    <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('vhd', this)">
-                        <span class="text-sm">💿</span>
-                        <span>Image Manager</span>
+                    <button class="nav-item px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('vhd', this)"><span>Image Manager</span>
                     </button>
-                    <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('disk-mgmt', this)">
-                        <span class="text-sm">🗄️</span>
-                        <span>Disk Management</span>
+                    <button class="nav-item px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('disk-mgmt', this)"><span>Disk Management</span>
                     </button>
-                    <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('cache', this)">
-                        <span class="text-sm">⚡</span>
-                        <span>iSCSI Cache</span>
+                    <button class="nav-item px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('cache', this)"><span>iSCSI Cache</span>
                     </button>
-                    <button class="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('dhcp', this)">
-                        <span class="text-sm">⚙️</span>
-                        <span>Pengaturan Sentral</span>
+                    <button class="nav-item px-3 py-2 rounded-md text-left transition-all text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-100" onclick="switchTab('dhcp', this)"><span>Pengaturan Sentral</span>
                     </button>
                 </nav>
             </div>
 
             <!-- Footer: Theme Toggle & Status Indicator -->
             <div class="p-4 sm:p-5 lg:p-4 xl:p-5 border-t border-zinc-100 dark:border-zinc-800/80 flex flex-col gap-2.5">
-                <button type="button" id="theme-toggle-btn" class="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors">
-                    🌙 Mode Gelap
+                <button type="button" id="theme-toggle-btn" class="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors">Mode Gelap
                 </button>
                 <div class="flex items-center text-[11px] text-zinc-500 dark:text-zinc-400 font-mono px-0.5">
                     <span id="engine-status-indicator" class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live API</span>
@@ -90,7 +75,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <button onclick="restartAllServicesAction()" id="btn-restart-all-services" class="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium shadow-2xs transition-all cursor-pointer">
-                            🔄 <span>Restart Semua Layanan</span>
+                             <span>Restart Semua Layanan</span>
                         </button>
                     </div>
                 </header>
@@ -100,36 +85,36 @@
                     <!-- iSCSI Card -->
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 flex items-center justify-between gap-3 shadow-2xs">
                         <div class="min-w-0">
-                            <h3 class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-50 truncate mb-0.5">iSCSI Daemon</h3>
+                            <h3 class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-50 mb-0.5 break-words">iSCSI Daemon</h3>
                             <p id="iscsi-port-info" class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">Port: ...</p>
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
-                            <span class="pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 whitespace-nowrap" id="iscsi-status-pill">⚪ Offline</span>
-                            <button onclick="restartServiceAction('iscsi')" title="Restart iSCSI Daemon" class="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md transition text-xs border border-zinc-200 dark:border-zinc-800 cursor-pointer">🔄</button>
+                            <span class="pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 whitespace-nowrap" id="iscsi-status-pill"> Offline</span>
+                            <button onclick="restartServiceAction('iscsi')" title="Restart iSCSI Daemon" class="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md transition text-xs border border-zinc-200 dark:border-zinc-800 cursor-pointer">↻</button>
                         </div>
                     </div>
 
                     <!-- DHCP Card -->
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 flex items-center justify-between gap-3 shadow-2xs">
                         <div class="min-w-0">
-                            <h3 class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-50 truncate mb-0.5">DHCP Server</h3>
+                            <h3 class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-50 mb-0.5 break-words">DHCP Server</h3>
                             <p id="dhcp-port-info" class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">Port: ...</p>
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
-                            <span class="pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 whitespace-nowrap" id="dhcp-status-pill">⚪ Offline</span>
-                            <button onclick="restartServiceAction('dhcp')" title="Restart DHCP Server" class="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md transition text-xs border border-zinc-200 dark:border-zinc-800 cursor-pointer">🔄</button>
+                            <span class="pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 whitespace-nowrap" id="dhcp-status-pill"> Offline</span>
+                            <button onclick="restartServiceAction('dhcp')" title="Restart DHCP Server" class="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md transition text-xs border border-zinc-200 dark:border-zinc-800 cursor-pointer">↻</button>
                         </div>
                     </div>
 
                     <!-- TFTP Card -->
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-4.5 flex items-center justify-between gap-3 shadow-2xs sm:col-span-2 lg:col-span-1">
                         <div class="min-w-0">
-                            <h3 class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-50 truncate mb-0.5">TFTP Server</h3>
+                            <h3 class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-50 mb-0.5 break-words">TFTP Server</h3>
                             <p id="tftp-port-info" class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">Port: ...</p>
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
-                            <span class="pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 whitespace-nowrap" id="tftp-status-pill">⚪ Offline</span>
-                            <button onclick="restartServiceAction('tftp')" title="Restart TFTP Server" class="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md transition text-xs border border-zinc-200 dark:border-zinc-800 cursor-pointer">🔄</button>
+                            <span class="pill-status text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 whitespace-nowrap" id="tftp-status-pill"> Offline</span>
+                            <button onclick="restartServiceAction('tftp')" title="Restart TFTP Server" class="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md transition text-xs border border-zinc-200 dark:border-zinc-800 cursor-pointer">↻</button>
                         </div>
                     </div>
                 </div>
@@ -150,31 +135,27 @@
                 <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
                     <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-3.5 flex items-center justify-between">
                         <h2 class="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50">Daftar Penggunaan I/O Klien</h2>
-                        <span class="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">Live Monitoring</span>
+                        <div class="flex items-center gap-2"><button type="button" class="btn-secondary px-2.5 py-1 text-[11px] font-medium cursor-pointer" onclick="openDashboardClientsList()">Lihat semua</button><span class="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">Live Monitoring</span></div>
                     </div>
-                    <div class="w-full overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
+                    <div class="w-full overflow-visible rounded-md border border-zinc-200 dark:border-zinc-800">
                         <table class="w-full text-left text-xs lg:text-[11px] xl:text-xs border-collapse table-auto lg:table-fixed">
                             <colgroup>
-                                <col class="w-[28%] sm:w-[26%] lg:w-[22%] xl:w-[20%]">
-                                <col class="w-[28%] sm:w-[26%] lg:w-[23%] xl:w-[22%]">
-                                <col class="w-[24%] sm:w-[22%] lg:w-[19%] xl:w-[20%]">
-                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
-                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
-                                <col class="w-auto lg:w-[12%] xl:w-[12%]">
+                                <col class="w-[18%] sm:w-[16%] lg:w-[14%] xl:w-[14%]">
+                                <col class="w-[32%] sm:w-[32%] lg:w-[32%] xl:w-[32%]">
+                                <col class="w-[25%] sm:w-[26%] lg:w-[27%] xl:w-[27%]">
+                                <col class="w-[25%] sm:w-[26%] lg:w-[27%] xl:w-[27%]">
                             </colgroup>
                             <thead>
                                 <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Klien & Status</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Jaringan</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Image & PXE</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Read I/O</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Write I/O</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Uptime</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Status</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Hostname</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">IP Address</th>
+                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">MAC Address</th>
                                 </tr>
                             </thead>
                             <tbody id="dashboard-clients-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
                                 <tr>
-                                    <td colspan="6" class="py-8 px-5 text-center text-zinc-500 dark:text-zinc-400">Memuat data klien...</td>
+                                    <td colspan="4" class="py-8 px-5 text-center text-zinc-500 dark:text-zinc-400">Memuat data klien...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -184,43 +165,57 @@
 
 
             <!-- TAB 2: KLIEN MANAGER -->
-            <section id="tab-clients" class="tab-panel w-full">
-                <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 sm:pb-5 border-b border-zinc-200 dark:border-zinc-800 mb-5 sm:mb-6">
+                        <section id="tab-clients" class="tab-panel w-full">
+                <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-zinc-200 dark:border-zinc-800 mb-4 shrink-0">
                     <div>
-                        <h1 class="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Klien Manager</h1>
-                        <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Kelola daftar static clients.toml (Klik baris klien untuk edit/hapus, klik kanan untuk context menu).</p>
+                        <h1 class="text-lg xl:text-xl 2xl:text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Klien Manager</h1>
+                        <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Kelola clients.toml. Ctrl/Cmd+click untuk pilih, drag dari checkbox untuk range, klik baris untuk edit.</p>
                     </div>
-                    <div class="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
-                        <button class="btn-secondary inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer" onclick="autoAllocateNextServerIpsAction()">⚡ Auto-Allocate IPs</button>
-                        <button class="btn-primary inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-medium shadow-2xs whitespace-nowrap cursor-pointer" onclick="openClientCrudModal(null)">➕ Tambah Klien</button>
+                    <div class="flex flex-wrap items-center gap-2 shrink-0">
+                        <div class="relative">
+                            <button type="button" class="btn-secondary inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium cursor-pointer" onclick="toggleClientColumnsMenu()">Kolom</button>
+                            <div id="client-columns-menu" class="hidden absolute right-0 mt-2 w-52 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg z-30 p-2">
+                                <div class="text-[10px] uppercase tracking-wider text-zinc-400 px-2 py-1">Tampilkan kolom</div>
+                                <div id="client-columns-list" class="flex flex-col gap-1"></div>
+                            </div>
+                        </div>
+                        <button class="btn-secondary inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer" onclick="autoAllocateNextServerIpsAction()">Auto-Allocate IPs</button>
+                        <button class="btn-primary inline-flex items-center justify-center px-3.5 py-1.5 text-xs font-medium whitespace-nowrap cursor-pointer" onclick="openClientCrudModal(null)">Tambah Klien</button>
                     </div>
                 </header>
 
-                <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <div class="w-full overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-left text-xs lg:text-[11px] xl:text-xs border-collapse table-auto lg:table-fixed">
-                            <colgroup>
-                                <col class="w-[28%] sm:w-[26%] lg:w-[22%] xl:w-[20%]">
-                                <col class="w-[28%] sm:w-[26%] lg:w-[23%] xl:w-[22%]">
-                                <col class="w-[24%] sm:w-[22%] lg:w-[19%] xl:w-[20%]">
-                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
-                                <col class="w-[10%] sm:w-[13%] lg:w-[12%] xl:w-[13%]">
-                                <col class="w-auto lg:w-[12%] xl:w-[12%]">
-                            </colgroup>
-                            <thead>
-                                <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Klien & Status</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Jaringan</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Image & PXE</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Read I/O</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Write I/O</th>
-                                    <th class="py-2.5 px-2.5 xl:px-3 text-[10px] xl:text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Uptime</th>
+                <div id="client-selection-toolbar" class="flex items-center gap-2 mb-3 px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 shrink-0">
+                    <span id="client-selection-count" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">0 klien dipilih</span>
+                    <div class="flex-1"></div>
+                    <button id="btn-client-bulk-edit" disabled class="btn-secondary px-2.5 py-1 text-xs font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" onclick="openClientBulkEditModal()">Edit massal</button>
+                    <button id="btn-client-bulk-delete" disabled class="px-2.5 py-1 text-xs font-medium rounded-md border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" onclick="deleteSelectedClients()">Hapus</button>
+                    <button id="btn-client-bulk-clear" disabled class="btn-secondary px-2.5 py-1 text-xs font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" onclick="clearClientSelection()">Batal</button>
+                </div>
+
+                                <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+                    <div id="clients-table-wrap" class="w-full overflow-x-auto">
+                        <table id="clients-table" class="w-full min-w-max table-auto text-left text-xs border-collapse">
+                            <thead class="bg-zinc-50 dark:bg-zinc-900/95 border-b border-zinc-200 dark:border-zinc-800">
+                                <tr>
+                                    <th class="py-2 px-3 text-center"><input type="checkbox" id="clients-select-all" onchange="toggleSelectAllClients(this.checked)" aria-label="Pilih semua klien" class="rounded border-zinc-300 dark:border-zinc-700"></th>
+                                    <th class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Status</th>
+                                    <th class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Nama</th>
+                                    <th data-client-col="ip" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">IP Address</th>
+                                    <th data-client-col="read" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Read I/O</th>
+                                    <th data-client-col="write" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Write I/O</th>
+                                    <th data-client-col="mac" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">MAC Address</th>
+                                    <th data-client-col="gateway" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Gateway</th>
+                                    <th data-client-col="dns" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">DNS</th>
+                                    <th data-client-col="next_server" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Next Server</th>
+                                    <th data-client-col="pxe" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">PXE</th>
+                                    <th data-client-col="image" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Image</th>
+                                    <th data-client-col="driver" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Driver</th>
+                                    <th data-client-col="cache" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Cache</th>
+                                    <th data-client-col="uptime" class="py-2 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Uptime</th>
                                 </tr>
                             </thead>
                             <tbody id="clients-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                                <tr>
-                                    <td colspan="6" class="py-8 px-5 text-center text-zinc-500 dark:text-zinc-400">Memuat daftar klien...</td>
-                                </tr>
+                                <tr><td colspan="15" class="py-8 px-5 text-center text-zinc-500 dark:text-zinc-400">Memuat daftar klien...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -234,11 +229,11 @@
                         <h1 class="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Image Manager</h1>
                         <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Konfigurasi boot image VHD yang terdaftar di config.toml & kelola snapshot restore.</p>
                     </div>
-                    <button class="btn-primary inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-medium shadow-2xs shrink-0 whitespace-nowrap cursor-pointer" onclick="openVhdCrudModal(null)">➕ Tambah VHD Mapping</button>
+                    <div class="flex items-center gap-2"><button type="button" class="btn-secondary px-2.5 py-1.5 text-xs font-medium cursor-pointer" onclick="openVhdListModal()">Lihat semua</button><button class="btn-primary inline-flex items-center justify-center px-3.5 py-1.5 text-xs font-medium shrink-0 whitespace-nowrap cursor-pointer" onclick="openVhdCrudModal(null)">Tambah VHD Mapping</button></div>
                 </header>
 
                 <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3.5 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <div class="w-full overflow-x-auto lg:overflow-x-visible rounded-md border border-zinc-200 dark:border-zinc-800">
+                    <div class="w-full overflow-visible rounded-md border border-zinc-200 dark:border-zinc-800">
                         <table class="w-full text-left text-xs sm:text-sm border-collapse table-auto lg:table-fixed">
                             <colgroup>
                                 <col class="w-[46%] sm:w-[50%] lg:w-[48%] xl:w-[52%]">
@@ -280,7 +275,7 @@
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
                         <div>
                             <div class="flex items-center gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
-                                <span class="text-base">⚡</span>
+
                                 <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">Global Storage Parameters</h2>
                             </div>
                             <div class="space-y-3.5 text-xs sm:text-sm mb-5">
@@ -297,7 +292,7 @@
                             </div>
                         </div>
                         <div>
-                            <button type="button" class="btn-primary w-full sm:w-auto px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveGlobalStorageParams()">💾 Simpan Parameter Storage</button>
+                            <button type="button" class="btn-primary w-full sm:w-auto px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveGlobalStorageParams()"> Simpan Parameter Storage</button>
                         </div>
                     </div>
 
@@ -306,7 +301,7 @@
                         <div>
                             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-3.5">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-base">🏷️</span>
+
                                     <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">Identitas & Vendor SCSI Disk</h2>
                                 </div>
                                 <span class="text-[10.5px] text-zinc-400 dark:text-zinc-500 font-mono">SPC-4 Inquiry</span>
@@ -356,52 +351,28 @@
                             <!-- Live Windows Simulation Preview Box -->
                             <div class="rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-950/60 p-2.5 mb-4 space-y-1.5">
                                 <div class="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                                    <span>🖥️</span>
+
                                     <span>Simulasi Nama Disk di Device Manager Windows:</span>
                                 </div>
                                 <div class="text-[11px] font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900 px-2 py-1 rounded border border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between">
                                     <span class="text-zinc-400 text-[10px] shrink-0">Boot Disk:</span>
-                                    <span id="preview-os-disk-text" class="font-semibold text-emerald-600 dark:text-emerald-400 truncate ml-2">GENESIS Virtual Boot SCSI Disk Device</span>
+                                    <span id="preview-os-disk-text" class="font-semibold text-emerald-600 dark:text-emerald-400 ml-2 break-words">GENESIS Virtual Boot SCSI Disk Device</span>
                                 </div>
                                 <div class="text-[11px] font-mono text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900 px-2 py-1 rounded border border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between">
                                     <span class="text-zinc-400 text-[10px] shrink-0">GameDisk:</span>
-                                    <span id="preview-game-disk-text" class="font-semibold text-sky-600 dark:text-sky-400 truncate ml-2">HYPERVMD GameVault Pro SCSI Disk Device</span>
+                                    <span id="preview-game-disk-text" class="font-semibold text-sky-600 dark:text-sky-400 ml-2 break-words">HYPERVMD GameVault Pro SCSI Disk Device</span>
                                 </div>
                             </div>
                         </div>
 
                         <div>
-                            <button type="button" class="btn-primary w-full sm:w-auto px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveDiskBrandingAction()">💾 Simpan Identitas Disk</button>
+                            <button type="button" class="btn-primary w-full sm:w-auto px-4 py-2 text-xs font-medium shadow-2xs cursor-pointer" onclick="saveDiskBrandingAction()"> Simpan Identitas Disk</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Active Writeback Files Manager Card -->
-                <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 mb-5 sm:mb-6 shadow-2xs">
-                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
-                        <div>
-                            <h2 class="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50">Writeback Cache Files</h2>
-                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Daftar file writeback klien yang tersimpan di disk writeback saat ini.</p>
-                        </div>
-                        <button class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors whitespace-nowrap cursor-pointer" onclick="clearWritebackCache()">🧹 Bersihkan Cache File</button>
-                    </div>
-                    <div class="overflow-x-auto max-h-64 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-left text-xs sm:text-sm border-collapse">
-                            <thead>
-                                <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-2.5 px-3 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">File / IP Klien</th>
-                                    <th class="py-2.5 px-3 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Ukuran File Cache</th>
-                                </tr>
-                            </thead>
-                            <tbody id="writeback-files-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                                <tr>
-                                    <td colspan="2" class="py-6 px-4 text-center text-zinc-500 dark:text-zinc-400">Memuat file writeback...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
+                </section>
 
             <!-- TAB 5: CENTRAL SETTINGS -->
             <section id="tab-dhcp" class="tab-panel w-full">
@@ -411,7 +382,7 @@
                         <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Konfigurasi daemon iSCSI, DHCP server, multi-NIC load balancing, dan folder bootloader TFTP.</p>
                     </div>
                     <div class="flex items-center gap-2.5 shrink-0">
-                        <button type="button" onclick="saveConfigJson(event)" class="btn-primary inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-medium shadow-2xs whitespace-nowrap cursor-pointer">💾 Simpan Konfigurasi</button>
+                        <button type="button" onclick="saveConfigJson(event)" class="btn-primary inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-medium shadow-2xs whitespace-nowrap cursor-pointer"> Simpan Konfigurasi</button>
                     </div>
                 </header>
 
@@ -420,7 +391,7 @@
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
                         <div>
                             <div class="flex items-center gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
-                                <span class="text-base">⚙️</span>
+
                                 <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">Server & iSCSI Daemon</h2>
                             </div>
                             <div class="space-y-3.5 text-xs sm:text-sm">
@@ -451,7 +422,7 @@
                         <div>
                             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-base">🔌</span>
+
                                     <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">DHCP Server Configuration</h2>
                                 </div>
                                 <div class="flex items-center gap-2">
@@ -499,9 +470,9 @@
                                     <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Load Balancing NIC IPs</label>
                                     <div class="flex gap-2 mb-2">
                                         <input type="text" id="add-nic-ip-input" list="network-ips-datalist" placeholder="Tambah IP NIC..." class="flex-1 min-w-0 px-3 py-1.5 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
-                                        <button type="button" class="btn-primary inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium shadow-2xs shrink-0 cursor-pointer" onclick="addNicIpAction()">➕ Add</button>
+                                        <button type="button" class="btn-primary inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium shadow-2xs shrink-0 cursor-pointer" onclick="addNicIpAction()"> Add</button>
                                     </div>
-                                    <div id="nic-ips-list-container" class="border border-zinc-200 dark:border-zinc-800 rounded-md bg-zinc-50/50 dark:bg-zinc-950/50 p-2 max-h-28 overflow-y-auto flex flex-col gap-1.5 text-xs">
+                                    <div id="nic-ips-list-container" class="border border-zinc-200 dark:border-zinc-800 rounded-md bg-zinc-50/50 dark:bg-zinc-950/50 p-2 flex flex-col gap-1.5 text-xs">
                                         <span class="text-zinc-500 dark:text-zinc-400 text-center text-xs py-1">Belum ada IP ditambahkan.</span>
                                     </div>
                                 </div>
@@ -513,7 +484,7 @@
                     <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 sm:p-5 flex flex-col justify-between shadow-2xs">
                         <div>
                             <div class="flex items-center gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
-                                <span class="text-base">📂</span>
+
                                 <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">TFTP Service & Bootloader</h2>
                             </div>
                             <div class="space-y-3.5 text-xs sm:text-sm">
@@ -534,19 +505,19 @@
                         <div>
                             <div class="flex items-center justify-between gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-base">📁</span>
+
                                     <div>
                                         <h2 class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-50 m-0">TFTP Folders Manager</h2>
                                     </div>
                                 </div>
-                                <button type="button" class="btn-primary inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium shadow-2xs whitespace-nowrap shrink-0 cursor-pointer" onclick="createNewTftpFolderPrompt()">➕ Tambah</button>
+                                <div class="flex items-center gap-2"><button type="button" class="btn-secondary px-2.5 py-1.5 text-xs font-medium cursor-pointer" onclick="openTftpListModal()">Lihat semua</button><button type="button" class="btn-primary inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer" onclick="createNewTftpFolderPrompt()">Tambah</button></div>
                             </div>
-                            <div class="overflow-x-auto max-h-52 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+                            <div class="overflow-visible rounded-md border border-zinc-200 dark:border-zinc-800">
                                 <table class="w-full text-left text-xs sm:text-sm border-collapse">
                                     <thead>
                                         <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Nama Folder</th>
-                                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap text-right">Aksi</th>
+                                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Nama Folder</th>
+                                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 text-right">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tftp-folders-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
@@ -569,36 +540,36 @@
                 <header class="pb-2 sm:pb-2.5 lg:pb-3 border-b border-zinc-200 dark:border-zinc-800 mb-2 sm:mb-2.5 lg:mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
                         <h1 class="text-base sm:text-lg lg:text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-                            <span>⚡</span>
+
                             <span>iSCSI RAM Cache Monitor</span>
                         </h1>
                         <p class="text-[11px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Pantau real-time performa server cache, hit rate per-disk, dan alokasi RAM granular (Megabyte/Gigabyte) dengan retensi 8 jam.</p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <button onclick="clearDiskCache('all')" class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer" title="Flush seluruh pool memori cache aktif">
-                            🧹 <span>Flush Semua</span>
+                             <span>Flush Semua</span>
                         </button>
                         <button onclick="loadCacheStats()" class="btn-primary inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium shadow-2xs transition-all cursor-pointer" title="Segarkan telemetri cache">
-                            🔄 <span>Segarkan</span>
+                             <span>Segarkan</span>
                         </button>
                     </div>
                 </header>
 
                 <!-- Cache Summary Stat Cards -->
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 lg:gap-3 mb-2 sm:mb-2.5 lg:mb-3">
-                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 sm:p-3 shadow-2xs">
-                        <span class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-0.5 sm:mb-1">Total Alokasi</span>
+                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4 mb-4">
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 2xl:p-5">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">Total Alokasi</span>
                         <div class="flex items-baseline gap-1.5">
-                            <span id="cache-stat-total-allocated" class="text-base sm:text-lg lg:text-xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0 MB</span>
+                            <span id="cache-stat-total-allocated" class="text-lg xl:text-xl 2xl:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0 MB</span>
                             <span id="cache-stat-total-allocated-gb" class="text-[11px] font-mono text-zinc-500">(0.0 GB)</span>
                         </div>
-                        <p class="text-[10px] text-zinc-400 mt-0.5 truncate">Kapasitas RAM Dicadangkan</p>
+                        <p class="text-xs text-zinc-400 mt-1 break-words">Kapasitas RAM Dicadangkan</p>
                     </div>
 
-                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 sm:p-3 shadow-2xs">
-                        <span class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-0.5 sm:mb-1">RAM Terpakai</span>
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 2xl:p-5">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">RAM Terpakai</span>
                         <div class="flex items-baseline gap-1.5">
-                            <span id="cache-stat-total-used" class="text-base sm:text-lg lg:text-xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0 MB</span>
+                            <span id="cache-stat-total-used" class="text-lg xl:text-xl 2xl:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0 MB</span>
                             <span id="cache-stat-used-pct" class="text-[11px] font-mono text-zinc-500">(0%)</span>
                         </div>
                         <div class="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1 mt-1.5 overflow-hidden">
@@ -606,30 +577,30 @@
                         </div>
                     </div>
 
-                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 sm:p-3 shadow-2xs">
-                        <span class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-0.5 sm:mb-1">Global Hit Rate</span>
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 2xl:p-5">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">Global Hit Rate</span>
                         <div class="flex items-baseline gap-1.5">
-                            <span id="cache-stat-hit-rate" class="text-base sm:text-lg lg:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">0.0%</span>
+                            <span id="cache-stat-hit-rate" class="text-lg xl:text-xl 2xl:text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">0.0%</span>
                             <span class="text-[10px] text-zinc-400 hidden xl:inline">Direct RAM</span>
                         </div>
-                        <p class="text-[10px] text-zinc-400 mt-0.5 truncate">Efisiensi I/O Tanpa Storage</p>
+                        <p class="text-xs text-zinc-400 mt-1 break-words">Efisiensi I/O Tanpa Storage</p>
                     </div>
 
-                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 sm:p-3 shadow-2xs">
-                        <span class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-0.5 sm:mb-1">Hits / Misses</span>
+                    <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 2xl:p-5">
+                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">Hits / Misses</span>
                         <div class="flex items-baseline gap-1.5">
-                            <span id="cache-stat-total-hits" class="text-base sm:text-lg lg:text-xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0</span>
+                            <span id="cache-stat-total-hits" class="text-lg xl:text-xl 2xl:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50 tracking-tight">0</span>
                             <span class="text-xs text-zinc-400">/</span>
                             <span id="cache-stat-total-misses" class="text-xs sm:text-sm font-mono text-zinc-500">0</span>
                         </div>
-                        <p class="text-[10px] text-zinc-400 mt-0.5 truncate">Total Request Pembacaan Sektor</p>
+                        <p class="text-xs text-zinc-400 mt-1 break-words">Total Request Pembacaan Sektor</p>
                     </div>
                 </div>
 
                 <!-- Quick Presets Info Banner -->
-                <div class="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-lg px-2.5 py-1.5 sm:px-3 sm:py-2 mb-2 sm:mb-2.5 lg:mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div class="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-lg px-4 py-3 mb-4 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div class="flex items-center gap-1.5 sm:gap-2 text-zinc-600 dark:text-zinc-300 flex-wrap">
-                        <span class="font-semibold text-zinc-900 dark:text-zinc-100 whitespace-nowrap">💡 Presets:</span>
+                        <span class="font-semibold text-zinc-900 dark:text-zinc-100 whitespace-nowrap"> Presets:</span>
                         <span class="hidden sm:inline text-zinc-500">Pilihan cepat:</span>
                         <div class="inline-flex items-center gap-1 font-mono text-[11px]">
                             <span class="px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200">512 MB</span>
@@ -647,37 +618,34 @@
                 <div class="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden shadow-2xs">
                     <div class="px-3 py-2 sm:px-3.5 sm:py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                         <div>
-                            <h2 class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Daftar Pool Cache Per-Disk</h2>
+                            <div class="flex items-center gap-2"><h2 class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Daftar Pool Cache Per-Disk</h2><button type="button" class="btn-secondary px-2.5 py-1 text-[11px] font-medium cursor-pointer" onclick="openCacheListModal()">Lihat semua</button></div>
                             <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Alokasi memori terpisah untuk Game Disks dan Shared Read Cache Base OS Image.</p>
                         </div>
                     </div>
-                    <div class="w-full overflow-x-auto lg:overflow-x-hidden overflow-y-auto max-h-[calc(100vh-310px)] lg:max-h-[calc(100vh-325px)] xl:max-h-[calc(100vh-345px)] 2xl:max-h-[calc(100vh-365px)]">
+                    <div class="w-full overflow-visible mt-2">
                         <table class="w-full table-fixed text-left text-xs">
                             <colgroup>
-                                <col class="w-[18%]">
-                                <col class="w-[20%]">
-                                <col class="w-[13%]">
-                                <col class="w-[13%]">
+                                <col class="w-[24%]">
+                                <col class="w-[26%]">
+                                <col class="w-[14%]">
+                                <col class="w-[14%]">
+                                <col class="w-[10%]">
                                 <col class="w-[12%]">
-                                <col class="w-[11%]">
-                                <col class="w-[13%]">
                             </colgroup>
                             <thead class="sticky top-0 z-10 bg-zinc-50 dark:bg-zinc-900/90 backdrop-blur text-zinc-500 dark:text-zinc-400 text-[11px] uppercase tracking-wider font-medium border-b border-zinc-200 dark:border-zinc-800 shadow-2xs">
                                 <tr>
-                                    <th class="px-2 py-2 truncate">Disk / Target</th>
-                                    <th class="px-2 py-2 truncate">Tipe & Path</th>
-                                    <th class="px-2 py-2 truncate">Alokasi RAM</th>
-                                    <th class="px-2 py-2 truncate">Terpakai</th>
-                                    <th class="px-2 py-2 truncate">Hit Rate</th>
-                                    <th class="px-2 py-2 truncate">Hits / Miss</th>
-                                    <th class="px-2 py-2 text-right truncate">Aksi</th>
+                                    <th class="px-3 py-3 break-words">Disk / Target</th>
+                                    <th class="px-3 py-3 break-words">Tipe & Path</th>
+                                    <th class="px-3 py-3 break-words">Alokasi RAM</th>
+                                    <th class="px-3 py-3 break-words">Terpakai</th>
+                                    <th class="px-3 py-3 break-words">Hit Rate</th>
+                                    <th class="px-3 py-3 break-words">Hits / Miss</th>
                                 </tr>
                             </thead>
                             <tbody id="cache-disks-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80 font-normal">
                                 <tr>
-                                    <td colspan="7" class="px-4 py-8 text-center text-zinc-500">
+                                    <td colspan="6" class="px-4 py-8 text-center text-zinc-500">
                                         <div class="flex flex-col items-center justify-center gap-2">
-                                            <span class="animate-spin text-lg">⏳</span>
                                             <span>Memuat statistik cache per-disk...</span>
                                         </div>
                                     </td>
@@ -769,7 +737,7 @@
                 </div>
 
                 <div class="flex items-center justify-between gap-3 pt-4 sm:pt-5 border-t border-zinc-100 dark:border-zinc-800">
-                    <button type="button" id="btn-client-delete" class="btn-secondary inline-flex items-center justify-center gap-1 px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-300 dark:hover:border-rose-900 transition-colors cursor-pointer" onclick="deleteClientAction()">🗑️ Hapus Klien</button>
+                    <button type="button" id="btn-client-delete" class="btn-secondary inline-flex items-center justify-center gap-1 px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-300 dark:hover:border-rose-900 transition-colors cursor-pointer" onclick="deleteClientAction()"> Hapus Klien</button>
                     <div class="flex items-center gap-2 ml-auto">
                         <button type="button" class="btn-secondary inline-flex items-center justify-center px-3.5 py-2 text-xs sm:text-sm font-medium cursor-pointer" onclick="closeClientCrudModal()">Batal</button>
                         <button type="submit" class="btn-primary inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-medium shadow-2xs cursor-pointer">Simpan Klien</button>
@@ -793,12 +761,12 @@
                     <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Physical VHD File Path</label>
                     <div class="flex gap-2">
                         <input type="text" id="vhd-path" placeholder="e.g. D:\Images\Windows10.vhd" required class="flex-1 min-w-0 px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/60 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none transition-colors">
-                        <button type="button" class="btn-secondary inline-flex items-center justify-center px-3 py-2 text-xs font-medium shrink-0 cursor-pointer" onclick="selectVhdFileViaExplorer()">📂 Browse</button>
+                        <button type="button" class="btn-secondary inline-flex items-center justify-center px-3 py-2 text-xs font-medium shrink-0 cursor-pointer" onclick="selectVhdFileViaExplorer()"> Browse</button>
                     </div>
                 </div>
 
                 <div class="flex items-center justify-between gap-3 pt-4 sm:pt-5 border-t border-zinc-100 dark:border-zinc-800">
-                    <button type="button" id="btn-vhd-delete" class="btn-secondary inline-flex items-center justify-center gap-1 px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-300 dark:hover:border-rose-900 transition-colors cursor-pointer" onclick="deleteVhdAction()">🗑️ Hapus VHD</button>
+                    <button type="button" id="btn-vhd-delete" class="btn-secondary inline-flex items-center justify-center gap-1 px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-300 dark:hover:border-rose-900 transition-colors cursor-pointer" onclick="deleteVhdAction()"> Hapus VHD</button>
                     <div class="flex items-center gap-2 ml-auto">
                         <button type="button" class="btn-secondary inline-flex items-center justify-center px-3.5 py-2 text-xs sm:text-sm font-medium cursor-pointer" onclick="closeVhdCrudModal()">Batal</button>
                         <button type="submit" class="btn-primary inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-medium shadow-2xs cursor-pointer">Simpan Mapping</button>
@@ -816,16 +784,16 @@
                     <h2 class="text-base sm:text-lg font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight" id="snapshots-modal-title">Riwayat Snapshot VHD</h2>
                     <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Pilih salah satu snapshot untuk me-restore state boot disk VHD.</p>
                 </div>
-                <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 text-base cursor-pointer" onclick="closeSnapshotsModal()">✕</button>
+                <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 text-base cursor-pointer" onclick="closeSnapshotsModal()">×</button>
             </div>
 
             <div class="overflow-x-auto max-h-72 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800 mb-5">
                 <table class="w-full text-left text-xs sm:text-sm border-collapse">
                     <thead>
                         <tr class="bg-zinc-50 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800">
-                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">File Snapshot</th>
-                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Ukuran</th>
-                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-nowrap text-right">Aksi</th>
+                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">File Snapshot</th>
+                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Ukuran</th>
+                            <th class="py-2.5 px-3.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody id="snapshots-tbody" class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
@@ -847,23 +815,21 @@
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto my-auto transition-colors">
             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center justify-center font-bold text-sm">
-                        🗄️
-                    </div>
+
                     <h2 class="text-base sm:text-lg font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Alokasikan Partisi Disk</h2>
                 </div>
-                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg p-1 cursor-pointer" onclick="closePartitionModal()">✕</button>
+                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg p-1 cursor-pointer" onclick="closePartitionModal()">×</button>
             </div>
-            
+
             <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 leading-relaxed" id="partition-modal-desc">Pilih fungsi atau lepas alokasi untuk partisi disk.</p>
             <input type="hidden" id="partition-mount-point">
-            
+
                 <div class="space-y-2.5 mb-5">
                     <label class="flex items-start gap-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer transition-colors">
                         <input type="radio" name="partition-role" value="boot" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
                         <div class="min-w-0">
                             <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                                <span>💿</span>
+
                                 <span>Image Disk (Base OS Image)</span>
                             </span>
                             <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Menyimpan direktori master image boot OS diskless</span>
@@ -874,7 +840,7 @@
                         <input type="radio" name="partition-role" value="writeback" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
                         <div class="min-w-0">
                             <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                                <span>⚡</span>
+
                                 <span>Writeback Cache</span>
                             </span>
                             <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Menampung file write diskless klien</span>
@@ -885,7 +851,7 @@
                         <input type="radio" name="partition-role" value="gamedisk" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
                         <div class="min-w-0">
                             <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                                <span>🎮</span>
+
                                 <span>Gamedisk Storage Target</span>
                             </span>
                             <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Disk game iSCSI block target klien (konfigurasi cache di tab iSCSI Cache)</span>
@@ -896,7 +862,7 @@
                         <input type="radio" name="partition-role" value="none" class="mt-1 accent-zinc-900 dark:accent-zinc-100">
                         <div class="min-w-0">
                             <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                                <span>⚪</span>
+
                                 <span>Lepas Alokasi (None / Unassigned)</span>
                             </span>
                             <span class="text-[11px] text-zinc-500 dark:text-zinc-400 block mt-0.5">Hapus seluruh peran yang melekat pada drive ini</span>
@@ -914,7 +880,7 @@
     <!-- MODAL CONFIRMATION DIALOG -->
     <div id="confirm-modal" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto">
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-sm w-full shadow-xl text-center my-auto">
-            <div class="text-3xl mb-2.5" id="confirm-icon">⚠️</div>
+
             <h3 class="font-semibold text-base sm:text-lg text-zinc-900 dark:text-zinc-100 tracking-tight mb-1" id="confirm-title">Konfirmasi Aksi</h3>
             <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mb-5" id="confirm-message">Apakah Anda yakin ingin melanjutkan tindakan ini?</p>
             <div class="flex items-center justify-center gap-2.5">
@@ -929,15 +895,13 @@
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl my-auto transition-colors">
             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-md bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm border border-amber-200 dark:border-amber-800">
-                        ⚡
-                    </div>
+
                     <div>
                         <h2 class="text-base sm:text-lg font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">Nonaktifkan Super Client</h2>
                         <p class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono" id="superclient-modal-target">Klien: -</p>
                     </div>
                 </div>
-                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg p-1 cursor-pointer" onclick="closeSuperClientDisableModal()">✕</button>
+                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg p-1 cursor-pointer" onclick="closeSuperClientDisableModal()">×</button>
             </div>
 
             <p class="text-xs text-zinc-600 dark:text-zinc-300 mb-4 leading-relaxed">
@@ -949,7 +913,7 @@
                 <button type="button" class="w-full group p-3.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-left transition-colors cursor-pointer" onclick="handleSuperClientDisableChoice('commit')">
                     <div class="flex items-center justify-between gap-2 mb-1">
                         <div class="flex items-center gap-2">
-                            <span class="text-base">💾</span>
+
                             <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100">Commit (Simpan ke Master VHD)</span>
                         </div>
                         <span class="text-xs text-emerald-600 dark:text-emerald-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
@@ -963,7 +927,7 @@
                 <button type="button" class="w-full group p-3.5 rounded-md border border-zinc-200 dark:border-zinc-800 hover:border-rose-500 dark:hover:border-rose-500 bg-zinc-50/40 dark:bg-zinc-950/40 hover:bg-rose-50/20 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer" onclick="handleSuperClientDisableChoice('discard')">
                     <div class="flex items-center justify-between gap-2 mb-1">
                         <div class="flex items-center gap-2">
-                            <span class="text-base">🗑️</span>
+
                             <span class="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100">Discard (Buang Perubahan & Nonaktifkan)</span>
                         </div>
                         <span class="text-xs text-rose-600 dark:text-rose-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
@@ -983,16 +947,16 @@
     <!-- CONTEXT MENU FOR CLIENT ROWS -->
     <div id="context-menu" class="context-menu bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-1 shadow-md text-xs font-medium w-52">
         <button type="button" class="context-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 text-left transition-colors cursor-pointer" onclick="ctxToggleSuperClient()">
-            <span>⚡</span>
+
             <span id="ctx-super-client-label">Enable Super Client</span>
         </button>
         <button type="button" class="context-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 text-left transition-colors cursor-pointer" onclick="ctxClearWriteback()">
-            <span>🧹</span>
+
             <span>Clear Writeback Cache</span>
         </button>
         <div class="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
         <button type="button" class="context-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 text-left transition-colors cursor-pointer" onclick="ctxEditClient()">
-            <span>✏️</span>
+
             <span>Edit Data Klien</span>
         </button>
     </div>
@@ -1002,17 +966,15 @@
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 sm:p-6 max-w-lg w-full shadow-2xl my-auto transition-colors">
             <!-- Modal Header -->
             <div class="flex items-center gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
-                <div id="merge-modal-icon-container" class="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg border border-amber-200 dark:border-amber-800 shrink-0">
-                    <span id="merge-modal-icon" class="animate-pulse">⚡</span>
-                </div>
+
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center justify-between gap-2">
-                        <h3 class="text-sm sm:text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight truncate">Penggabungan VHD Super Client</h3>
+                        <h3 class="text-sm sm:text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight break-words">Penggabungan VHD Super Client</h3>
                         <span id="merge-modal-status-badge" class="px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shrink-0">
                             Sedang Berjalan
                         </span>
                     </div>
-                    <p class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono truncate" id="merge-modal-target-info">Base OS Image: -</p>
+                    <p class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono break-words" id="merge-modal-target-info">Base OS Image: -</p>
                 </div>
             </div>
 
@@ -1044,7 +1006,7 @@
 
                 <!-- Info Safety Advice / Warning (visible while running) -->
                 <div id="merge-modal-safety-notice" class="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-lg p-3 flex items-start gap-2.5 leading-relaxed">
-                    <span class="shrink-0 text-sm mt-0.5">⚠️</span>
+
                     <div>
                         <strong class="font-semibold">Penting:</strong> Penggabungan data VHD skala besar (hingga 10GB+) sedang berlangsung langsung pada block-level disk. Harap jangan mematikan server atau menutup tab ini hingga proses selesai 100%.
                     </div>
@@ -1052,7 +1014,7 @@
 
                 <!-- Success Confirmation Box (visible upon 100% completion) -->
                 <div id="merge-modal-success-box" class="hidden text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3.5 flex items-start gap-2.5 leading-relaxed">
-                    <span class="shrink-0 text-base mt-0.5">✅</span>
+
                     <div>
                         <strong class="font-semibold block mb-0.5">Commit Super Client Berhasil!</strong>
                         Seluruh modifikasi differencing VHD telah sukses digabungkan secara utuh ke Master Base Image. File differencing telah dibersihkan dan PC klien telah dikembalikan ke mode diskless standar.
@@ -1061,7 +1023,7 @@
 
                 <!-- Error Confirmation Box (visible upon failure) -->
                 <div id="merge-modal-error-box" class="hidden text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg p-3.5 flex items-start gap-2.5 leading-relaxed">
-                    <span class="shrink-0 text-base mt-0.5">❌</span>
+
                     <div>
                         <strong class="font-semibold block mb-0.5">Penggabungan Gagal!</strong>
                         <span id="merge-modal-error-msg">-</span>
@@ -1084,15 +1046,15 @@
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-md w-full shadow-xl my-auto">
             <div class="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
                 <h3 class="text-sm sm:text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-                    <span>⚡</span>
+
                     <span id="modal-edit-cache-title">Ubah Alokasi RAM Cache</span>
                 </h3>
-                <button type="button" onclick="closeEditCacheModal()" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-base cursor-pointer">✕</button>
+                <button type="button" onclick="closeEditCacheModal()" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-base cursor-pointer">×</button>
             </div>
-            
+
             <form onsubmit="submitEditCache(event)" class="space-y-4">
                 <input type="hidden" id="edit-cache-disk-id">
-                
+
                 <div>
                     <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Target Disk</label>
                     <input type="text" id="edit-cache-disk-name" readonly class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-950/80 text-zinc-600 dark:text-zinc-400 font-mono">
@@ -1122,14 +1084,72 @@
 
                 <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
                     <button type="button" onclick="closeEditCacheModal()" class="px-3.5 py-1.5 text-xs font-medium rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer">Batal</button>
-                    <button type="submit" class="btn-primary px-4 py-1.5 text-xs font-medium shadow-2xs transition-all cursor-pointer">💾 Simpan Alokasi</button>
+                    <button type="submit" class="btn-primary px-4 py-1.5 text-xs font-medium shadow-2xs transition-all cursor-pointer"> Simpan Alokasi</button>
                 </div>
             </form>
         </div>
     </div>
 
+
+    <!-- BULK EDIT KLIEN -->
+    <div id="client-bulk-edit-modal" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto">
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto my-auto">
+            <div class="flex items-start justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+                <div>
+                    <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Edit Massal Klien</h2>
+                    <p id="client-bulk-summary" class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"></p>
+                </div>
+                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1 cursor-pointer" onclick="closeClientBulkEditModal()">×</button>
+            </div>
+            <form id="client-bulk-form" onsubmit="saveClientBulkEdit(event)">
+                <div id="client-bulk-fields" class="space-y-2 max-h-[55vh] overflow-y-auto pr-1"></div>
+                <div class="flex justify-end gap-2 pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800">
+                    <button type="button" class="btn-secondary px-3.5 py-2 text-xs font-medium cursor-pointer" onclick="closeClientBulkEditModal()">Batal</button>
+                    <button type="submit" class="btn-primary px-4 py-2 text-xs font-medium cursor-pointer">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- CACHE DETAIL -->
+    <div id="cache-detail-modal" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto">
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-lg w-full shadow-xl max-h-[90vh] overflow-y-auto my-auto">
+            <div class="flex items-start justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+                <div>
+                    <h2 id="cache-detail-title" class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Detail Cache</h2>
+                    <p id="cache-detail-subtitle" class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"></p>
+                </div>
+                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1 text-lg cursor-pointer" onclick="closeCacheDetailModal()">×</button>
+            </div>
+            <div id="cache-detail-body" class="space-y-2 text-xs"></div>
+            <div class="flex flex-wrap justify-end gap-2 pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800">
+                <button id="cache-detail-edit" type="button" class="btn-secondary px-3 py-2 text-xs font-medium cursor-pointer">Atur Kapasitas</button>
+                <button id="cache-detail-flush" type="button" class="px-3 py-2 text-xs font-medium rounded-md border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Flush Cache</button>
+                <button type="button" class="btn-secondary px-3 py-2 text-xs font-medium cursor-pointer" onclick="closeCacheDetailModal()">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LIHAT SEMUA -->
+    <div id="list-modal" class="modal-backdrop p-3 sm:p-4 md:p-6 overflow-y-auto">
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5 sm:p-6 max-w-5xl w-full shadow-xl max-h-[90vh] overflow-y-auto my-auto">
+            <div class="flex items-start justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+                <div>
+                    <h2 id="list-modal-title" class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Lihat semua</h2>
+                    <p id="list-modal-subtitle" class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"></p>
+                </div>
+                <button type="button" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1 cursor-pointer" onclick="closeListModal()">×</button>
+            </div>
+            <div id="list-modal-body" class="max-h-[70vh] overflow-y-auto"></div>
+            <div class="flex justify-end pt-4 mt-4 border-t border-zinc-100 dark:border-zinc-800">
+                <button type="button" class="btn-secondary px-4 py-2 text-xs font-medium cursor-pointer" onclick="closeListModal()">Tutup</button>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATION CONTAINER -->
-    <div id="toast-container" class="toast-container"></div>
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
     <datalist id="tftp-folders-list"></datalist>
 
