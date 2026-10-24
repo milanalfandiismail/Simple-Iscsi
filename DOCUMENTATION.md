@@ -981,7 +981,7 @@ Integrasi protokol DHCP Option 12, format suffix IQN `:0XX`, dan alokasi cache R
 | Format Target IQN | Suffix bebas / standar iSCSI kanonikal | **Wajib suffix `:0XX`** (divalidasi oleh `CCBootPNPX.sys`) |
 | Hostname DHCP Option 12 | Plain Hostname (misal: `PC-01`) | Hostname berkode parameter cache: `PC-01(1-2048-0)` |
 | Sinkronisasi Registry & IP | User-Mode Engine (`helper-svc.exe`) | Kernel Driver (`CCBootPNPX.sys` via `CCBootPnP` registry key) |
-| Vendor ID Storage Inquiry | Bebas (default `RUSTISCS`) | **Wajib mengandung `"CCBoot"`, `"CCDisk"`, atau `"VMware"`** |
+| Vendor ID Storage Inquiry | Bebas (default `RUSTISCS` via `config.toml`) | **Otomatis dinamis `"CCBoot"`** (Model `"Modified"`) |
 | Kasus Penggunaan Ideal | Instalasi bersih, image netral, performa native murni | Migrasi image lama tanpa modifikasi driver sistem |
 
 ---
@@ -1047,11 +1047,10 @@ Driver `CCacheX.sys` (versi `1.0.0.2`) adalah **client-side volume cache filter 
   2. `"CCDisk"`
   3. `"VMware"`
 * Jika target iSCSI menggunakan Vendor ID standar atau vendor lain (seperti bawaan Simple-Iscsi `RUSTISCS`), driver `CCacheX.sys` akan secara diam-diam **mengabaikan dan melewati inisialisasi cache**.
-* **Solusi di Simple-Iscsi:** Di file [`config.toml`](file:///c:/Project%20GIT/Simple-Iscsi/config.toml), parameter `vendor_id` wajib disetel ke `"CCBoot"`:
-  ```toml
-  [windows]
-  vendor_id = "CCBoot"
-  ```
+* **Solusi Cerdas di Simple-Iscsi (Dynamic SCSI Identity Per-Client):**
+  Server Simple-Iscsi secara otomatis memeriksa profil klien di [`clients.toml`](file:///c:/Project%20GIT/Simple-Iscsi/clients.toml) berdasarkan IP klien (`client_ip`):
+  - **Klien CCBoot (`driver = "ccboot"`):** Server otomatis menetapkan identitas SCSI INQUIRY Drive C: (LUN 0) menjadi **`Vendor = "CCBoot"`**, **`Model Disk = "Modified"`**, dan **`Revision = "1.00"`**, sehingga driver `CCacheX.sys` langsung aktif dan valid.
+  - **Klien Native (`driver = "native"`):** Identitas disk tetap bebas mengikuti konfigurasi dari [`config.toml`](file:///c:/Project%20GIT/Simple-Iscsi/config.toml) (misal: `"RUSTISCS"`, `"Virtual Disk"`, dll.).
 
 #### 3. Bypass Otomatis pada Mode Super Client
 * **Kebutuhan Teknis:** Ketika sebuah PC klien diatur sebagai **Super Client** untuk melakukan pembaruan image master (instalasi game, patch Windows, update driver), seluruh operasi penulisan disk harus langsung diteruskan secara live ke layer differencing VHD server tanpa adanya distorsi data dari cache RAM lokal yang *stale*.

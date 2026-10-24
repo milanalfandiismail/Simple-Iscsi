@@ -18,9 +18,30 @@ pub fn get_clients_json() -> String {
     }
 }
 
-pub fn post_clients_json(body: &str) -> String {
+pub fn post_clients_json(stats: &std::sync::Arc<crate::stats::ServerStats>, body: &str) -> String {
     match serde_json::from_str::<ClientsConfig>(body) {
         Ok(mut clients_cfg) => {
+            // Validasi: Klien yang sedang ONLINE tidak boleh dihapus
+            if let Ok(current_clients) = crate::config::load_clients("clients.toml") {
+                for (_, curr_c) in current_clients {
+                    let still_exists = clients_cfg.clients.iter().any(|new_c| {
+                        new_c.ip == curr_c.ip || new_c.mac.eq_ignore_ascii_case(&curr_c.mac)
+                    });
+                    if !still_exists {
+                        if let Some(client_stat) = stats.client_stats.get(&curr_c.ip) {
+                            if client_stat.active_sessions.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+                                let hostname = curr_c.hostname.as_deref().unwrap_or(&curr_c.ip);
+                                let err_json = serde_json::json!({
+                                    "status": "error",
+                                    "message": format!("Gagal menghapus: Klien '{}' ({}) sedang ONLINE. Matikan PC terlebih dahulu sebelum menghapus.", hostname, curr_c.ip)
+                                });
+                                return crate::server_api::build_response(400, "Bad Request", "application/json", &err_json.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
             for client in &mut clients_cfg.clients {
                 if let Err(e) = normalize_client_cache(client) {
                     return crate::server_api::build_response(400, "Bad Request", "text/plain", &e);
@@ -401,5 +422,30 @@ pub fn post_superclient_discard(
             crate::server_api::build_response(200, "OK", "application/json", &resp.to_string())
         }
         Err(_) => crate::server_api::build_response(400, "Bad Request", "application/json", r#"{"status":"error","message":"Format JSON request tidak valid"}"#),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use crate::stats::ServerStats;
+
+    #[test]
+    fn test_reject_delete_online_client() {
+        let stats = Arc::new(ServerStats::new());
+        // Simulasikan klien 192.168.180.250 sedang online
+        stats.record_session_start("192.168.180.250");
+
+        // Kirim request JSON tanpa menyertakan klien 192.168.180.250 (upaya menghapus)
+        let body = r#"{"client": []}"#;
+        let resp = post_clients_json(&stats, body);
+
+        // Bersihkan sesi aktif mock
+        stats.record_session_end("192.168.180.250");
+
+        // Verifikasi bahwa response adalah HTTP 400 Bad Request dan memuat pesan error online
+        assert!(resp.contains("400 Bad Request"), "Respon harus 400 Bad Request saat menghapus klien online, didapat: {}", resp);
+        assert!(resp.contains("sedang ONLINE"), "Respon harus memuat informasi klien sedang online");
     }
 }

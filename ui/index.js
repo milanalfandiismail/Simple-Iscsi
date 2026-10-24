@@ -982,6 +982,19 @@ function deleteSelectedClients() {
     const count = selectedClientMacs.size;
     if (!count) return;
     const selected = (clientsObj.client || []).filter(c => selectedClientMacs.has(String(c.mac || '').toLowerCase()));
+
+    // Strict Block: Periksa apakah ada klien terpilih yang sedang ONLINE
+    const onlineClients = selected.filter(c => {
+        const s = activeSessionsMap.get(c.ip);
+        return s && s.active;
+    });
+
+    if (onlineClients.length > 0) {
+        const names = onlineClients.map(c => c.hostname || c.ip).join(', ');
+        showToast(`Tidak dapat menghapus: Terdapat ${onlineClients.length} PC sedang ONLINE (${names}). Matikan PC terlebih dahulu.`, 'warning', 'Penghapusan Ditolak');
+        return;
+    }
+
     const names = selected.slice(0, 3).map(c => c.hostname || c.ip).join(', ');
     showConfirmModal('Hapus ' + count + ' klien?', 'Klien berikut akan dihapus permanen: ' + names + (count > 3 ? ', +' + (count - 3) + ' lainnya' : ''), async () => {
         const original = clientsObj.client || [];
@@ -989,7 +1002,6 @@ function deleteSelectedClients() {
         const saved = await saveClientsJson();
         if (!saved) {
             clientsObj.client = original;
-            showToast('Gagal menghapus klien. Periksa server.', 'error', 'Hapus gagal');
             return;
         }
         clearClientSelection();
@@ -1081,7 +1093,19 @@ async function openClientCrudModal(client = null) {
         document.getElementById('client-cache-enabled').checked = !!client.cache_enabled;
         document.getElementById('client-cache-size-mb').value = client.cache_size_mb || 0;
         onClientDriverChange();
-        document.getElementById('btn-client-delete').style.display = 'inline-flex';
+        const delBtn = document.getElementById('btn-client-delete');
+        delBtn.style.display = 'inline-flex';
+        const statsInfo = activeSessionsMap.get(client.ip);
+        const isOnline = statsInfo && statsInfo.active;
+        if (isOnline) {
+            delBtn.disabled = true;
+            delBtn.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+            delBtn.title = 'Klien sedang ONLINE (tidak dapat dihapus)';
+        } else {
+            delBtn.disabled = false;
+            delBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+            delBtn.title = 'Hapus data klien ini';
+        }
     } else {
         document.getElementById('client-modal-title').textContent = 'Tambah Klien Baru';
         document.getElementById('client-old-mac').value = '';
@@ -1090,7 +1114,10 @@ async function openClientCrudModal(client = null) {
         document.getElementById('client-cache-enabled').checked = false;
         document.getElementById('client-cache-size-mb').value = '0';
         onClientDriverChange();
-        document.getElementById('btn-client-delete').style.display = 'none';
+        const delBtn = document.getElementById('btn-client-delete');
+        delBtn.style.display = 'none';
+        delBtn.disabled = false;
+        delBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
     }
 }
 
@@ -1185,11 +1212,22 @@ async function deleteClientAction() {
     const oldMac = document.getElementById('client-old-mac').value.trim();
     if (!oldMac) return;
 
-    showConfirmModal('Hapus Klien', `Apakah Anda yakin ingin menghapus data klien dengan MAC ${oldMac}?`, async () => {
-        clientsObj.client = clientsObj.client.filter(c => c.mac.toLowerCase() !== oldMac.toLowerCase());
+    const targetClient = (clientsObj.client || []).find(c => c.mac.toLowerCase() === oldMac.toLowerCase());
+    if (targetClient) {
+        const statsInfo = activeSessionsMap.get(targetClient.ip);
+        if (statsInfo && statsInfo.active) {
+            showToast(`Klien '${targetClient.hostname || targetClient.ip}' sedang ONLINE dan tidak dapat dihapus. Matikan PC terlebih dahulu.`, 'warning', 'Aksi Ditolak');
+            return;
+        }
+    }
+
+    const clientName = targetClient ? (targetClient.hostname || targetClient.ip) : oldMac;
+    showConfirmModal('Hapus Klien', `Apakah Anda yakin ingin menghapus data klien '${clientName}' (${oldMac})?`, async () => {
+        const original = clientsObj.client || [];
+        clientsObj.client = original.filter(c => c.mac.toLowerCase() !== oldMac.toLowerCase());
         const saved = await saveClientsJson();
         if (!saved) {
-            showToast('Gagal menghapus klien. Periksa server.', 'error', 'Hapus gagal');
+            clientsObj.client = original;
             return;
         }
         closeClientCrudModal();
@@ -1235,7 +1273,12 @@ async function loadClientsJson() {
 
 async function saveClientsJson() {
     const res = await apiPost('/api/clients/json', clientsObj);
-    return res && res.status === 'ok';
+    if (!res || res.status !== 'ok') {
+        const msg = (res && res.message) ? res.message : 'Gagal menyimpan konfigurasi klien';
+        showToast(msg, 'error', 'Penyimpanan Gagal');
+        return false;
+    }
+    return true;
 }
 
 // VHD Manager CRUD Handlers
@@ -1704,12 +1747,16 @@ async function savePartitionRoleAction() {
     } else if (role === 'gamedisk') {
         const targetDiskPath = physicalDisk ? physicalDisk : `\\\\.\\${letter}:`;
         if (!configObj.gamedisk) configObj.gamedisk = [];
+        const defaultVendor = (configObj.gamedisk_target && configObj.gamedisk_target.vendor_id) || "RUSTISCS";
+        const baseProduct = (configObj.gamedisk_target && configObj.gamedisk_target.product_id) || "GameDisk";
+        const defaultRev = (configObj.gamedisk_target && configObj.gamedisk_target.product_revision) || "1.00";
+        const newProduct = configObj.gamedisk.length > 0 ? `${baseProduct}-${configObj.gamedisk.length}` : baseProduct;
         configObj.gamedisk.push({
             physical_disk: targetDiskPath,
             block_size: 512,
-            vendor_id: "RUSTISCS",
-            product_id: `GameDisk-${configObj.gamedisk.length}`,
-            product_revision: "1.00",
+            vendor_id: defaultVendor,
+            product_id: newProduct,
+            product_revision: defaultRev,
             ram_cache_mb: previousRamCache
         });
     }
@@ -1763,6 +1810,7 @@ function loadDiskBrandingParams() {
     if (!configObj) return;
 
     const winCfg = configObj.windows || {};
+    const gtCfg = configObj.gamedisk_target || {};
     const gdList = configObj.gamedisk || [];
     const firstGd = gdList[0] || {};
 
@@ -1774,9 +1822,9 @@ function loadDiskBrandingParams() {
 
     if (osVendorEl) osVendorEl.value = winCfg.vendor_id || 'RUSTISCS';
     if (osProductEl) osProductEl.value = winCfg.product_id || 'WindowsBoot';
-    if (gmVendorEl) gmVendorEl.value = firstGd.vendor_id || 'RUSTISCS';
-    if (gmProductEl) gmProductEl.value = firstGd.product_id || 'GameDisk-0';
-    if (revEl) revEl.value = winCfg.product_revision || firstGd.product_revision || '1.00';
+    if (gmVendorEl) gmVendorEl.value = gtCfg.vendor_id || firstGd.vendor_id || 'RUSTISCS';
+    if (gmProductEl) gmProductEl.value = gtCfg.product_id || firstGd.product_id || 'GameDisk-0';
+    if (revEl) revEl.value = winCfg.product_revision || gtCfg.product_revision || firstGd.product_revision || '1.00';
 
     updateDiskBrandingPreview();
 }
@@ -1851,6 +1899,9 @@ function applyDiskBrandingPreset(presetKey) {
 async function saveDiskBrandingAction() {
     if (!configObj) configObj = {};
     if (!configObj.windows) configObj.windows = {};
+    if (!configObj.gamedisk_target) {
+        configObj.gamedisk_target = { target_iqn: 'iqn.2024-01.com.tmdebug:gamedisks', discovery: true };
+    }
 
     const osVendor = (document.getElementById('disk-vendor-os')?.value || 'RUSTISCS').trim();
     const osProduct = (document.getElementById('disk-product-os')?.value || 'WindowsBoot').trim();
@@ -1862,6 +1913,12 @@ async function saveDiskBrandingAction() {
     configObj.windows.product_id = osProduct || 'WindowsBoot';
     configObj.windows.product_revision = rev || '1.00';
 
+    // Simpan ke gamedisk_target agar tetap tersimpan di config.toml meski belum ada gamedisk yang dialokasikan
+    configObj.gamedisk_target.vendor_id = gmVendor || 'RUSTISCS';
+    configObj.gamedisk_target.product_id = gmProduct || 'GameDisk-0';
+    configObj.gamedisk_target.product_revision = rev || '1.00';
+
+    // Perbarui disk-disk yang sudah ada di array gamedisk
     if (Array.isArray(configObj.gamedisk)) {
         configObj.gamedisk.forEach((gd, idx) => {
             gd.vendor_id = gmVendor || 'RUSTISCS';
@@ -1879,8 +1936,6 @@ async function saveDiskBrandingAction() {
     }
 }
 
-async
-async
 // Central Settings & Config Handlers
 async function loadConfigJson() {
     try {
