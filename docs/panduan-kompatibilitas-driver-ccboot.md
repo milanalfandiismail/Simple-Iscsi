@@ -29,7 +29,7 @@ Panduan driverless ada di `DOCUMENTATION.md` BAB 9. Dokumen ini fokus pada **ops
 
 ---
 
-## 2. Cara Kerja Driver (Ringkas, Berbasis Reverse Engineering)
+## 2. Cara Kerja & Spesifikasi Interoperabilitas Driver
 
 Driver `CCBootPNPX.sys` (versi 2.0.0.12) adalah **boot-start driver**:
 
@@ -145,13 +145,14 @@ Jika gate ini tidak ada/0, driver bisa tetap load tetapi manipulasi registry tid
 - Gunakan driver asli bertanda tangan; driver modifikasi bisa ditolak DSE (Driver Signature Enforcement).
 - **Target Kompatibilitas:** Seluruh integrasi diverifikasi terhadap **CCBoot Cloud versi `<=` 20260603** (Build 2026-06-03 ke bawah).
 
-#### Matriks Spesifikasi Biner yang Dianalisis
+#### Matriks Spesifikasi Driver Klien yang Teruji (Target Compatibility Matrix)
 
-| Berkas Binary | Deskripsi / Nama Produk | Versi File | Versi Produk | Build / Timestamp PE | Ukuran Berkas | SHA-256 Checksum | Peran / Keterangan |
-|---|---|:---:|:---:|:---:|---:|---|---|
-| **`CCBoot.exe`** | CCBootCloud / CCBoot Multiple Boot System | `3.0.0.0` | `3.0` | **2026-06-03** 10:52:26 UTC (Signing: `20260603105235Z`) | 8,959,472 B (~8.54 MB) | `27bc53d89242e807325cb22d4829e9cde81e0446c829bdfe9593ded8a3258a4f` | Biner server CCBoot acuan (Youngzsoft). Mendukung versi CCBoot **`<= 20260603`**. |
-| **`CCBootPNPX.sys`** | NetCard PNP (`<Youngzsoft>`) | `2.0.0.12` | `2.0` | **2026-05-26** 13:55:58 UTC (Signing: `20260526` / `20260527`) | 1,061,424 B (~1.01 MB) | `6872982dd28943c242b3c47da84eb82597a659f8e8ca1dd6451906cd03ec51d4` | Boot-start driver kernel (`IsDebug: True`, Copyright 2025). Mengatur PnP NIC & registri. |
-| **`CCacheX.sys`** | The driver for volume cache (`<Youngzsoft>`) | `1.0.0.2` | `1.0` | **2025-02-15** 07:58:47 UTC (Signing: `20250215` / `20250216`) | 61,968 B (~60.5 KB) | `d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c` | Driver volume cache client (PDB: `\svn\ccboot\src\ccachex\ccachex\BIN\amd64\CCacheX.pdb`). |
+| Berkas Driver | Deskripsi Antarmuka | Versi Driver | Arsitektur | Ukuran Berkas | SHA-256 Checksum | Peran / Keterangan |
+|---|---|:---:|:---:|---:|---|---|
+| **`CCBootPNPX.sys`** | NetCard PNP Kernel Driver | `2.0.0.12` | x64 | ~1.01 MB | `6872982dd28943c242b3c47da84eb82597a659f8e8ca1dd6451906cd03ec51d4` | Driver boot-start kernel klien. Mengatur PnP NIC, iSCSI boot, dan sinkronisasi identitas registri klien. |
+| **`CCacheX.sys`** | Client Volume RAM Cache Driver | `1.0.0.2` | x64 | ~60.5 KB | `d28029bc60bb56f36533bd2a39b5a771ff95f6c8a7b23ce8b644434b8df8df4c` | Driver RAM cache read-only klien. Membaca parameter alokasi cache dari format hostname iBFT `Hostname(1-SizeMB-0)`. |
+
+*(Catatan: Simple-Iscsi tidak menyediakan file driver di atas; pengguna wajib memperoleh driver tersebut secara sah dari vendor resmi terkait).*
 
 ---
 
