@@ -1027,6 +1027,18 @@ Driver `CCacheX.sys` (versi `1.0.0.2`) adalah **client-side volume cache filter 
     * Nilai `0`: Driver akan mengalokasikan memori secara otomatis sebesar **20% dari total RAM fisik klien**.
     * Nilai numerik manual: Minimum 32 MB, maksimum umumnya hingga 8192 MB (dibulatkan oleh driver ke kelipatan 16 MB terdekat).
 
+  * **Contoh Riil Format Hostname di Jaringan & iBFT:**
+    Agar tidak bingung dengan rumus format di atas, berikut contoh nyata string Hostname yang dikirimkan oleh Simple-Iscsi pada DHCP Option 12 dan dibaca oleh driver klien:
+
+    | Konfigurasi di `clients.toml` | Hostname Asli | Alokasi Cache (`cache_size_mb`) | String Hostname yang Diterima Klien | Perilaku & Hasil Kerja Driver |
+    |---|:---:|:---:|:---:|---|
+    | `cache_enabled = true` | `PC-01` | `2048` (2 GB) | **`PC-01(1-2048-0)`** | `CCacheX.sys` mengalokasikan **2048 MB RAM fisik** sebagai read cache. `CCBootPNPX.sys` memotong string sebelum tanda `(`, sehingga nama komputer Windows di registri tetap bersih: **`PC-01`**. |
+    | `cache_enabled = true` | `WARNET-05` | `1024` (1 GB) | **`WARNET-05(1-1024-0)`** | `CCacheX.sys` mengalokasikan **1024 MB RAM**. Nama komputer Windows tetap **`WARNET-05`**. |
+    | `cache_enabled = true` | `VIP-ROOM` | `4096` (4 GB) | **`VIP-ROOM(1-4096-0)`** | `CCacheX.sys` mengalokasikan **4096 MB RAM** pada PC klien berspesifikasi tinggi (misal RAM fisik 16-32 GB). |
+    | `cache_enabled = true` | `LAB-03` | `0` (Otomatis 20%) | **`LAB-03(1-0-0)`** | `CCacheX.sys` menghitung kapasitas RAM secara dinamis dan memakai **20% dari total RAM** (misal pada PC dengan RAM 16 GB, teralokasi ~3.2 GB). |
+    | `cache_enabled = false` | `PC-02` | *(Cache Dimatikan)* | **`PC-02`** | Tidak ada suffix parameter. `CCacheX.sys` tidak aktif / melewati inisialisasi volume caching. |
+    | `is_super_client = true` | `PC-01` | *(Super Client Aktif)* | **`PC-01`** | Server Simple-Iscsi **otomatis memotong suffix cache** agar seluruh operasi penulisan (update game/Windows) langsung masuk secara live ke VHD master tanpa terdistorsi oleh cache RAM klien. |
+
 #### 2. Validasi SCSI Inquiry Vendor ID (Storage Descriptor Whitelist)
 * Sebelum memasang hook caching pada volume drive, `CCacheX.sys` memanggil `STORAGE_DEVICE_DESCRIPTOR` disk melalui I/O control request.
 * Driver memeriksa string pada offset `+0xC` (`VendorIdOffset`).
