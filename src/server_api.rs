@@ -302,7 +302,7 @@ async fn handle_request(
         }
 
         ("POST", "/api/clients/json") => {
-            crate::api::routes_client::post_clients_json(&body)
+            crate::api::routes_client::post_clients_json(stats, &body)
         }
 
         ("POST", "/api/clients/autofix") => {

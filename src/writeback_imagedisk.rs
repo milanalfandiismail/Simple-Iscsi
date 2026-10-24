@@ -56,7 +56,7 @@ pub struct ChildVhdResult {
 /// - Normal client → create temporary child VHD dari base (diskless)
 pub fn init_child_vhd(
     config: &Config,
-    _client_ip: &str,
+    client_ip: &str,
     target_suffix: &str,
     is_super: bool,
 ) -> Result<ChildVhdResult, std::io::Error> {
@@ -70,6 +70,26 @@ pub fn init_child_vhd(
 
     let shared_cache = get_or_create_image_cache(&base_path, ram_cache_mb);
 
+    // Cek apakah klien terdaftar dengan driver CCBoot di clients.toml
+    let is_ccboot_client = if let Ok(clients) = crate::config::load_clients("clients.toml") {
+        clients.values().any(|c| c.ip == client_ip && c.driver == crate::config::BootDriver::Ccboot)
+    } else {
+        false
+    };
+
+    // Resolusi SCSI Disk Identity: CCBoot terkunci ("CCBoot", "Modified", "1.00"), Native mengikuti config.toml
+    let (effective_vendor, effective_product, effective_rev) = if is_ccboot_client {
+        info!("ImageBoot LUN 0: Klien {} menggunakan driver CCBoot -> Identitas SCSI: 'CCBoot Modified 1.00'", client_ip);
+        ("CCBoot".to_string(), "Modified".to_string(), "1.00".to_string())
+    } else {
+        let win = config.windows.as_ref();
+        let v = win.map(|w| w.vendor_id.clone()).unwrap_or_else(|| "RUSTISCS".to_string());
+        let p = win.map(|w| w.product_id.clone()).unwrap_or_else(|| "Virtual Disk".to_string());
+        let r = win.map(|w| w.product_revision.clone()).unwrap_or_else(|| "1.00".to_string());
+        info!("ImageBoot LUN 0: Klien {} menggunakan driver Native -> Identitas SCSI: '{} {} {}'", client_ip, v, p, r);
+        (v, p, r)
+    };
+
     if is_super {
         // === SUPER CLIENT: serve super VHD langsung ===
         let super_path = writeback_super::get_super_path(config, target_suffix);
@@ -82,9 +102,9 @@ pub fn init_child_vhd(
             &super_path,
             &base_path,
             config.windows.as_ref().unwrap().block_size,
-            &config.windows.as_ref().unwrap().vendor_id,
-            &config.windows.as_ref().unwrap().product_id,
-            &config.windows.as_ref().unwrap().product_revision,
+            &effective_vendor,
+            &effective_product,
+            &effective_rev,
             shared_cache,
         ).map_err(|e| {
             error!("Gagal membuka super VHD {}: {}", super_path, e);
@@ -102,9 +122,9 @@ pub fn init_child_vhd(
         let backend = Backend::new_vhd_with_shared_cache(
             &base_path,
             config.windows.as_ref().unwrap().block_size,
-            &config.windows.as_ref().unwrap().vendor_id,
-            &config.windows.as_ref().unwrap().product_id,
-            &config.windows.as_ref().unwrap().product_revision,
+            &effective_vendor,
+            &effective_product,
+            &effective_rev,
             shared_cache,
         ).map_err(|e| {
             error!("Gagal membuka base VHD {}: {}", base_path, e);
@@ -209,6 +229,56 @@ mod tests {
         assert!((stats_after_client2.hit_rate_pct - 50.0).abs() < 0.1);
 
         // Cleanup
+        let _ = std::fs::remove_file(vhd_path);
+    }
+
+    #[test]
+    fn test_dynamic_scsi_identity_ccboot_vs_native() {
+        let dir = std::env::temp_dir();
+        let vhd_path = dir.join(format!("test_vhd_ident_{}.vhd", uuid::Uuid::new_v4()));
+
+        // Buat mock fixed VHD
+        {
+            let mut file = File::create(&vhd_path).unwrap();
+            let payload = vec![0x33u8; 1024 * 1024];
+            file.write_all(&payload).unwrap();
+            let mut footer = vec![0u8; 512];
+            footer[0..8].copy_from_slice(b"conectix");
+            footer[16..24].copy_from_slice(&0xFFFFFFFFFFFFFFFFu64.to_be_bytes());
+            footer[48..56].copy_from_slice(&(1024 * 1024u64).to_be_bytes());
+            footer[60..64].copy_from_slice(&2u32.to_be_bytes());
+            file.write_all(&footer).unwrap();
+        }
+
+        let mut config = Config::default();
+        let mut img_map = std::collections::HashMap::new();
+        img_map.insert("w11".to_string(), vhd_path.to_str().unwrap().to_string());
+        config.image_manager = Some(img_map);
+        config.windows = Some(crate::config::WindowsConfig {
+            target_iqn_prefix: "iqn.win:".to_string(),
+            vhd_dir: "".to_string(),
+            block_size: 512,
+            vendor_id: "CUSTOM_NATIVE".to_string(),
+            product_id: "NativeDisk".to_string(),
+            product_revision: "2.50".to_string(),
+            discovery: false,
+            super_client_ip: "".to_string(),
+            super_client_action: "".to_string(),
+            ram_cache_mb: Some(0),
+        });
+
+        // 1. Klien CCBoot (192.168.180.250 terdaftar sebagai driver ccboot di clients.toml)
+        let res_ccboot = init_child_vhd(&config, "192.168.180.250", "w11", false).unwrap();
+        assert_eq!(res_ccboot.backend.vendor_id, "CCBoot");
+        assert_eq!(res_ccboot.backend.product_id, "Modified");
+        assert_eq!(res_ccboot.backend.product_revision, "1.00");
+
+        // 2. Klien Native (IP tidak terdaftar atau native)
+        let res_native = init_child_vhd(&config, "192.168.180.99", "w11", false).unwrap();
+        assert_eq!(res_native.backend.vendor_id, "CUSTOM_NATIVE");
+        assert_eq!(res_native.backend.product_id, "NativeDisk");
+        assert_eq!(res_native.backend.product_revision, "2.50");
+
         let _ = std::fs::remove_file(vhd_path);
     }
 }

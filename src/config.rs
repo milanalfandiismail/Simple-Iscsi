@@ -87,6 +87,12 @@ impl Default for ServerConfig {
 pub struct GamediskTargetConfig {
     pub target_iqn: String,
     pub discovery: bool,
+    #[serde(default = "default_vendor_id")]
+    pub vendor_id: String,
+    #[serde(default = "default_gamedisk_product_id")]
+    pub product_id: String,
+    #[serde(default = "default_product_revision")]
+    pub product_revision: String,
 }
 
 impl Default for GamediskTargetConfig {
@@ -94,6 +100,9 @@ impl Default for GamediskTargetConfig {
         Self {
             target_iqn: "iqn.2024-01.com.tmdebug:gamedisks".to_string(),
             discovery: true,
+            vendor_id: default_vendor_id(),
+            product_id: default_gamedisk_product_id(),
+            product_revision: default_product_revision(),
         }
     }
 }
