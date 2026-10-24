@@ -55,3 +55,6 @@ clients.toml
 CCBoot*
 *.dmp
 *.ini
+
+# Documentation & Internal Research
+/docs/
