@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::mpsc;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 
 pub mod scsi_handler;
 pub mod scsi_handler_gamedisk;
@@ -40,6 +40,7 @@ pub struct PendingWrite {
     pub expected_len: usize,
     pub buffer: Vec<u8>,
     pub data_sn_count: u32,
+    pub fua: bool,
 }
 
 pub struct WriteJob {
@@ -96,6 +97,7 @@ pub struct SessionContext {
     pub config: crate::config_manager::SharedConfig,
     pub throttle_window_start: AtomicU64,
     pub throttle_bytes_this_window: AtomicU64,
+    pub write_lock: Arc<tokio::sync::Mutex<()>>,
     pub tx: mpsc::Sender<WriterMessage>,
 }
 
@@ -272,32 +274,65 @@ impl Session {
             return Ok(());
         }
 
-        // 2. Inisialisasi Cache
+        // 2. Inisialisasi writeback
         if !self.is_discovery {
-            let is_imagedisk_normal = self.is_imagedisk && !self.is_super;
-            if !self.is_imagedisk || is_imagedisk_normal {
+            if !self.is_imagedisk || !self.is_super {
+                let mut gamedisk_paths: Vec<String> = Vec::new();
+                let mut imagedisk_path: Option<String> = None;
                 for (lun_id, backend) in self.backends.iter() {
                     let cache_name = format!("{}_lun{}", target_name, lun_id);
-                    info!("Membuat cache writeback untuk LUN {} ({})", lun_id, cache_name);
-                    let dirs = if self.chosen_writeback_dir.is_empty() {
-                        vec![]
-                    } else {
+                    debug!("Membuat writeback .bin untuk LUN {} ({})", lun_id, cache_name);
+                    let dirs = if !self.chosen_writeback_dir.is_empty() {
                         vec![self.chosen_writeback_dir.clone()]
+                    } else if self.is_imagedisk {
+                        let vhd_dir = self
+                            .config
+                            .read()
+                            .windows
+                            .as_ref()
+                            .map(|w| w.vhd_dir.clone())
+                            .unwrap_or_default();
+                        if vhd_dir.trim().is_empty() {
+                            vec![std::env::temp_dir().to_string_lossy().to_string()]
+                        } else {
+                            vec![vhd_dir]
+                        }
+                    } else {
+                        vec![]
                     };
-                    
+
                     let cache = ClientCache::new(
                         &dirs,
                         &self.client_ip,
                         &cache_name,
-                        backend.block_size(),
-                        self.config.read().writeback.max_cache_per_client_gb,
+                        Arc::clone(backend),
+                        self.config.read().writeback.max_writeback_per_client_gb,
                         false,
                         self.config.read().writeback.max_write_speed_mbps,
                     )?;
+                    let cache_dir = cache.dir();
+                    if self.is_imagedisk {
+                        imagedisk_path = Some(cache_dir);
+                    } else if !gamedisk_paths.contains(&cache_dir) {
+                        gamedisk_paths.push(cache_dir);
+                    }
                     self.client_caches.insert(*lun_id, Arc::new(cache));
                 }
+
+                if self.is_imagedisk {
+                    if let Some(dir) = imagedisk_path {
+                        self.stats.set_writeback_paths(&self.client_ip, true, vec![dir]);
+                    }
+                } else if !gamedisk_paths.is_empty() {
+                    self.stats.set_writeback_paths(&self.client_ip, false, gamedisk_paths);
+                }
             } else {
-                info!("Super Client ImageDisk session — write langsung ke differencing VHD, tanpa cache");
+                info!("Super Client ImageDisk memakai super.vhd, tanpa ClientCache");
+                self.stats.set_writeback_paths(
+                    &self.client_ip,
+                    true,
+                    vec!["super.vhd".to_string()],
+                );
             }
         }
 
@@ -346,6 +381,7 @@ impl Session {
             config,
             throttle_window_start,
             throttle_bytes_this_window,
+            write_lock: Arc::new(tokio::sync::Mutex::new(())),
             tx,
         });
         context.stats.record_session_start(&context.client_ip);
@@ -384,8 +420,8 @@ impl Session {
                     }
                     Err(_) => {
                         // 10 detik tanpa paket masuk dari client
-                        if unreplied_pings >= 2 {
-                            warn!("Client {} tidak merespons iSCSI heartbeat (NOP-In) dalam 20 detik — mengakhiri sesi yang menggantung.", context_reader.client_ip);
+                        if unreplied_pings >= 6 {
+                            warn!("Client {} tidak merespons iSCSI heartbeat (NOP-In) dalam 60 detik — mengakhiri sesi yang menggantung.", context_reader.client_ip);
                             break;
                         }
                         unreplied_pings += 1;
@@ -499,7 +535,7 @@ impl Session {
         }
 
         // Cleanup writeback gamedisk caches
-        info!("Sesi berakhir (logout/disconnect) — membersihkan gamedisk cache.");
+        debug!("Sesi berakhir (logout/disconnect) — membersihkan gamedisk cache.");
         drop(client_caches);
 
         info!("Koneksi dengan client {} selesai.", peer_addr);

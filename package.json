@@ -4,8 +4,8 @@
   "description": "iSCSI target server in Rust untuk diskless game client. Support read cache writeback + read-ahead 256KB.",
   "main": "index.js",
   "scripts": {
-    "build:css": "npx @tailwindcss/cli -i ./ui/input.css -o ./ui/tailwind.css --minify",
-    "watch:css": "npx @tailwindcss/cli -i ./ui/input.css -o ./ui/tailwind.css --watch"
+    "build:css": "npx @tailwindcss/cli -i ./assets/ui/input.css -o ./assets/ui/tailwind.css --minify",
+    "watch:css": "npx @tailwindcss/cli -i ./assets/ui/input.css -o ./assets/ui/tailwind.css --watch"
   },
   "repository": {
     "type": "git",

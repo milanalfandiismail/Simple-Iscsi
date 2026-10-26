@@ -119,13 +119,7 @@ impl SessionContext {
                     if cache.try_read_ram_cache(lba, num_blocks, &mut buf).is_some() {
                         hit = true;
                     } else {
-                        let mut in_writeback = false;
-                        for i in 0..num_blocks {
-                            if cache.contains_lba(lba + i as u64) {
-                                in_writeback = true;
-                                break;
-                            }
-                        }
+                        let in_writeback = cache.has_any_lba(lba, num_blocks);
                         if !in_writeback {
                             hit = backend_clone.try_read_from_cache(lba, num_blocks, &mut buf).is_some();
                         }
@@ -154,7 +148,7 @@ impl SessionContext {
                 Ok(buf) => {
                      let buf_len = buf.len() as u64;
                      self.send_scsi_data_in(itt, buf, 0x00, req.expected_data_len).await?;
-                     self.stats.record_read(&self.client_ip, buf_len);
+                     self.stats.record_read(&self.client_ip, self.is_imagedisk, buf_len);
                 }
                 Err(e) => {
                     error!("Gagal membaca disk LUN {} LBA {}: {}", req.lun, itt, e);
@@ -168,7 +162,9 @@ impl SessionContext {
             let backend_clone = backend.clone();
             let itt = req.initiator_task_tag;
 
+            let write_guard = self.write_lock.clone().lock_owned().await;
             let res = tokio::task::spawn_blocking(move || {
+                let _write_guard = write_guard;
                 if let Some(cache) = cache_opt {
                     cache.flush()
                 } else {
@@ -198,12 +194,13 @@ impl SessionContext {
             } else {
                 u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32
             };
-            trace!("WRITE LUN={} LBA={} blocks={}", lun_id, lba, num_blocks);
+            let fua = (cdb[1] & 0x08) != 0;
+            trace!("WRITE LUN={} LBA={} blocks={} fua={}", lun_id, lba, num_blocks, fua);
 
             if self.is_imagedisk {
-                self.handle_imagedisk_write(&req, lun_id, lba, num_blocks).await?;
+                self.handle_imagedisk_write(&req, lun_id, lba, num_blocks, fua).await?;
             } else {
-                self.handle_gamedisk_write(&req, lun_id, lba, num_blocks).await?;
+                self.handle_gamedisk_write(&req, lun_id, lba, num_blocks, fua).await?;
             }
 
         // --- Other SCSI commands: dispatch to specialized handlers ---
@@ -226,6 +223,7 @@ impl SessionContext {
         let mut num_blocks = 0;
         let mut lun_id = 0;
         let mut data_sn_count = 0;
+        let mut fua = false;
         let mut buffer_clone = Vec::new();
 
         {
@@ -257,6 +255,7 @@ impl SessionContext {
                     num_blocks = pending.num_blocks;
                     lun_id = pending.lun_id;
                     data_sn_count = pending.data_sn_count;
+                    fua = pending.fua;
                     buffer_clone = pending.buffer;
                 }
             }
@@ -271,14 +270,24 @@ impl SessionContext {
             let tx = self.tx.clone();
             let stats = std::sync::Arc::clone(&self.stats);
             let client_ip = self.client_ip.clone();
+            let is_imagedisk = self.is_imagedisk;
+            let write_guard = self.write_lock.clone().lock_owned().await;
 
             tokio::spawn(async move {
+                let _write_guard = write_guard;
                 let res = tokio::task::spawn_blocking(move || {
                     if let Some(cache) = cache_opt {
-                        cache.write_stream(pending_lba, 0, &buffer_clone)
+                        cache.write_stream(pending_lba, 0, &buffer_clone)?;
+                        if fua {
+                            cache.flush()?;
+                        }
                     } else {
-                        backend.write_blocks(pending_lba, num_blocks, &buffer_clone)
+                        backend.write_blocks(pending_lba, num_blocks, &buffer_clone)?;
+                        if fua {
+                            backend.sync()?;
+                        }
                     }
+                    Ok::<(), std::io::Error>(())
                 }).await;
 
                 match res {
@@ -290,7 +299,7 @@ impl SessionContext {
                             expected_len: 0,
                             actual_len: 0,
                         }).await;
-                        stats.record_write(&client_ip, expected_len as u64);
+                        stats.record_write(&client_ip, is_imagedisk, expected_len as u64);
                     }
                     Ok(Err(e)) => {
                         error!("Gagal menulis data (Data-Out) ke disk LUN {} LBA {}: {}", lun_id, pending_lba, e);

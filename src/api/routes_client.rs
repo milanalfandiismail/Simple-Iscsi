@@ -433,19 +433,24 @@ mod tests {
 
     #[test]
     fn test_reject_delete_online_client() {
-        let stats = Arc::new(ServerStats::new());
-        // Simulasikan klien 192.168.180.250 sedang online
-        stats.record_session_start("192.168.180.250");
+        crate::config::test_support::with_clients_file(
+            "[[client]]\nmac = \"00:0C:29:9B:72:2A\"\nip = \"192.168.180.250\"\nhostname = \"test-online\"\n",
+            || {
+                let stats = Arc::new(ServerStats::new());
+                // Simulasikan klien 192.168.180.250 sedang online
+                stats.record_session_start("192.168.180.250");
 
-        // Kirim request JSON tanpa menyertakan klien 192.168.180.250 (upaya menghapus)
-        let body = r#"{"client": []}"#;
-        let resp = post_clients_json(&stats, body);
+                // Kirim request JSON tanpa menyertakan klien 192.168.180.250 (upaya menghapus)
+                let body = r#"{"client": []}"#;
+                let resp = post_clients_json(&stats, body);
 
-        // Bersihkan sesi aktif mock
-        stats.record_session_end("192.168.180.250");
+                // Bersihkan sesi aktif mock
+                stats.record_session_end("192.168.180.250");
 
-        // Verifikasi bahwa response adalah HTTP 400 Bad Request dan memuat pesan error online
-        assert!(resp.contains("400 Bad Request"), "Respon harus 400 Bad Request saat menghapus klien online, didapat: {}", resp);
-        assert!(resp.contains("sedang ONLINE"), "Respon harus memuat informasi klien sedang online");
+                // Verifikasi bahwa response adalah HTTP 400 Bad Request dan memuat pesan error online
+                assert!(resp.contains("400 Bad Request"), "Respon harus 400 Bad Request saat menghapus klien online, didapat: {}", resp);
+                assert!(resp.contains("sedang ONLINE"), "Respon harus memuat informasi klien sedang online");
+            },
+        );
     }
 }

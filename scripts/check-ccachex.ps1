@@ -53,7 +53,11 @@ if ($Disable) {
     if (Test-Path $paramsPath) {
         Set-ItemProperty -Path $paramsPath -Name "AutoStart" -Type DWord -Value 0
         Set-ItemProperty -Path $paramsPath -Name "ClientCache" -Type DWord -Value 0
-        Write-Host "Cache disabled: AutoStart=0, ClientCache=0. Reboot required."
+        Set-ItemProperty -Path $paramsPath -Name "WriteBack" -Type DWord -Value 0
+        if (Test-Path $pnpPath) {
+            Set-ItemProperty -Path $pnpPath -Name "ClientCacheToLocal" -Type DWord -Value 0
+        }
+        Write-Host "Cache disabled: AutoStart=0, ClientCache=0, WriteBack=0, ClientCacheToLocal=0. Reboot required."
     } else {
         Write-Warning "Path not found: $paramsPath"
     }

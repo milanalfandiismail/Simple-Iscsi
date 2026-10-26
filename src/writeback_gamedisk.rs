@@ -1,33 +1,30 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use tracing::{info, warn};
-use crate::backend::Backend;
-
-use crate::fs_utils::{file_read_exact_at, file_write_all_at};
-
-use dashmap::DashMap;
-use std::fs::{self, OpenOptions};
+use std::collections::HashMap;
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use tracing::{info, warn};
 
-const CACHE_VERSION: u32 = 3; // bump to auto-invalidate stale 4KB cluster maps
+use crate::backend::Backend;
+use crate::fs_utils::{file_read_exact_at, file_write_all_at};
+
+const BLOCK_SIZE: u64 = 4096;
+
+struct CacheInner {
+    file: File,
+    map: HashMap<u64, u64>, // block index -> byte offset in .bin
+    next_offset: u64,
+}
 
 pub struct ClientCache {
     file_path: PathBuf,
-    map_path: PathBuf,
-    file_read: Option<Arc<std::fs::File>>,
-    file_write: Option<Arc<std::fs::File>>,
-    block_map: Arc<DashMap<u64, u64>>, // LBA -> offset in cache.bin
-    ram_cache: Arc<DashMap<u64, Arc<Vec<u8>>>>, // LBA -> in-memory 512B block data
-    flush_tx: std::sync::mpsc::SyncSender<(u64, u64, Arc<Vec<u8>>)>,
-    next_write_offset: Arc<AtomicU64>,
+    inner: Mutex<CacheInner>,
+    base: Arc<Backend>,
+    base_block_size: u64,
     block_size: u64,
-    max_cache_size: u64,
+    total_size: u64,
     is_super: bool,
-    total_bytes_written: AtomicU64,
-    max_write_bytes_per_sec: u64,
-    throttle_bytes_this_window: AtomicU64,
-    throttle_window_start: AtomicU64,
 }
 
 impl ClientCache {
@@ -35,368 +32,392 @@ impl ClientCache {
         writeback_dirs: &[String],
         client_ip: &str,
         target_name: &str,
-        block_size: u64,
-        max_cache_gb: u64,
+        base: Arc<Backend>,
+        _max_cache_gb: u64,
         is_super: bool,
-        max_write_speed_mbps: u64,
+        _max_write_speed_mbps: u64,
     ) -> io::Result<Self> {
-        // Round-robin drive picker for load balancing across writeback drives
+        if writeback_dirs.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "writeback_dirs kosong"));
+        }
+
+        // No cap by user decision. Monitor free space on the writeback disk.
+
         static NEXT_DRIVE: AtomicUsize = AtomicUsize::new(0);
         let idx = NEXT_DRIVE.fetch_add(1, Ordering::Relaxed) % writeback_dirs.len();
-        let dir = &writeback_dirs[idx];
-
-        let dir_path = Path::new(dir);
+        let dir_path = Path::new(&writeback_dirs[idx]);
         fs::create_dir_all(dir_path)?;
 
-        let safe_ip = client_ip.chars()
+        let safe_ip: String = client_ip
+            .chars()
             .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
-            .collect::<String>();
-            
-        let safe_target = target_name.chars()
+            .collect();
+        let safe_target: String = target_name
+            .chars()
             .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-            .collect::<String>();
+            .collect();
+        let file_path = dir_path.join(format!(
+            "{}-{}-{}.bin",
+            safe_ip,
+            safe_target,
+            uuid::Uuid::new_v4()
+        ));
 
-        let file_path = dir_path.join(format!("{}-{}.bin", safe_ip, safe_target));
-        let map_path = dir_path.join(format!("{}-{}.map", safe_ip, safe_target));
-
-        let mut next_write_offset = 0;
-        let block_map = DashMap::new();
-
-        // Load existing map — ALL clients need .map to see .bin data.
-        // Without .map, .bin block offsets are unknown → reads go to raw disk → corrupt.
-        if file_path.exists() && map_path.exists() {
-            // Verify .bin size — must be >= next_offset from .map
-            let bin_size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
-            if let Ok(map_content) = std::fs::read_to_string(&map_path) {
-                let mut map_version: u32 = 0;
-                let mut lines_iter = map_content.lines();
-                // First line must be version marker: "@V:1"
-                if let Some(ver_line) = lines_iter.next() {
-                    if let Some(v) = ver_line.strip_prefix("@V:") {
-                        map_version = v.parse().unwrap_or(0);
-                    }
-                }
-                if map_version != CACHE_VERSION {
-                    warn!(".map version {} != {} — cache dari kode lama, menghapus stale .bin", map_version, CACHE_VERSION);
-                    let _ = std::fs::remove_file(&map_path);
-                    let _ = std::fs::remove_file(&file_path);
-                    // fall through to fresh state (block_map empty, next_write_offset=0)
-                } else {
-                    for line in lines_iter {
-                        let parts: Vec<&str> = line.split(':').collect();
-                        if parts.len() == 2 {
-                            if let (Ok(lba), Ok(offset)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
-                                block_map.insert(lba, offset);
-                                if offset + block_size > next_write_offset {
-                                    next_write_offset = offset + block_size;
-                                }
-                            }
-                        }
-                    }
-                    // Defensive: if .map points beyond .bin size, cache is corrupt → clear
-                    if next_write_offset > bin_size {
-                        warn!(".map inconsistent dgn .bin (map_next={} > bin_size={}) — menghapus cache stale", next_write_offset, bin_size);
-                        block_map.clear();
-                        next_write_offset = 0;
-                        let _ = std::fs::remove_file(&map_path);
-                        let _ = std::fs::remove_file(&file_path);
-                    } else {
-                        info!("Memuat {} block dari .map v{} (next_offset={} of {}MB .bin)", block_map.len(), map_version, next_write_offset, bin_size / 1048576);
-                    }
-                }
-            }
-        }
-
-        let mut file_options = OpenOptions::new();
-        file_options.write(true).create(true).read(true);
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            file_options.share_mode(1 | 2 | 4); // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+            options.share_mode(1 | 2 | 4); // READ | WRITE | DELETE
         }
-        let file_write_handle = file_options.open(&file_path)?;
+        let file = options.open(&file_path)?;
 
-        let target_alloc = (128 * 1024 * 1024).min(max_cache_gb * 1024 * 1024 * 1024);
-        if let Ok(meta) = file_write_handle.metadata() {
-            if meta.len() < target_alloc {
-                let _ = file_write_handle.set_len(target_alloc);
-            }
+        let base_block_size = base.block_size();
+        if base_block_size == 0 {
+            let _ = fs::remove_file(&file_path);
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "block_size base 0"));
+        }
+        let block_size = BLOCK_SIZE.max(base_block_size);
+        if block_size % base_block_size != 0 {
+            let _ = fs::remove_file(&file_path);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "block_size base tidak kompatibel dengan .bin",
+            ));
+        }
+        let total_size = base.total_size();
+        if total_size == 0 || total_size % base_block_size != 0 {
+            let _ = fs::remove_file(&file_path);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "ukuran base tidak valid untuk .bin",
+            ));
         }
 
-        let mut read_options = OpenOptions::new();
-        read_options.read(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            read_options.share_mode(1 | 2 | 4);
-        }
-        let file_read_handle = read_options.open(&file_path)?;
-
-        let block_map = Arc::new(block_map);
-        let ram_cache = Arc::new(DashMap::new());
-        let (flush_tx, flush_rx) = std::sync::mpsc::sync_channel::<(u64, u64, Arc<Vec<u8>>)>(16384);
-
-        let bg_block_map = Arc::clone(&block_map);
-        let bg_file_write = Arc::new(file_write_handle.try_clone()?);
-        let bg_block_size = block_size;
-        std::thread::spawn(move || {
-            while let Ok((start_lba, base_offset, data_arc)) = flush_rx.recv() {
-                if let Err(e) = file_write_all_at(&bg_file_write, base_offset, &data_arc) {
-                    tracing::error!("Gagal menulis background writeback ke disk: {}", e);
-                }
-                let num_blocks = data_arc.len() / (bg_block_size as usize);
-                for i in 0..num_blocks {
-                    let lba = start_lba + i as u64;
-                    let off = base_offset + (i as u64) * bg_block_size;
-                    bg_block_map.insert(lba, off);
-                }
-            }
-        });
-
-        let next_write_offset_arc = Arc::new(AtomicU64::new(next_write_offset));
+        info!("Writeback .bin dibuat: {:?} (blok {} byte)", file_path, block_size);
 
         Ok(Self {
             file_path,
-            map_path,
-            file_read: Some(Arc::new(file_read_handle)),
-            file_write: Some(Arc::new(file_write_handle)),
-            block_map,
-            ram_cache,
-            flush_tx,
-            next_write_offset: next_write_offset_arc,
+            inner: Mutex::new(CacheInner {
+                file,
+                map: HashMap::new(),
+                next_offset: 0,
+            }),
+            base,
+            base_block_size,
             block_size,
-            max_cache_size: max_cache_gb * 1024 * 1024 * 1024,
+            total_size,
             is_super,
-            total_bytes_written: AtomicU64::new(next_write_offset),
-            max_write_bytes_per_sec: max_write_speed_mbps * 1024 * 1024,
-            throttle_bytes_this_window: AtomicU64::new(0),
-            throttle_window_start: AtomicU64::new(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64
-            ),
         })
     }
 
-    pub fn contains_lba(&self, lba: u64) -> bool {
-        self.ram_cache.contains_key(&lba) || self.block_map.contains_key(&lba)
+    pub fn dir(&self) -> String {
+        self.file_path
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
     }
 
-    pub fn try_read_ram_cache(&self, first_lba: u64, num_blocks: u32, buf: &mut [u8]) -> Option<()> {
-        let block_size = self.block_size as usize;
-        let n = num_blocks as usize;
-        for i in 0..n {
-            let lba = first_lba + i as u64;
-            if let Some(ram_data) = self.ram_cache.get(&lba) {
-                let start = i * block_size;
-                let end = start + block_size;
-                buf[start..end].copy_from_slice(&ram_data);
-            } else {
-                return None;
-            }
+    pub fn has_any_lba(&self, first_lba: u64, num_blocks: u32) -> bool {
+        if num_blocks == 0 {
+            return false;
         }
-        Some(())
+        let start_byte = first_lba.saturating_mul(self.base_block_size);
+        if start_byte >= self.total_size {
+            return false;
+        }
+        let end_byte = start_byte
+            .saturating_add((num_blocks as u64).saturating_mul(self.base_block_size))
+            .min(self.total_size);
+        if end_byte <= start_byte {
+            return false;
+        }
+        let start_block = start_byte / self.block_size;
+        let end_block = (end_byte - 1) / self.block_size;
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        (start_block..=end_block).any(|block| inner.map.contains_key(&block))
+    }
+
+    pub fn try_read_ram_cache(
+        &self,
+        _first_lba: u64,
+        _num_blocks: u32,
+        _buf: &mut [u8],
+    ) -> Option<()> {
+        None
     }
 
     pub fn read_blocks_cached(
         &self,
-        backend: &Backend,
+        base: &Backend,
         first_lba: u64,
         num_blocks: u32,
         buf: &mut [u8],
     ) -> io::Result<()> {
-        let n = num_blocks as usize;
-        let block_size = self.block_size as usize;
+        let read_len = (num_blocks as u64).saturating_mul(self.base_block_size);
+        if buf.len() < read_len as usize {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "buffer terlalu kecil"));
+        }
+        let start_byte = first_lba.saturating_mul(self.base_block_size);
+        if start_byte >= self.total_size {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "LBA melebihi ukuran disk"));
+        }
+        let max_len = read_len.min(self.total_size - start_byte);
 
-        let mut i = 0;
-        while i < n {
-            let lba = first_lba + i as u64;
-            
-            // 1. Cek RAM Cache (Instant 0 ms)
-            if let Some(ram_data) = self.ram_cache.get(&lba) {
-                let byte_start = i * block_size;
-                let byte_end = byte_start + block_size;
-                buf[byte_start..byte_end].copy_from_slice(&ram_data);
-                i += 1;
-            // 2. Cek Disk Cache (.bin)
-            } else if let Some(offset_ref) = self.block_map.get(&lba) {
-                let start_idx = i;
-                let mut current_off = *offset_ref;
-                let base_off = current_off;
-                i += 1;
-                while i < n {
-                    let next_lba = first_lba + i as u64;
-                    if self.ram_cache.contains_key(&next_lba) {
-                        break;
-                    }
-                    if let Some(next_off_ref) = self.block_map.get(&next_lba) {
-                        let next_off = *next_off_ref;
-                        if next_off == current_off + self.block_size {
-                            current_off = next_off;
-                            i += 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                let byte_start = start_idx * block_size;
-                let byte_end = i * block_size;
-                file_read_exact_at(self.file_read.as_ref().unwrap(), base_off, &mut buf[byte_start..byte_end])?;
-            // 3. Baca dari Base VHD
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut block_buf = vec![0u8; self.block_size as usize];
+        let mut done = 0u64;
+        let mut block = start_byte / self.block_size;
+        let mut in_block = (start_byte % self.block_size) as usize;
+
+        // shortcut: one base read per 4KB block; coalesce contiguous unallocated blocks if boot I/O is slow.
+        while done < max_len {
+            let block_start_byte = block * self.block_size;
+            let block_len = self.block_size.min(self.total_size - block_start_byte);
+            let bytes = (block_len as usize - in_block).min((max_len - done) as usize);
+            if bytes == 0 {
+                break;
+            }
+
+            if let Some(&offset) = inner.map.get(&block) {
+                file_read_exact_at(
+                    &inner.file,
+                    offset + in_block as u64,
+                    &mut buf[done as usize..done as usize + bytes],
+                )?;
             } else {
-                let start_idx = i;
-                i += 1;
-                while i < n {
-                    let next_lba = first_lba + i as u64;
-                    if self.ram_cache.contains_key(&next_lba) || self.block_map.contains_key(&next_lba) {
-                        break;
-                    }
-                    i += 1;
-                }
-                let span_blocks = (i - start_idx) as u32;
-                let byte_start = start_idx * block_size;
-                let byte_end = i * block_size;
-                let start_lba_of_run = first_lba + start_idx as u64;
-                backend.read_blocks(start_lba_of_run, span_blocks, &mut buf[byte_start..byte_end])?;
+                let lba = block_start_byte / self.base_block_size;
+                let blocks = (block_len / self.base_block_size) as u32;
+                block_buf[..block_len as usize].fill(0);
+                base.read_blocks(
+                    lba,
+                    blocks,
+                    &mut block_buf[..block_len as usize],
+                )?;
+                buf[done as usize..done as usize + bytes]
+                    .copy_from_slice(&block_buf[in_block..in_block + bytes]);
             }
+
+            done += bytes as u64;
+            block += 1;
+            in_block = 0;
         }
+
         Ok(())
     }
 
-    pub async fn throttle_write_async(&self, bytes_to_write: usize) {
-        if self.max_write_bytes_per_sec == 0 {
-            return;
-        }
-
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        let window_start = self.throttle_window_start.load(Ordering::Relaxed);
-        let elapsed = now_ms.saturating_sub(window_start);
-
-        if elapsed >= 100 {
-            self.throttle_window_start.store(now_ms, Ordering::Relaxed);
-            self.throttle_bytes_this_window.store(0, Ordering::Relaxed);
-        }
-
-        let max_per_window = self.max_write_bytes_per_sec / 10;
-        let written = self.throttle_bytes_this_window.fetch_add(bytes_to_write as u64, Ordering::Relaxed);
-
-        if written + bytes_to_write as u64 > max_per_window {
-            let sleep_ms = 100u64.saturating_sub(elapsed);
-            if sleep_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
-            }
-        }
-    }
-
-    pub fn write_stream(&self, first_lba: u64, buffer_byte_offset: u64, data: &[u8]) -> io::Result<()> {
-        let block_size = self.block_size as usize;
-        let start_lba = first_lba + buffer_byte_offset / self.block_size;
-        let num_blocks = data.len() / block_size;
-
-        if data.len() % block_size != 0 || data.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data harus block-aligned"));
-        }
-
-        let total_write_len = data.len() as u64;
-        let base_offset = self.next_write_offset.fetch_add(total_write_len, Ordering::SeqCst);
-
-        let data_arc = Arc::new(data.to_vec());
-
-        // Simpan ke RAM cache secara instan (< 0.001 ms)
-        for i in 0..num_blocks {
-            let lba = start_lba + i as u64;
-            let start = i * block_size;
-            let end = start + block_size;
-            let block_vec = data[start..end].to_vec();
-            self.ram_cache.insert(lba, Arc::new(block_vec));
-        }
-
-        // Kirim ke worker thread untuk penulisan disk di background
-        let _ = self.flush_tx.send((start_lba, base_offset, data_arc));
-
-        self.total_bytes_written.fetch_add(total_write_len, Ordering::Relaxed);
-        Ok(())
-    }
-
-    fn ensure_capacity(&self, needed: u64) -> io::Result<()> {
-        let current = self.total_bytes_written.load(Ordering::Relaxed);
-        if current + needed <= self.max_cache_size {
+    pub fn write_stream(
+        &self,
+        first_lba: u64,
+        buffer_byte_offset: u64,
+        data: &[u8],
+    ) -> io::Result<()> {
+        if data.is_empty() {
             return Ok(());
         }
+        let start_byte = first_lba
+            .saturating_mul(self.base_block_size)
+            .saturating_add(buffer_byte_offset);
+        let end_byte = start_byte.saturating_add(data.len() as u64);
+        if end_byte > self.total_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "write melebihi ukuran disk",
+            ));
+        }
 
-        let batch_free = (256 * 1024 * 1024).min(self.max_cache_size / 10).max(self.block_size);
-        let to_free = ((current + needed) - self.max_cache_size).max(batch_free);
-        
-        let evict_threshold = (current + needed).saturating_sub(self.max_cache_size).saturating_add(to_free);
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut block_buf = vec![0u8; self.block_size as usize];
+        let mut written = 0usize;
+        let mut block = start_byte / self.block_size;
+        let mut in_block = (start_byte % self.block_size) as usize;
 
-        let mut freed_blocks = 0;
-        self.block_map.retain(|_lba, off| {
-            if *off < evict_threshold {
-                freed_blocks += 1;
-                false // Evict
-            } else {
-                true // Keep
+        while written < data.len() {
+            let block_start_byte = block * self.block_size;
+            let block_len = self.block_size.min(self.total_size - block_start_byte);
+            let bytes = (block_len as usize - in_block).min(data.len() - written);
+            if bytes == 0 {
+                break;
             }
-        });
 
-        let freed_bytes = (freed_blocks as u64) * self.block_size;
-        self.total_bytes_written.fetch_sub(freed_bytes.min(current), Ordering::SeqCst);
-        
-        info!(
-            "Writeback Cache Eviction: Berhasil membebaskan {} MB (threshold offset < {})",
-            freed_bytes / 1048576,
-            evict_threshold
-        );
+            if let Some(&offset) = inner.map.get(&block) {
+                file_write_all_at(
+                    &inner.file,
+                    offset + in_block as u64,
+                    &data[written..written + bytes],
+                )?;
+            } else {
+                let offset = inner.next_offset;
+                inner.next_offset += self.block_size;
+
+                if in_block == 0 && bytes as u64 == block_len {
+                    file_write_all_at(&inner.file, offset, &data[written..written + bytes])?;
+                } else {
+                    let lba = block_start_byte / self.base_block_size;
+                    let blocks = (block_len / self.base_block_size) as u32;
+                    block_buf[..block_len as usize].fill(0);
+                    self.base.read_blocks(
+                        lba,
+                        blocks,
+                        &mut block_buf[..block_len as usize],
+                    )?;
+                    block_buf[in_block..in_block + bytes]
+                        .copy_from_slice(&data[written..written + bytes]);
+                    file_write_all_at(
+                        &inner.file,
+                        offset,
+                        &block_buf[..block_len as usize],
+                    )?;
+                }
+
+                inner.map.insert(block, offset);
+            }
+
+            written += bytes;
+            block += 1;
+            in_block = 0;
+        }
 
         Ok(())
     }
-
-    fn save_map(&self) {
-        let mut map_content = format!("@V:{}\n", CACHE_VERSION);
-        for entry in self.block_map.iter() {
-            map_content.push_str(&format!("{}:{}\n", entry.key(), entry.value()));
-        }
-        if let Err(e) = std::fs::write(&self.map_path, map_content) {
-            warn!("Gagal menyimpan block map {:?}: {}", self.map_path, e);
-        }
-    }
-
 
     pub fn flush(&self) -> io::Result<()> {
-        Ok(())
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.file.sync_all()
     }
-
 }
 
 impl Drop for ClientCache {
     fn drop(&mut self) {
-        self.save_map();
-        
-        self.file_read.take();
-        self.file_write.take();
-        
         if self.is_super {
-            info!("Sesi Super Client ditutup, cache dipertahankan di disk.");
+            info!("Sesi Super Client ditutup, .bin dipertahankan: {:?}", self.file_path);
             return;
         }
-        
         if self.file_path.exists() {
-            info!("Menghapus file cache {:?}", self.file_path);
-            if let Err(e) = std::fs::remove_file(&self.file_path) {
-                warn!("Gagal menghapus file cache {:?}: {}", self.file_path, e);
-            } else {
-                info!("File cache {:?} berhasil dihapus.", self.file_path);
+            info!("Menghapus writeback .bin {:?}", self.file_path);
+            if let Err(e) = fs::remove_file(&self.file_path) {
+                warn!("Gagal menghapus writeback .bin {:?}: {}", self.file_path, e);
             }
         }
-        if self.map_path.exists() {
-            let _ = std::fs::remove_file(&self.map_path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn test_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("simpleiscsi_bin_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn test_base(dir: &Path) -> Arc<Backend> {
+        let raw_path = dir.join("raw_base.bin");
+        let mut file = File::create(&raw_path).unwrap();
+        file.write_all(&vec![0x11u8; 1024 * 1024]).unwrap();
+        file.flush().unwrap();
+        Arc::new(
+            Backend::new_raw_mb(
+                raw_path.to_str().unwrap(),
+                512,
+                "TEST",
+                "Base",
+                "1.00",
+                0,
+            )
+            .unwrap(),
+        )
+    }
+
+    fn test_cache(dir: &Path, base: Arc<Backend>) -> ClientCache {
+        ClientCache::new(
+            &[dir.to_string_lossy().to_string()],
+            "192.168.1.10",
+            "gamedisk_lun0",
+            base,
+            0,
+            false,
+            0,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn partial_write_reads_fallback_from_base() {
+        let dir = test_dir();
+        let base = test_base(&dir);
+        let cache = test_cache(&dir, Arc::clone(&base));
+
+        cache.write_stream(0, 0, &vec![0xAAu8; 512]).unwrap();
+        let mut buf = vec![0u8; 1024];
+        cache.read_blocks_cached(&base, 0, 2, &mut buf).unwrap();
+        assert_eq!(&buf[0..4], &[0xAAu8; 4]);
+        assert_eq!(&buf[512..516], &[0x11u8; 4]);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rewrite_same_block_does_not_grow_file() {
+        let dir = test_dir();
+        let base = test_base(&dir);
+        let cache = test_cache(&dir, Arc::clone(&base));
+
+        cache.write_stream(0, 0, &vec![0xAAu8; 512]).unwrap();
+        let size_after_first = fs::metadata(&cache.file_path).unwrap().len();
+        cache.write_stream(0, 0, &vec![0xBBu8; 512]).unwrap();
+        let size_after_second = fs::metadata(&cache.file_path).unwrap().len();
+        assert_eq!(size_after_first, size_after_second);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn has_any_lba_tracks_only_written_blocks() {
+        let dir = test_dir();
+        let base = test_base(&dir);
+        let cache = test_cache(&dir, Arc::clone(&base));
+
+        assert!(!cache.has_any_lba(0, 8));
+        cache.write_stream(0, 0, &vec![0xAAu8; 512]).unwrap();
+        assert!(cache.has_any_lba(0, 8));
+        assert!(!cache.has_any_lba(8, 8));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scattered_4k_writes_allocate_only_touched_blocks() {
+        let dir = test_dir();
+        let base = test_base(&dir);
+        let cache = test_cache(&dir, Arc::clone(&base));
+
+        for i in 0..16u64 {
+            let lba = (i * 65536) / 512;
+            cache
+                .write_stream(lba, 0, &vec![0xAAu8; 4096])
+                .unwrap();
         }
+
+        let size = fs::metadata(&cache.file_path).unwrap().len();
+        assert_eq!(size, 16 * 4096);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn drop_deletes_bin_file() {
+        let dir = test_dir();
+        let base = test_base(&dir);
+        let cache = test_cache(&dir, Arc::clone(&base));
+        cache.write_stream(0, 0, &vec![0xAAu8; 512]).unwrap();
+        let path = cache.file_path.clone();
+        assert!(path.exists());
+        drop(cache);
+        assert!(!path.exists());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

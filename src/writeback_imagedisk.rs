@@ -1,15 +1,16 @@
 //! Writeback untuk ImageDisk (Windows iSCSI sanboot)
 //! Mengelola lifecycle VHD differencing:
 //! - Super client: serve super VHD langsung (persistent)
-//! - Normal client: create temporary child VHD dari base
+//! - Normal client: base VHD read-only + .bin 4KB COW (fallback child VHD untuk base differencing)
 
 use crate::backend::Backend;
+use crate::vhd::VhdBackend;
 use crate::config::Config;
 use crate::read_ahead::ReadAheadCache;
 use crate::writeback_super;
 use dashmap::DashMap;
 use std::sync::{Arc, OnceLock};
-use tracing::{info, error};
+use tracing::{info, error, warn};
 
 /// Global Registry untuk Shared Base Image RAM Cache.
 /// Seluruh PC diskless yang booting dari Base OS VHD yang sama akan berbagi pool cache memori ini.
@@ -63,13 +64,6 @@ pub fn init_child_vhd(
     // Resolve parent/base VHD path via image_manager config
     let base_path = writeback_super::resolve_base_path(config, target_suffix);
 
-    // Ambil alokasi per-disk ram_cache_mb untuk windows image, default 0 (Zero Auto-Assign)
-    let ram_cache_mb = config.windows.as_ref()
-        .and_then(|w| w.ram_cache_mb)
-        .unwrap_or(0);
-
-    let shared_cache = get_or_create_image_cache(&base_path, ram_cache_mb);
-
     // Cek apakah klien terdaftar dengan driver CCBoot di clients.toml
     let is_ccboot_client = if let Ok(clients) = crate::config::load_clients("clients.toml") {
         clients.values().any(|c| c.ip == client_ip && c.driver == crate::config::BootDriver::Ccboot)
@@ -97,7 +91,7 @@ pub fn init_child_vhd(
         // Init super VHD (create differencing kalo belum ada)
         writeback_super::init_super_vhd(&base_path, &super_path)?;
 
-        // Buka super VHD sebagai differencing backend dengan shared cache
+        // Buka super VHD tanpa shared cache (key cache hanya chunk_id, rawan aliasing)
         let backend = Backend::new_vhd_diff_with_shared_cache(
             &super_path,
             &base_path,
@@ -105,7 +99,7 @@ pub fn init_child_vhd(
             &effective_vendor,
             &effective_product,
             &effective_rev,
-            shared_cache,
+            None,
         ).map_err(|e| {
             error!("Gagal membuka super VHD {}: {}", super_path, e);
             e
@@ -118,24 +112,83 @@ pub fn init_child_vhd(
             child_path: None, // No cleanup — super VHD persistent
         })
     } else {
-        // === NORMAL CLIENT: open base VHD directly as read-only dengan shared cache ===
-        let backend = Backend::new_vhd_with_shared_cache(
+        let disk_type = vhd_disk_type(&base_path)?;
+        if disk_type == 4 {
+            warn!(
+                "Base VHD {} adalah differencing (type 4); fallback ke child VHD lama",
+                base_path
+            );
+        }
+        if disk_type != 4 {
+            let win = config.windows.as_ref().unwrap();
+            let shared = get_or_create_image_cache(&base_path, win.ram_cache_mb.unwrap_or(0));
+            let backend = Backend::new_vhd_with_shared_cache(
+                &base_path,
+                win.block_size,
+                &effective_vendor,
+                &effective_product,
+                &effective_rev,
+                shared,
+            )?;
+            info!(
+                "ImageDisk normal memakai base VHD + .bin: {} (base: {})",
+                client_ip, base_path
+            );
+            return Ok(ChildVhdResult {
+                backend: Arc::new(backend),
+                child_path: None,
+            });
+        }
+
+        // === NORMAL CLIENT: child VHD sementara dari base VHD ===
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
+
+        let dirs = &config.writeback.writeback_dirs;
+        let mut dir = if dirs.is_empty() {
+            config.windows.as_ref().unwrap().vhd_dir.clone()
+        } else {
+            let idx = NEXT_DIR.fetch_add(1, Ordering::Relaxed) % dirs.len();
+            dirs[idx].clone()
+        };
+        if dir.trim().is_empty() {
+            dir = std::env::temp_dir().to_string_lossy().to_string();
+        }
+        std::fs::create_dir_all(&dir)?;
+
+        let safe_ip: String = client_ip.chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+            .collect();
+        let safe_target: String = target_suffix.chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        let child_path = format!("{}\\{}-{}-{}.vhd", dir, safe_ip, safe_target, uuid::Uuid::new_v4());
+
+        VhdBackend::create_differencing(&base_path, &child_path)
+            .map_err(|e| {
+                error!("Gagal membuat child VHD {}: {}", child_path, e);
+                e
+            })?;
+
+        let backend = Backend::new_vhd_diff_with_shared_cache(
+            &child_path,
             &base_path,
             config.windows.as_ref().unwrap().block_size,
             &effective_vendor,
             &effective_product,
             &effective_rev,
-            shared_cache,
+            None,
         ).map_err(|e| {
-            error!("Gagal membuka base VHD {}: {}", base_path, e);
+            error!("Gagal membuka child VHD {}: {}", child_path, e);
+            let _ = std::fs::remove_file(&child_path);
             e
         })?;
 
-        info!("Normal Client: membuka base VHD {} (menggunakan shared RAM cache)", base_path);
+        info!("Normal Client: child VHD {} (base: {})", child_path, base_path);
 
         Ok(ChildVhdResult {
             backend: Arc::new(backend),
-            child_path: None, // No child VHD to cleanup!
+            child_path: Some(child_path),
         })
     }
 }
@@ -156,6 +209,29 @@ pub fn cleanup_child_vhd(child_path: Option<&str>, client_ip: &str, config: &Con
             // Super VHD — tidak perlu cleanup (persistent)
         }
     }
+}
+
+fn vhd_disk_type(path: &str) -> Result<u32, std::io::Error> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    if len < 512 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file VHD terlalu kecil",
+        ));
+    }
+    file.seek(SeekFrom::End(-512))?;
+    let mut footer = [0u8; 512];
+    file.read_exact(&mut footer)?;
+    if &footer[0..8] != b"conectix" {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "footer VHD tidak valid",
+        ));
+    }
+    Ok(u32::from_be_bytes(footer[60..64].try_into().unwrap()))
 }
 
 #[cfg(test)]
@@ -265,20 +341,88 @@ mod tests {
             super_client_ip: "".to_string(),
             super_client_action: "".to_string(),
             ram_cache_mb: Some(0),
+            client_cache_enabled: false,
         });
 
-        // 1. Klien CCBoot (192.168.180.250 terdaftar sebagai driver ccboot di clients.toml)
-        let res_ccboot = init_child_vhd(&config, "192.168.180.250", "w11", false).unwrap();
-        assert_eq!(res_ccboot.backend.vendor_id, "CCBoot");
-        assert_eq!(res_ccboot.backend.product_id, "Modified");
-        assert_eq!(res_ccboot.backend.product_revision, "1.00");
+        crate::config::test_support::with_clients_file(
+            "[[client]]\nmac = \"00:0C:29:9B:72:2A\"\nip = \"192.168.180.250\"\nhostname = \"test-ccboot\"\ndriver = \"ccboot\"\n",
+            || {
+                // 1. Klien CCBoot (192.168.180.250 terdaftar sebagai driver ccboot di clients.toml)
+                let res_ccboot = init_child_vhd(&config, "192.168.180.250", "w11", false).unwrap();
+                assert_eq!(res_ccboot.backend.vendor_id, "CCBoot");
+                assert_eq!(res_ccboot.backend.product_id, "Modified");
+                assert_eq!(res_ccboot.backend.product_revision, "1.00");
 
-        // 2. Klien Native (IP tidak terdaftar atau native)
-        let res_native = init_child_vhd(&config, "192.168.180.99", "w11", false).unwrap();
-        assert_eq!(res_native.backend.vendor_id, "CUSTOM_NATIVE");
-        assert_eq!(res_native.backend.product_id, "NativeDisk");
-        assert_eq!(res_native.backend.product_revision, "2.50");
+                // 2. Klien Native (IP tidak terdaftar atau native)
+                let res_native = init_child_vhd(&config, "192.168.180.99", "w11", false).unwrap();
+                assert_eq!(res_native.backend.vendor_id, "CUSTOM_NATIVE");
+                assert_eq!(res_native.backend.product_id, "NativeDisk");
+                assert_eq!(res_native.backend.product_revision, "2.50");
+            },
+        );
 
         let _ = std::fs::remove_file(vhd_path);
+    }
+
+    #[test]
+    fn test_normal_imagedisk_uses_base_bin_overlay() {
+        let dir = std::env::temp_dir().join(format!("simpleiscsi_img_bin_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let vhd_path = dir.join("base.vhd");
+
+        {
+            let mut file = File::create(&vhd_path).unwrap();
+            let payload = vec![0x33u8; 1024 * 1024];
+            file.write_all(&payload).unwrap();
+            let mut footer = vec![0u8; 512];
+            footer[0..8].copy_from_slice(b"conectix");
+            footer[16..24].copy_from_slice(&0xFFFFFFFFFFFFFFFFu64.to_be_bytes());
+            footer[48..56].copy_from_slice(&(1024 * 1024u64).to_be_bytes());
+            footer[60..64].copy_from_slice(&2u32.to_be_bytes());
+            file.write_all(&footer).unwrap();
+        }
+
+        let mut config = Config::default();
+        config.windows = Some(crate::config::WindowsConfig {
+            target_iqn_prefix: "iqn.win:".to_string(),
+            vhd_dir: "".to_string(),
+            block_size: 512,
+            vendor_id: "RUSTISCS".to_string(),
+            product_id: "WindowsBoot".to_string(),
+            product_revision: "1.00".to_string(),
+            discovery: false,
+            super_client_ip: "".to_string(),
+            super_client_action: "".to_string(),
+            ram_cache_mb: Some(0),
+            client_cache_enabled: false,
+        });
+        let mut img_map = std::collections::HashMap::new();
+        img_map.insert("w11".to_string(), vhd_path.to_str().unwrap().to_string());
+        config.image_manager = Some(img_map);
+
+        let res = init_child_vhd(&config, "192.168.1.99", "w11", false).unwrap();
+        assert!(res.child_path.is_none());
+
+        let cache = crate::writeback_gamedisk::ClientCache::new(
+            &[dir.to_string_lossy().to_string()],
+            "192.168.1.99",
+            "w11_lun0",
+            Arc::clone(&res.backend),
+            0,
+            false,
+            0,
+        )
+        .unwrap();
+        cache.write_stream(0, 0, &vec![0xAAu8; 512]).unwrap();
+
+        let mut buf = vec![0u8; 1024];
+        cache
+            .read_blocks_cached(res.backend.as_ref(), 0, 2, &mut buf)
+            .unwrap();
+        assert_eq!(&buf[0..4], &[0xAAu8; 4]);
+        assert_eq!(&buf[512..516], &[0x33u8; 4]);
+
+        drop(cache);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

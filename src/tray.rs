@@ -3,6 +3,9 @@ use std::sync::OnceLock;
 use tracing::{info, error};
 use crate::service_manager::ServiceManager;
 
+#[cfg(windows)]
+use std::process::Command;
+
 pub fn open_browser(url: &str) {
     info!("Membuka browser ke: {}", url);
     let _ = std::process::Command::new("cmd")
@@ -49,8 +52,6 @@ mod win32 {
     pub const TPM_RIGHTBUTTON: u32 = 0x0002;
 
     pub const IDI_APPLICATION: usize = 32512;
-    pub const SW_HIDE: i32 = 0;
-    pub const SW_SHOW: i32 = 5;
 
     #[repr(C)]
     pub struct POINT {
@@ -143,9 +144,6 @@ mod win32 {
         pub fn PostMessageW(hWnd: HWND, Msg: u32, wParam: usize, lParam: isize) -> BOOL;
         pub fn LoadIconW(hInstance: HINSTANCE, lpIconName: *const u16) -> HICON;
         pub fn Shell_NotifyIconW(dwMessage: u32, lpData: *const NOTIFYICONDATAW) -> BOOL;
-        pub fn GetConsoleWindow() -> HWND;
-        pub fn IsWindowVisible(hWnd: HWND) -> BOOL;
-        pub fn ShowWindow(hWnd: HWND, nCmdShow: i32) -> BOOL;
     }
 }
 
@@ -177,33 +175,13 @@ const ID_START_ISCSI: usize = 1031;
 const ID_STOP_ISCSI: usize = 1032;
 const ID_RESTART_ISCSI: usize = 1033;
 
-const ID_TOGGLE_CONSOLE: usize = 1040;
+const ID_OPEN_LOG: usize = 1042;
+const ID_OPEN_TERMINAL: usize = 1043;
 const ID_EXIT: usize = 1041;
 
 #[cfg(windows)]
 fn to_wide_str(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
-#[cfg(windows)]
-pub fn toggle_console_window() {
-    unsafe {
-        let hwnd = win32::GetConsoleWindow();
-        if hwnd != 0 {
-            if win32::IsWindowVisible(hwnd) != 0 {
-                info!("Menyembunyikan jendela konsol.");
-                win32::ShowWindow(hwnd, win32::SW_HIDE);
-            } else {
-                info!("Menampilkan jendela konsol.");
-                win32::ShowWindow(hwnd, win32::SW_SHOW);
-            }
-        }
-    }
-}
-
-#[cfg(not(windows))]
-pub fn toggle_console_window() {
-    info!("Toggle console window hanya tersedia di platform Windows.");
 }
 
 #[cfg(windows)]
@@ -250,7 +228,6 @@ unsafe fn show_tray_menu(hwnd: win32::HWND) {
 
     let title = to_wide_str("=== Simple-iSCSI Server ===");
     let m_dash = to_wide_str("🌐 Buka Web Dashboard");
-    let m_cons = to_wide_str("🪟 Sembunyikan / Tampilkan Console");
     let m_exit = to_wide_str("❌ Keluar Aplikasi");
 
     // Header & Dashboard
@@ -326,9 +303,11 @@ unsafe fn show_tray_menu(hwnd: win32::HWND) {
     win32::AppendMenuW(hmenu_iscsi, win32::MF_STRING, ID_RESTART_ISCSI, m_iscsi_restart.as_ptr());
     win32::AppendMenuW(hmenu_root, win32::MF_POPUP, hmenu_iscsi as usize, m_iscsi_title.as_ptr());
 
-    // Separator, Console Toggle & Exit
-    win32::AppendMenuW(hmenu_root, win32::MF_SEPARATOR, 0, std::ptr::null());
-    win32::AppendMenuW(hmenu_root, win32::MF_STRING, ID_TOGGLE_CONSOLE, m_cons.as_ptr());
+    // Log, Terminal & Exit
+    let m_log = to_wide_str("Buka Log (Web)");
+    let m_terminal = to_wide_str("Buka Terminal");
+    win32::AppendMenuW(hmenu_root, win32::MF_STRING, ID_OPEN_LOG, m_log.as_ptr());
+    win32::AppendMenuW(hmenu_root, win32::MF_STRING, ID_OPEN_TERMINAL, m_terminal.as_ptr());
     win32::AppendMenuW(hmenu_root, win32::MF_SEPARATOR, 0, std::ptr::null());
     win32::AppendMenuW(hmenu_root, win32::MF_STRING, ID_EXIT, m_exit.as_ptr());
 
@@ -346,6 +325,21 @@ unsafe fn show_tray_menu(hwnd: win32::HWND) {
     );
     win32::PostMessageW(hwnd, win32::WM_NULL, 0, 0);
     win32::DestroyMenu(hmenu_root);
+}
+
+#[cfg(windows)]
+fn open_terminal() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let _ = Command::new("cmd.exe")
+        .arg("/K")
+        .current_dir(dir)
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .spawn();
 }
 
 #[cfg(windows)]
@@ -446,8 +440,13 @@ unsafe extern "system" fn wnd_proc(
                             sm.restart_iscsi().await;
                         });
                     }
-                    ID_TOGGLE_CONSOLE => {
-                        toggle_console_window();
+                    ID_OPEN_LOG => {
+                        if let Some(state) = TRAY_STATE.get() {
+                            open_browser(&format!("{}/#logs", state.dashboard_url));
+                        }
+                    }
+                    ID_OPEN_TERMINAL => {
+                        open_terminal();
                     }
                     ID_EXIT => {
                         info!("Menutup aplikasi Simple-Iscsi dari System Tray.");

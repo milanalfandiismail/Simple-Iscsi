@@ -1,6 +1,6 @@
 use crate::pdu::{self, Pdu, OP_LOGIN_REQ, OP_LOGIN_RESP, STAGE_FULL_FEATURE_PHASE};
 use crate::session::Session;
-use tracing::info;
+use tracing::{info, debug};
 use tokio::io::AsyncWriteExt;
 
 impl Session {
@@ -27,9 +27,9 @@ impl Session {
             info!("ISID (Initiator Session ID): 0x{:012X}", isid >> 16);
             info!("CSG (Current Stage): {}, NSG (Next Stage): {}, Transit: {}", csg, nsg, transit);
             
-            info!("--- Parameter Klien ---");
+            debug!("--- Parameter Klien ---");
             for (key, val) in &params {
-                info!("  {: <30} = {}", key, val);
+                debug!("  {: <30} = {}", key, val);
             }
             
             // Analisis asal request (iBFT / Windows)
@@ -160,9 +160,9 @@ impl Session {
             resp.exp_stat_sn = self.exp_cmd_sn;
             resp.max_cmd_sn = self.max_cmd_sn;
             
-            info!("--- Parameter Respon ---");
+            debug!("--- Parameter Respon ---");
             for (key, val) in &resp_params {
-                info!("  {: <30} = {}", key, val);
+                debug!("  {: <30} = {}", key, val);
             }
             info!("=======================================================");
             resp.data = pdu::builder::build_text_parameters(&resp_params);

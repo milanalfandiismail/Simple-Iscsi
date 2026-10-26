@@ -30,6 +30,12 @@ pub fn get_stats_payload(config: &SharedConfig, stats: &Arc<ServerStats>) -> ser
             "last_duration_secs": last_duration_secs,
             "bytes_read": client_s.bytes_read.load(std::sync::atomic::Ordering::Relaxed),
             "bytes_written": client_s.bytes_written.load(std::sync::atomic::Ordering::Relaxed),
+            "gamedisk_bytes_read": client_s.gamedisk_bytes_read.load(std::sync::atomic::Ordering::Relaxed),
+            "gamedisk_bytes_written": client_s.gamedisk_bytes_written.load(std::sync::atomic::Ordering::Relaxed),
+            "imagedisk_bytes_read": client_s.imagedisk_bytes_read.load(std::sync::atomic::Ordering::Relaxed),
+            "imagedisk_bytes_written": client_s.imagedisk_bytes_written.load(std::sync::atomic::Ordering::Relaxed),
+            "gamedisk_writeback_paths": client_s.gamedisk_writeback_paths.lock().clone(),
+            "imagedisk_writeback_path": client_s.imagedisk_writeback_path.lock().clone(),
         })
     }).collect();
 

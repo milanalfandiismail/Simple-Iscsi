@@ -7,6 +7,12 @@ use parking_lot::Mutex;
 pub struct ClientIOStats {
     pub bytes_read: AtomicU64,
     pub bytes_written: AtomicU64,
+    pub gamedisk_bytes_read: AtomicU64,
+    pub gamedisk_bytes_written: AtomicU64,
+    pub imagedisk_bytes_read: AtomicU64,
+    pub imagedisk_bytes_written: AtomicU64,
+    pub gamedisk_writeback_paths: Mutex<Vec<String>>,
+    pub imagedisk_writeback_path: Mutex<String>,
     pub active_sessions: AtomicU64,
     pub last_bytes_read: AtomicU64,
     pub last_bytes_written: AtomicU64,
@@ -19,6 +25,12 @@ impl Default for ClientIOStats {
         Self {
             bytes_read: AtomicU64::new(0),
             bytes_written: AtomicU64::new(0),
+            gamedisk_bytes_read: AtomicU64::new(0),
+            gamedisk_bytes_written: AtomicU64::new(0),
+            imagedisk_bytes_read: AtomicU64::new(0),
+            imagedisk_bytes_written: AtomicU64::new(0),
+            gamedisk_writeback_paths: Mutex::new(Vec::new()),
+            imagedisk_writeback_path: Mutex::new(String::new()),
             active_sessions: AtomicU64::new(0),
             last_bytes_read: AtomicU64::new(0),
             last_bytes_written: AtomicU64::new(0),
@@ -80,22 +92,45 @@ impl ServerStats {
                 // Reset stats when the client goes fully offline
                 stats.bytes_read.store(0, Ordering::Relaxed);
                 stats.bytes_written.store(0, Ordering::Relaxed);
+                stats.gamedisk_bytes_read.store(0, Ordering::Relaxed);
+                stats.gamedisk_bytes_written.store(0, Ordering::Relaxed);
+                stats.imagedisk_bytes_read.store(0, Ordering::Relaxed);
+                stats.imagedisk_bytes_written.store(0, Ordering::Relaxed);
                 stats.last_bytes_read.store(0, Ordering::Relaxed);
                 stats.last_bytes_written.store(0, Ordering::Relaxed);
             }
         }
     }
 
-    pub fn record_read(&self, ip: &str, bytes: u64) {
+    pub fn record_read(&self, ip: &str, is_imagedisk: bool, bytes: u64) {
         self.bytes_read.fetch_add(bytes, Ordering::Relaxed);
         let stats = self.client_stats.entry(ip.to_string()).or_default();
         stats.bytes_read.fetch_add(bytes, Ordering::Relaxed);
+        if is_imagedisk {
+            stats.imagedisk_bytes_read.fetch_add(bytes, Ordering::Relaxed);
+        } else {
+            stats.gamedisk_bytes_read.fetch_add(bytes, Ordering::Relaxed);
+        }
     }
 
-    pub fn record_write(&self, ip: &str, bytes: u64) {
+    pub fn record_write(&self, ip: &str, is_imagedisk: bool, bytes: u64) {
         self.bytes_written.fetch_add(bytes, Ordering::Relaxed);
         let stats = self.client_stats.entry(ip.to_string()).or_default();
         stats.bytes_written.fetch_add(bytes, Ordering::Relaxed);
+        if is_imagedisk {
+            stats.imagedisk_bytes_written.fetch_add(bytes, Ordering::Relaxed);
+        } else {
+            stats.gamedisk_bytes_written.fetch_add(bytes, Ordering::Relaxed);
+        }
+    }
+
+    pub fn set_writeback_paths(&self, ip: &str, is_imagedisk: bool, paths: Vec<String>) {
+        let stats = self.client_stats.entry(ip.to_string()).or_default();
+        if is_imagedisk {
+            *stats.imagedisk_writeback_path.lock() = paths.first().cloned().unwrap_or_default();
+        } else {
+            *stats.gamedisk_writeback_paths.lock() = paths;
+        }
     }
 
     fn format_bytes(bytes: u64) -> String {

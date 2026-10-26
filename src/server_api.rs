@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json::json;
-use tracing::{info, error};
+use tracing::{info, error, debug};
 use std::fs;
 use std::collections::HashMap;
 
@@ -166,6 +166,8 @@ async fn handle_request(
             build_response(200, "OK", "application/json", &payload.to_string())
         }
 
+        ("GET", "/api/logs") => crate::api::routes_logs::get_logs(&query_params),
+
         ("GET", "/api/services/status") => {
             let status = service_manager.get_status();
             match serde_json::to_string(&status) {
@@ -264,24 +266,27 @@ async fn handle_request(
         }
 
         ("POST", "/api/config/json") => {
-            info!("Menerima request pembaruan config: {}", body);
+            debug!("Menerima request config ({} bytes)", body.len());
             match serde_json::from_str::<crate::config::Config>(&body) {
                 Ok(cfg) => {
-                    info!("Berhasil parsing config JSON ke struct: {:?}", cfg);
+                    debug!(
+                        "Config valid: {} gamedisk, {} writeback dir, dhcp={}",
+                        cfg.gamedisk.len(),
+                        cfg.writeback.writeback_dirs.len(),
+                        cfg.dhcp.as_ref().map(|d| d.enabled).unwrap_or(false)
+                    );
                     match toml::to_string(&cfg) {
                         Ok(toml_str) => {
-                            info!("Berhasil serialisasi struct ke TOML:\n{}", toml_str);
+                            debug!("Config TOML serialized ({} bytes)", toml_str.len());
                             if let Err(e) = fs::write("config.toml", &toml_str) {
                                 error!("Gagal menulis file config.toml: {}", e);
                                 build_response(500, "Internal Server Error", "text/plain", &e.to_string())
                             } else {
-                                info!("Berhasil memperbarui file config.toml di disk. Memicu reload instan...");
+                                // Jangan restart iSCSI di sini: listener restart membuat client
+                                // kehilangan boot disk dan bisa BSOD saat game berjalan.
+                                info!("Config.toml diperbarui. iSCSI listener TIDAK direstart; perubahan diterapkan ke sesi baru.");
                                 config.update(cfg);
-                                let sm = service_manager.clone();
-                                tokio::spawn(async move {
-                                    sm.restart_all().await;
-                                });
-                                build_response(200, "OK", "text/plain", "Config saved and services reloaded successfully")
+                                build_response(200, "OK", "text/plain", "Config saved. iSCSI listener not restarted (use service restart manually for port/DHCP/TFTP changes).")
                             }
                         }
                         Err(e) => {
@@ -323,6 +328,14 @@ async fn handle_request(
 
         ("GET", "/api/system/tftp_folders") => {
             crate::api::routes_tftp::get_tftp_folders(config)
+        }
+
+        ("GET", "/api/system/tftp_root") => {
+            crate::api::routes_tftp::get_tftp_root(config)
+        }
+
+        ("POST", "/api/system/tftp_folders/pick") => {
+            crate::api::routes_tftp::post_tftp_pick_folder(config)
         }
 
         ("POST", "/api/system/tftp_folders/create") => {

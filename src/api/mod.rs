@@ -1,3 +1,4 @@
+pub mod routes_logs;
 pub mod routes_stats;
 pub mod routes_client;
 pub mod routes_vhd;

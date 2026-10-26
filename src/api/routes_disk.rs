@@ -156,7 +156,7 @@ pub fn get_writeback_files(config: &SharedConfig) -> String {
             for entry in entries.flatten() {
                 let path = entry.path();
                 let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or_default().to_string();
-                if filename.ends_with(".bin") || filename.ends_with(".map") {
+                if filename.ends_with(".vhd") {
                     let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                     list.push(json!({
                         "name": filename,

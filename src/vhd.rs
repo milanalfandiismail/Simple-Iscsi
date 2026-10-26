@@ -322,6 +322,64 @@ impl VhdBackend {
     }
 
 
+    /// Membuat dynamic VHD kosong (type 3) untuk writeback overlay.
+    pub fn create_dynamic(path: &str, current_size: u64, vhd_block_size: u32) -> io::Result<()> {
+        info!("Membuat dynamic VHD writeback: {} ({} bytes)", path, current_size);
+
+        let table_offset: u64 = 1536;
+        let max_table_entries = ((current_size + vhd_block_size as u64 - 1) / vhd_block_size as u64) as u32;
+        let bat_size = max_table_entries as u64 * 4;
+        let data_start = ((table_offset + bat_size + 511) / 512) * 512;
+
+        let uuid_bytes = *uuid::Uuid::new_v4().as_bytes();
+
+        let mut header = vec![0u8; 1024];
+        header[0..8].copy_from_slice(b"cxsparse");
+        header[16..24].copy_from_slice(&table_offset.to_be_bytes());
+        header[28..32].copy_from_slice(&max_table_entries.to_be_bytes());
+        header[32..36].copy_from_slice(&vhd_block_size.to_be_bytes());
+        let header_checksum = calculate_vhd_checksum(&header, 12);
+        header[12..16].copy_from_slice(&header_checksum.to_be_bytes());
+
+        let mut footer = vec![0u8; 512];
+        footer[0..8].copy_from_slice(b"conectix");
+        footer[8..12].copy_from_slice(&0x00000002u32.to_be_bytes());
+        footer[12..16].copy_from_slice(&0x01000000u32.to_be_bytes());
+        footer[16..24].copy_from_slice(&512u64.to_be_bytes());
+        footer[40..48].copy_from_slice(&current_size.to_be_bytes());
+        footer[48..56].copy_from_slice(&current_size.to_be_bytes());
+        footer[56..60].copy_from_slice(&2u32.to_be_bytes());
+        footer[60..64].copy_from_slice(&3u32.to_be_bytes());
+        footer[68..72].copy_from_slice(&uuid_bytes[0..4]);
+        footer[72..76].copy_from_slice(&uuid_bytes[4..8]);
+        footer[76..80].copy_from_slice(&uuid_bytes[8..12]);
+        footer[80..84].copy_from_slice(&uuid_bytes[12..16]);
+        let footer_checksum = calculate_vhd_checksum(&footer, 64);
+        footer[64..68].copy_from_slice(&footer_checksum.to_be_bytes());
+
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.share_mode(1 | 2 | 4);
+        }
+        let mut file = options.open(path)?;
+        use std::io::Write;
+        file.write_all(&footer)?;
+        file.write_all(&header)?;
+        file.write_all(&vec![0xFFu8; bat_size as usize])?;
+
+        let pos = file.seek(SeekFrom::Current(0))?;
+        if data_start > pos {
+            file.write_all(&vec![0u8; (data_start - pos) as usize])?;
+        }
+        file.write_all(&footer)?;
+        file.sync_all()?;
+        Ok(())
+    }
+
+
     /// Read from single VHD (dynamic, fixed, or simple)
         pub fn read_blocks(&self, lba: u64, block_size: u64, buf: &mut [u8]) -> io::Result<()> {
             if self.disk_type == 2 {
@@ -519,6 +577,116 @@ impl VhdBackend {
             Ok(())
         }
 
+    /// Read overlay VHD dengan fallback ke raw base per sektor.
+    pub fn read_overlay_blocks<F>(&self, lba: u64, block_size: u64, buf: &mut [u8], mut raw_read: F) -> io::Result<()>
+    where
+        F: FnMut(u64, &mut [u8]) -> io::Result<()>,
+    {
+        let mut buf_offset = 0usize;
+        let mut current_byte_offset = lba * block_size;
+        let vhd_block_size = self.vhd_block_size as u64;
+        let bm_len = self.sector_bitmap_size as usize;
+
+        while buf_offset < buf.len() {
+            let block_idx = current_byte_offset / vhd_block_size;
+            let offset_in = current_byte_offset % vhd_block_size;
+            let bytes = std::cmp::min(buf.len() - buf_offset, (vhd_block_size - offset_in) as usize);
+            let cur_lba = current_byte_offset / block_size;
+            let bat_val = *self.bat.get(block_idx as usize).unwrap_or(&0xFFFFFFFF);
+
+            if bat_val == 0xFFFFFFFF {
+                raw_read(cur_lba, &mut buf[buf_offset..buf_offset + bytes])?;
+            } else {
+                let sec_start = (offset_in / 512) as usize;
+                let sec_count = (bytes + 511) / 512;
+                let mut bitmap = vec![0u8; bm_len];
+                file_read_exact_at(&self.file, bat_val as u64 * 512, &mut bitmap)?;
+
+                let mut all_set = true;
+                let mut all_clear = true;
+                for s in sec_start..(sec_start + sec_count) {
+                    if (bitmap[s / 8] & (0x80 >> (s % 8))) != 0 {
+                        all_clear = false;
+                    } else {
+                        all_set = false;
+                    }
+                }
+
+                if all_set {
+                    let phys = bat_val as u64 * 512 + self.sector_bitmap_size as u64 + offset_in;
+                    file_read_exact_at(&self.file, phys, &mut buf[buf_offset..buf_offset + bytes])?;
+                } else if all_clear {
+                    raw_read(cur_lba, &mut buf[buf_offset..buf_offset + bytes])?;
+                } else {
+                    for s_idx in 0..sec_count {
+                        let s = sec_start + s_idx;
+                        let dst_start = buf_offset + s_idx * 512;
+                        let dst_len = 512.min(buf.len() - dst_start);
+                        if (bitmap[s / 8] & (0x80 >> (s % 8))) != 0 {
+                            let phys = bat_val as u64 * 512 + self.sector_bitmap_size as u64 + (s as u64) * 512;
+                            file_read_exact_at(&self.file, phys, &mut buf[dst_start..dst_start + dst_len])?;
+                        } else {
+                            let raw_lba = (current_byte_offset + s_idx as u64 * 512) / block_size;
+                            raw_read(raw_lba, &mut buf[dst_start..dst_start + dst_len])?;
+                        }
+                    }
+                }
+            }
+
+            buf_offset += bytes;
+            current_byte_offset += bytes as u64;
+        }
+        Ok(())
+    }
+
+    /// Tulis overlay VHD: alokasikan blok, tandai bitmap, tulis sektor berubah saja.
+    pub fn write_overlay_blocks(&mut self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
+        if buf.is_empty() || buf.len() % 512 != 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data overlay harus kelipatan 512"));
+        }
+        let mut buf_offset = 0usize;
+        let mut current_byte_offset = lba * block_size;
+        let vhd_block_size = self.vhd_block_size as u64;
+        let bm_len = self.sector_bitmap_size as usize;
+
+        while buf_offset < buf.len() {
+            let block_idx = current_byte_offset / vhd_block_size;
+            let offset_in = current_byte_offset % vhd_block_size;
+            let bytes = std::cmp::min(buf.len() - buf_offset, (vhd_block_size - offset_in) as usize);
+            if block_idx as usize >= self.bat.len() {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "LBA writeback melebihi ukuran disk"));
+            }
+
+            let bat_val = *self.bat.get(block_idx as usize).unwrap_or(&0xFFFFFFFF);
+            let mut bitmap = vec![0u8; bm_len];
+            let bat_val = if bat_val == 0xFFFFFFFF {
+                let eof = self.file.metadata()?.len();
+                let new_bat = (eof / 512) as u32;
+                self.bat[block_idx as usize] = new_bat;
+                file_write_all_at(&self.file, self.table_offset + block_idx * 4, &new_bat.to_be_bytes())?;
+                self.file.set_len(eof + self.sector_bitmap_size as u64 + vhd_block_size)?;
+                new_bat
+            } else {
+                file_read_exact_at(&self.file, bat_val as u64 * 512, &mut bitmap)?;
+                bat_val
+            };
+
+            let sec_start = (offset_in / 512) as usize;
+            let sec_count = (bytes + 511) / 512;
+            for s in sec_start..(sec_start + sec_count) {
+                bitmap[s / 8] |= 0x80 >> (s % 8);
+            }
+            file_write_all_at(&self.file, bat_val as u64 * 512, &bitmap)?;
+            let phys = bat_val as u64 * 512 + self.sector_bitmap_size as u64 + offset_in;
+            file_write_all_at(&self.file, phys, &buf[buf_offset..buf_offset + bytes])?;
+
+            buf_offset += bytes;
+            current_byte_offset += bytes as u64;
+        }
+        Ok(())
+    }
+
+
     /// Write blocks to VHD — allocate new BAT entries, update sector bitmap
         pub fn write_blocks(&mut self, lba: u64, block_size: u64, buf: &[u8]) -> io::Result<()> {
             if self.disk_type == 2 {
@@ -613,6 +781,36 @@ impl VhdBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_dynamic_overlay_raw_fallback() {
+        let dir = std::env::temp_dir();
+        let raw_path = dir.join(format!("raw_overlay_{}.bin", uuid::Uuid::new_v4()));
+        let vhd_path = dir.join(format!("overlay_{}.vhd", uuid::Uuid::new_v4()));
+        let block_size = 512u64;
+        let total = 4 * 1024 * 1024u64;
+        let raw = vec![0x11u8; total as usize];
+        std::fs::write(&raw_path, &raw).unwrap();
+
+        VhdBackend::create_dynamic(vhd_path.to_str().unwrap(), total, 2 * 1024 * 1024).unwrap();
+        let f = std::fs::OpenOptions::new().read(true).write(true).open(&vhd_path).unwrap();
+        let mut vhd = VhdBackend::open(f).unwrap();
+        vhd.write_overlay_blocks(0, block_size, &vec![0xAAu8; 512]).unwrap();
+
+        let mut buf = vec![0u8; 1024];
+        vhd.read_overlay_blocks(0, block_size, &mut buf, |lba, slice| {
+            let off = (lba * block_size) as usize;
+            slice.copy_from_slice(&raw[off..off + slice.len()]);
+            Ok(())
+        }).unwrap();
+        assert_eq!(&buf[0..4], &[0xAAu8; 4]);
+        assert_eq!(&buf[512..516], &[0x11u8; 4]);
+
+        let meta = std::fs::metadata(&vhd_path).unwrap().len();
+        assert!(meta < total, "overlay harus lebih kecil dari virtual disk");
+        let _ = std::fs::remove_file(&vhd_path);
+        let _ = std::fs::remove_file(&raw_path);
+    }
     use std::io::Write;
 
     #[test]

@@ -123,7 +123,7 @@ pub fn handle_get_cache_stats(
 
     for (lun_idx, gd_cfg) in cfg.gamedisk.iter().enumerate() {
         let lun_id = lun_idx as u8;
-        let path = gd_cfg.physical_disk.clone();
+        let path = crate::config::gamedisk_path(gd_cfg);
         let path_trim = path.trim();
         let is_c_drive = path_trim.starts_with("c:") || path_trim.starts_with("C:")
             || path_trim.starts_with(r"\\.\c:") || path_trim.starts_with(r"\\.\C:");
@@ -458,7 +458,7 @@ ram_cache_mb = 2048
 
 [writeback]
 writeback_dirs = ['E:\writeback']
-max_cache_per_client_gb = 10
+max_writeback_per_client_gb = 10
 ram_cache_mb = 512
 "#;
         std::fs::write(&cfg_path, initial_toml).unwrap();

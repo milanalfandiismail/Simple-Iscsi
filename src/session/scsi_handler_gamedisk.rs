@@ -27,6 +27,7 @@ impl SessionContext {
         lun_id: u8,
         lba: u64,
         num_blocks: u32,
+        fua: bool,
     ) -> Result<(), std::io::Error> {
         let backend = self.backends.get(&lun_id).cloned().unwrap();
         let block_size = backend.block_size();
@@ -59,6 +60,7 @@ impl SessionContext {
                     expected_len,
                     buffer: write_buf,
                     data_sn_count: 0,
+                    fua,
                 });
             }
             
@@ -72,14 +74,23 @@ impl SessionContext {
         let tx = self.tx.clone();
         let stats = std::sync::Arc::clone(&self.stats);
         let client_ip = self.client_ip.clone();
+        let write_guard = self.write_lock.clone().lock_owned().await;
 
         tokio::spawn(async move {
+            let _write_guard = write_guard;
             let res = tokio::task::spawn_blocking(move || {
                 if let Some(cache) = cache_opt {
-                    cache.write_stream(lba, 0, &write_buf)
+                    cache.write_stream(lba, 0, &write_buf)?;
+                    if fua {
+                        cache.flush()?;
+                    }
                 } else {
-                    backend.write_blocks(lba, num_blocks, &write_buf)
+                    backend.write_blocks(lba, num_blocks, &write_buf)?;
+                    if fua {
+                        backend.sync()?;
+                    }
                 }
+                Ok::<(), std::io::Error>(())
             }).await;
 
             match res {
@@ -91,7 +102,7 @@ impl SessionContext {
                         expected_len: 0,
                         actual_len: 0,
                     }).await;
-                    stats.record_write(&client_ip, expected_len as u64);
+                    stats.record_write(&client_ip, false, expected_len as u64);
                 }
                 Ok(Err(e)) => {
                     tracing::error!("Gagal menulis data ke disk LUN {} LBA {}: {}", lun_id, lba, e);

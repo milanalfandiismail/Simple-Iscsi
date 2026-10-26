@@ -57,7 +57,7 @@ flowchart TD
         SRV_CACHE["Writeback Cache Engine src/writeback_gamedisk.rs"]
         VHD_STORE["Windows Base VHD Read-Only"]
         RAW_STORE["Game Physical Disk Drive"]
-        WB_STORE["Client Cache .bin 128 MB Initial"]
+        WB_STORE["Client Writeback .bin 4KB COW"]
     end
 
     NIC_ROM -->|"1. DHCPDISCOVER"| NET_DHCP
@@ -380,56 +380,37 @@ Untuk mendukung banyak harddisk game (misal 10 Game Disk) tanpa perlu membuat 10
 
 ---
 
-# BAB 6: STORAGE BACKEND & WRITEBACK CACHE ENGINE (128 MB)
+# BAB 6: STORAGE BACKEND & WRITEBACK CACHE ENGINE (.bin 4KB COW)
 
-## 6.1 Arsitektur Dual-Layer Writeback Cache
-Untuk memproses penulisan data client diskless tanpa membebani storage induk (*base image*), server menggunakan sistem **Dual-Layer Caching** di [`src/writeback_gamedisk.rs`](file:///c:/Project%20GIT/Simple-Iscsi/src/writeback_gamedisk.rs):
+## 6.1 Arsitektur Writeback .bin 4KB Copy-on-Write
 
-```mermaid
+GameDisk dan ImageDisk normal memakai file writeback .bin dengan blok internal 4KB. Tujuannya menghilangkan slack alokasi VHD 2MB, bukan mengompresi data.
+
+~~~mermaid
 flowchart TD
     WRITE_REQ["Client SCSI WRITE (LBA, Data)"]
-    
-    subgraph Layer1 ["Layer 1: Lock-Free RAM Cache (0 ms Latency)"]
-        DASHMAP["DashMap Memory Table"]
-    end
-    
-    subgraph Layer2 ["Layer 2: Background Async Disk Sync"]
-        CHANNEL["Sync Channel mpsc (16,384 Slots)"]
-        WORKER["Dedicated Background Worker Thread"]
-        FILE_BIN["Disk Sparse Cache File (.bin 128 MB Initial)"]
-        BLOCK_MAP["Atomic Offset Block Map (.map)"]
-    end
-    
-    WRITE_REQ -->|"1. Simpan Instan ke RAM"| DASHMAP
-    WRITE_REQ -->|"2. Non-blocking Enqueue"| CHANNEL
-    WRITE_REQ -->|"3. Kirim Status Selesai ke Windows"| RESP["SCSI Response GOOD (0x00)"]
-    
-    CHANNEL -->|"4. Pop Task"| WORKER
-    WORKER -->|"5. Write at Base Offset"| FILE_BIN
-    WORKER -->|"6. Update LBA to Offset Table"| BLOCK_MAP
-```
+    COW["Blok 4KB belum ada? Baca 4KB dari base, timpa byte yang ditulis"]
+    OVERWRITE["Blok 4KB sudah ada? Overwrite di offset yang sama"]
+    BIN["Writeback .bin (hanya blok unik 4KB)"]
+    MAP["In-memory block map (block index -> offset)"]
+    FLUSH["FUA / SYNCHRONIZE CACHE -> sync_all()"]
 
----
+    WRITE_REQ --> COW
+    WRITE_REQ --> OVERWRITE
+    COW --> BIN
+    OVERWRITE --> BIN
+    BIN --> MAP
+    WRITE_REQ --> FLUSH
+~~~
 
-## 6.2 Mengapa Pre-Alokasi Awal 128 MB Sangat Penting?
-Di [`src/writeback_gamedisk.rs` baris 119](file:///c:/Project%20GIT/Simple-Iscsi/src/writeback_gamedisk.rs#L119):
-```rust
-let target_alloc = (128 * 1024 * 1024).min(max_cache_gb * 1024 * 1024 * 1024);
-if let Ok(meta) = file_write_handle.metadata() {
-    if meta.len() < target_alloc {
-        let _ = file_write_handle.set_len(target_alloc); // 128 MB Pre-Allocation
-    }
-}
-```
-
-* **Jika 0 Byte:** Selama proses booting, Windows menulis ~50–100 MB file log/registry. Filesystem host server akan melakukan syscall *`ExtendFile`* puluhan ribu kali per detik yang menyebabkan fragmentasi file dan *I/O lock contention* (stuttering).
-* **Jika 128 MB:** Seluruh burst data boot Windows langsung ditampung dalam 1 blok alokasi kontinu tanpa jeda alokasi.
-* **Auto-Grow:** Jika pemakaian client melebihi 128 MB, file `.bin` otomatis mengembang dinamis hingga batas `max_cache_per_client_gb` di `config.toml`.
-* **Isolasi Diskless:** Saat client logout/disconnect, seluruh file cache `.bin` dan `.map` milik client tersebut dihapus bersih secara otomatis.
-
----
-
----
+- **GameDisk:** base tetap raw volume read-only; perubahan masuk ke .bin.
+- **ImageDisk normal:** base VHD tetap read-only; perubahan masuk ke .bin; tidak ada child VHD sementara.
+- **Super Client:** tetap memakai super.vhd; tidak memakai .bin.
+- **Ukuran:** file .bin = jumlah blok 4KB unik x 4KB. 2GB write yang tersebar di blok 4KB menjadi sekitar 2GB, bukan 16GB.
+- **Map:** disimpan di RAM; tidak ada file .map, tidak ada pre-alokasi 128MB.
+- **Flush:** sync_all() pada FUA dan SYNCHRONIZE CACHE.
+- **Cleanup:** file .bin dihapus saat client logout/disconnect.
+- **Tanpa cap:** tidak ada batas per client. Monitor free space disk secara manual.
 
 ## 6.3 VHD Append-Only Copy-on-Write (CoW) Merge Engine & Snapshot Rollback
 

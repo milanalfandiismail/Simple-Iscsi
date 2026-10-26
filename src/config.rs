@@ -6,6 +6,48 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use tracing::{error, info, warn};
 
+pub const DEFAULT_CONFIG_TOML: &str = include_str!("../assets/config.default.toml");
+
+/// Membuat config.toml default hanya jika file belum ada.
+pub fn ensure_config_file(path: &str) -> std::io::Result<bool> {
+    if Path::new(path).exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::write(path, DEFAULT_CONFIG_TOML)?;
+    Ok(true)
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::Mutex;
+
+    static CLIENTS_LOCK: Mutex<()> = Mutex::new(());
+
+    pub(crate) fn with_clients_file<T>(content: &str, f: impl FnOnce() -> T) -> T {
+        let _guard = CLIENTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let original = std::fs::read_to_string("clients.toml").ok();
+        std::fs::write("clients.toml", content).expect("gagal menulis fixture clients.toml");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match original {
+            Some(s) => {
+                let _ = std::fs::write("clients.toml", s);
+            }
+            None => {
+                let _ = std::fs::remove_file("clients.toml");
+            }
+        }
+        match result {
+            Ok(v) => v,
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(default)]
 pub struct Config {
@@ -126,6 +168,8 @@ fn default_product_revision() -> String {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GamediskConfig {
     pub physical_disk: String,
+    #[serde(default)]
+    pub volume: Option<String>,
     pub block_size: u64,
     #[serde(default = "default_vendor_id")]
     pub vendor_id: String,
@@ -135,6 +179,17 @@ pub struct GamediskConfig {
     pub product_revision: String,
     #[serde(default)]
     pub ram_cache_mb: Option<u64>,
+}
+
+/// Path raw yang dipakai GameDisk. Volume menang atas physical_disk.
+pub fn gamedisk_path(gd: &GamediskConfig) -> String {
+    if let Some(v) = &gd.volume {
+        let letter = v.trim().trim_end_matches(|c| c == ':' || c == '\\');
+        if !letter.is_empty() {
+            return format!("\\\\.\\{}:", letter.to_uppercase());
+        }
+    }
+    gd.physical_disk.clone()
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -156,23 +211,55 @@ pub struct WindowsConfig {
     pub super_client_action: String,
     #[serde(default)]
     pub ram_cache_mb: Option<u64>,
+    #[serde(default)]
+    pub client_cache_enabled: bool,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct WritebackConfig {
     pub writeback_dirs: Vec<String>,
-    pub max_cache_per_client_gb: u64,
-    #[serde(default)]
+    pub max_writeback_per_client_gb: u64,
     pub max_write_speed_mbps: u64,
-    #[serde(default)]
     pub ram_cache_mb: Option<u64>,
+}
+
+impl<'de> Deserialize<'de> for WritebackConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default)]
+            writeback_dirs: Vec<String>,
+            #[serde(default)]
+            max_writeback_per_client_gb: Option<u64>,
+            #[serde(default)]
+            max_cache_per_client_gb: Option<u64>,
+            #[serde(default)]
+            max_write_speed_mbps: u64,
+            #[serde(default)]
+            ram_cache_mb: Option<u64>,
+        }
+
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(Self {
+            writeback_dirs: raw.writeback_dirs,
+            max_writeback_per_client_gb: raw
+                .max_writeback_per_client_gb
+                .or(raw.max_cache_per_client_gb)
+                .unwrap_or(0),
+            max_write_speed_mbps: raw.max_write_speed_mbps,
+            ram_cache_mb: raw.ram_cache_mb,
+        })
+    }
 }
 
 impl Default for WritebackConfig {
     fn default() -> Self {
         Self {
             writeback_dirs: Vec::new(),
-            max_cache_per_client_gb: 10,
+            max_writeback_per_client_gb: 0,
             max_write_speed_mbps: 20,
             ram_cache_mb: None,
         }
@@ -197,16 +284,40 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
     };
 
     // === Validation ===
+    if config.server.port != 3260 && config.server.port != 3300 {
+        error!("Port server {} tidak didukung; gunakan 3260 atau 3300", config.server.port);
+        return Err("port server harus 3260 atau 3300".into());
+    }
     let is_power_of_2 = |v: u64| v.count_ones() == 1;
+    let mut gamedisk_volumes = HashSet::new();
     for (i, gd) in config.gamedisk.iter().enumerate() {
         if !is_power_of_2(gd.block_size) {
             error!("GameDisk[{}] block_size {} harus power of 2 (512/1024/4096)", i, gd.block_size);
             return Err("block_size invalid".into());
         }
-        // Windows device paths (\\\\.\\PhysicalDriveN) can't be checked via Path::exists
-        if !gd.physical_disk.starts_with("\\\\.\\") {
-            if !Path::new(&gd.physical_disk).exists() {
-                warn!("GameDisk[{}] path {} tidak ditemukan", i, gd.physical_disk);
+        if let Some(v) = &gd.volume {
+            let letter = v.trim().trim_end_matches(|c| c == ':' || c == '\\').to_uppercase();
+            if letter.is_empty() {
+                error!("GameDisk[{}] volume kosong", i);
+                return Err("volume invalid".into());
+            }
+            if letter == "C" {
+                error!("GameDisk[{}] tidak boleh memakai volume C:", i);
+                return Err("volume C: dilarang".into());
+            }
+            if !gamedisk_volumes.insert(letter.clone()) {
+                error!("GameDisk[{}] volume {} duplikat", i, letter);
+                return Err("volume duplikat".into());
+            }
+            if !Path::new(&format!("{}:\\", letter)).exists() {
+                warn!("GameDisk[{}] volume {}:\\ tidak ditemukan", i, letter);
+            }
+        } else {
+            // Windows device paths (\\\\.\\PhysicalDriveN) can't be checked via Path::exists
+            if !gd.physical_disk.starts_with("\\\\.\\") {
+                if !Path::new(&gd.physical_disk).exists() {
+                    warn!("GameDisk[{}] path {} tidak ditemukan", i, gd.physical_disk);
+                }
             }
         }
     }
@@ -215,10 +326,6 @@ pub fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
             error!("Windows block_size {} harus power of 2", win.block_size);
             return Err("block_size invalid".into());
         }
-    }
-    if config.writeback.max_cache_per_client_gb < 1 {
-        error!("max_cache_per_client_gb harus >= 1");
-        return Err("max_cache_per_client_gb invalid".into());
     }
     for (i, dir) in config.writeback.writeback_dirs.iter().enumerate() {
         let p = Path::new(dir);
@@ -495,6 +602,88 @@ pub fn parse_human_cache_size(val: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_gamedisk_volume_path() {
+        let gd: GamediskConfig = toml::from_str("physical_disk = ''\nblock_size = 512\nvolume = 'G:'").unwrap();
+        assert_eq!(gamedisk_path(&gd), "\\\\.\\G:");
+    }
+
+    #[test]
+    fn test_default_config_template_complete() {
+        let cfg: Config = toml::from_str(DEFAULT_CONFIG_TOML).unwrap();
+        assert!(cfg.windows.is_some());
+        assert!(cfg.dhcp.is_some());
+        assert!(cfg.image_manager.is_some());
+        assert_eq!(cfg.writeback.max_writeback_per_client_gb, 0);
+        assert_eq!(cfg.windows.as_ref().unwrap().ram_cache_mb, Some(0));
+        assert_eq!(cfg.writeback.ram_cache_mb, Some(0));
+        assert_eq!(cfg.dhcp.as_ref().unwrap().nic_ips, Some(vec![]));
+        assert!(cfg.dhcp.as_ref().unwrap().auto_add_client);
+        assert_eq!(cfg.gamedisk_target.vendor_id, "RUSTISCS");
+        assert_eq!(cfg.gamedisk_target.product_id, "GameDisk");
+        assert_eq!(cfg.gamedisk_target.product_revision, "1.00");
+        assert!(cfg.gamedisk.is_empty());
+    }
+
+    #[test]
+    fn test_ensure_config_file_only_creates() {
+        let path = std::env::temp_dir().join(format!("simpleiscsi_cfg_{}.toml", uuid::Uuid::new_v4()));
+        let p = path.to_str().unwrap();
+        assert!(ensure_config_file(p).unwrap());
+        assert_eq!(std::fs::read_to_string(p).unwrap(), DEFAULT_CONFIG_TOML);
+        std::fs::write(p, "custom = true
+").unwrap();
+        assert!(!ensure_config_file(p).unwrap());
+        assert_eq!(std::fs::read_to_string(p).unwrap(), "custom = true
+");
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn test_writeback_duplicate_json_keys_are_tolerated() {
+        let cfg: Config = serde_json::from_str(
+            r#"{"writeback":{"writeback_dirs":[],"max_writeback_per_client_gb":5,"max_cache_per_client_gb":7,"max_write_speed_mbps":0}}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.writeback.max_writeback_per_client_gb, 5);
+    }
+
+    #[test]
+    fn test_writeback_duplicate_keys_are_tolerated() {
+        let cfg: Config = toml::from_str(
+            "[writeback]\nwriteback_dirs = []\nmax_writeback_per_client_gb = 5\nmax_cache_per_client_gb = 7\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.writeback.max_writeback_per_client_gb, 5);
+    }
+
+    #[test]
+    fn test_legacy_writeback_limit_alias() {
+        let cfg: Config = toml::from_str("[writeback]
+writeback_dirs = []
+max_cache_per_client_gb = 7
+").unwrap();
+        assert_eq!(cfg.writeback.max_writeback_per_client_gb, 7);
+    }
+
+    #[test]
+    fn test_zero_writeback_limit_allowed() {
+        let path = std::env::temp_dir().join(format!("simpleiscsi_cfg_zero_{}.toml", uuid::Uuid::new_v4()));
+        let p = path.to_str().unwrap();
+        std::fs::write(p, "[writeback]
+writeback_dirs = []
+max_writeback_per_client_gb = 0
+").unwrap();
+        assert!(load_config(p).is_ok());
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn test_example_config_parses() {
+        let txt = std::fs::read_to_string("config.toml.example").unwrap();
+        let _: Config = toml::from_str(&txt).unwrap();
+    }
 
     #[test]
     fn test_load_current_config() {

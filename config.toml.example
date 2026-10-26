@@ -3,6 +3,16 @@
 
 gamedisk = []
 
+# Contoh GameDisk per volume:
+# [[gamedisk]]
+# volume = "G:"
+# physical_disk = ""
+# block_size = 512
+# vendor_id = "RUSTISCS"
+# product_id = "GameDisk"
+# product_revision = "1.00"
+# ram_cache_mb = 0
+
 [server]
 address = "0.0.0.0"
 port = 3260
@@ -11,6 +21,9 @@ read_cache_gb = 4
 [gamedisk_target]
 target_iqn = "iqn.2024-01.com.example:gamedisks"
 discovery = true
+vendor_id = "RUSTISCS"
+product_id = "GameDisk"
+product_revision = "1.00"
 
 [windows]
 target_iqn_prefix = "iqn.2024-01.com.example:vhd-"
@@ -22,11 +35,15 @@ product_revision = "1.00"
 discovery = false
 super_client_ip = ""
 super_client_action = "none"
+ram_cache_mb = 0
+client_cache_enabled = false
 
 [writeback]
 writeback_dirs = []
-max_cache_per_client_gb = 10
+# Writeback .bin 4KB COW. Tidak ada cap per client.
+max_writeback_per_client_gb = 0
 max_write_speed_mbps = 100000
+ram_cache_mb = 0
 
 [image_manager]
 win10 = 'D:\Images\Windows10.vhd'

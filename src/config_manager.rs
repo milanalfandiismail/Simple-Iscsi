@@ -135,7 +135,8 @@ pub fn start_config_watcher(
                             
                             // Cek apakah konfigurasi disk ini persis sama dengan yang lama (termasuk vendor/product)
                             for (old_i, old_gd_cfg) in old_config.gamedisk.iter().enumerate() {
-                                if old_i as u8 == lun_id 
+                                if old_i as u8 == lun_id
+                                    && crate::config::gamedisk_path(old_gd_cfg) == crate::config::gamedisk_path(gd_cfg)
                                     && old_gd_cfg.physical_disk == gd_cfg.physical_disk
                                     && old_gd_cfg.vendor_id == gd_cfg.vendor_id
                                     && old_gd_cfg.product_id == gd_cfg.product_id
@@ -150,10 +151,11 @@ pub fn start_config_watcher(
                             }
                             
                             if !reused {
-                                info!("Memuat ulang / menambahkan Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
+                                let gd_path = crate::config::gamedisk_path(gd_cfg);
+                                info!("Memuat ulang / menambahkan Gamedisk LUN {}: {}", lun_id, gd_path);
                                 let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
                                 match crate::backend::Backend::new_raw_mb(
-                                    &gd_cfg.physical_disk,
+                                    &gd_path,
                                     gd_cfg.block_size,
                                     &gd_cfg.vendor_id,
                                     &gd_cfg.product_id,
@@ -165,7 +167,7 @@ pub fn start_config_watcher(
                                         info!("Berhasil memuat Gamedisk LUN {}", lun_id);
                                     }
                                     Err(e) => {
-                                        error!("Gagal menginisialisasi storage gamedisk ({}): {}", gd_cfg.physical_disk, e);
+                                        error!("Gagal menginisialisasi storage gamedisk ({}): {}", gd_path, e);
                                     }
                                 }
                             }
@@ -220,7 +222,7 @@ discovery = false
 
 [writeback]
 writeback_dirs = ["C:\\writeback"]
-max_cache_per_client_gb = 10
+max_writeback_per_client_gb = 10
 "#;
         std::fs::write(&test_cfg_path, initial_content).unwrap();
 

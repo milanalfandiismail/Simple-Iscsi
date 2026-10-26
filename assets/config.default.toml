@@ -1,0 +1,64 @@
+# Template default Simple-Iscsi.
+# File ini dipakai hanya saat config.toml belum ada.
+
+gamedisk = []
+
+[server]
+address = "0.0.0.0"
+port = 3300
+read_cache_gb = 2
+
+[gamedisk_target]
+target_iqn = "iqn.2024-01.com.tmdebug:gamedisks"
+discovery = true
+vendor_id = "RUSTISCS"
+product_id = "GameDisk"
+product_revision = "1.00"
+
+# Contoh GameDisk (hapus tanda komentar jika dipakai):
+# [[gamedisk]]
+# physical_disk = '\\.\PhysicalDrive1'
+# block_size = 512
+# vendor_id = "RUSTISCS"
+# product_id = "GameDisk-1"
+# product_revision = "1.00"
+# ram_cache_mb = 0
+
+[windows]
+target_iqn_prefix = "iqn.2024-01.com.tmdebug:vhd-"
+vhd_dir = 'C:\vhd'
+block_size = 512
+vendor_id = "RUSTISCS"
+product_id = "WindowsBoot"
+product_revision = "1.00"
+discovery = false
+super_client_ip = ""
+super_client_action = "none"
+# 0 = cache RAM untuk base image dimatikan.
+ram_cache_mb = 0
+client_cache_enabled = false
+
+[writeback]
+writeback_dirs = []
+# Writeback .bin 4KB COW. Tidak ada cap per client.
+max_writeback_per_client_gb = 0
+# 0 = tanpa throttle.
+max_write_speed_mbps = 20
+# 0 = cache writeback RAM dimatikan (tidak dipakai .bin).
+ram_cache_mb = 0
+
+[image_manager]
+# windows_11 = 'D:\VHD\windows_11.vhd'
+
+[dhcp]
+enabled = false
+start_ip = "192.168.137.100"
+end_ip = "192.168.137.200"
+router = "192.168.137.1"
+dns = "8.8.8.8"
+next_server = "192.168.137.1"
+subnet_mask = "255.255.255.0"
+tftp_dir = "pxe"
+pxe_default = "sb-custom"
+nic_ips = []
+auto_add_client = true

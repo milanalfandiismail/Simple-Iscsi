@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod cli;
 mod backend;
 mod writeback_gamedisk;
@@ -19,49 +21,124 @@ mod config_manager;
 mod server_api;
 mod api;
 mod service_manager;
+mod native_picker;
 mod tray;
 
 use backend::Backend;
 use std::fs;
+use std::io::Write;
 use std::sync::Arc;
 use tracing::{info, error};
 use std::collections::HashMap;
 use config_manager::SharedConfig;
 
-struct LogWriter {
-    file: std::sync::Arc<std::sync::Mutex<std::fs::File>>,
+struct LogState {
+    path: std::path::PathBuf,
+    file: Option<std::fs::File>,
+    bytes: u64,
+    max_size: u64,
+    max_files: usize,
 }
 
-impl std::io::Write for LogWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let _ = std::io::stdout().write_all(buf);
-        if let Ok(mut file) = self.file.lock() {
-            let _ = file.write_all(buf);
+impl LogState {
+    fn open(path: std::path::PathBuf) -> std::io::Result<Self> {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
+        Ok(Self {
+            path,
+            file: Some(file),
+            bytes,
+            max_size: 512 * 1024,
+            max_files: 3,
+        })
+    }
+
+    fn rotate(&mut self) -> std::io::Result<()> {
+        self.file.take();
+        let base = self.path.to_string_lossy().to_string();
+        let max = self.max_files.max(2);
+        let _ = std::fs::remove_file(format!("{}.{}", base, max - 1));
+        for i in (1..max - 1).rev() {
+            let from = format!("{}.{}", base, i);
+            let to = format!("{}.{}", base, i + 1);
+            if std::path::Path::new(&from).exists() {
+                let _ = std::fs::rename(&from, &to);
+            }
         }
-        Ok(buf.len())
+        let _ = std::fs::rename(&base, format!("{}.1", base));
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
+        self.file = Some(file);
+        self.bytes = 0;
+        Ok(())
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        if self.bytes.saturating_add(buf.len() as u64) > self.max_size {
+            self.rotate()?;
+        }
+        if let Some(file) = self.file.as_mut() {
+            file.write_all(buf)?;
+            self.bytes = self.bytes.saturating_add(buf.len() as u64);
+        }
+        Ok(())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let _ = std::io::stdout().flush();
-        if let Ok(mut file) = self.file.lock() {
-            let _ = file.flush();
+        if let Some(file) = self.file.as_mut() {
+            file.flush()?;
         }
         Ok(())
     }
 }
 
+struct LogWriter {
+    state: std::sync::Arc<std::sync::Mutex<LogState>>,
+    console: bool,
+}
+
+impl std::io::Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.console {
+            let _ = std::io::stdout().write_all(buf);
+        }
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.write_all(buf)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if self.console {
+            let _ = std::io::stdout().flush();
+        }
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.flush()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("server.log")
-        .expect("Gagal membuat/membuka file log server.log");
-    let file_writer = std::sync::Arc::new(std::sync::Mutex::new(log_file));
+    let log_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("server.log")))
+        .unwrap_or_else(|| std::path::PathBuf::from("server.log"));
+    crate::api::routes_logs::set_log_path(log_path.clone());
+    let log_state = std::sync::Arc::new(std::sync::Mutex::new(
+        LogState::open(log_path.clone()).expect("Gagal membuat/membuka file log server.log"),
+    ));
 
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
-        .with_writer(move || LogWriter { file: file_writer.clone() })
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,rust_iscsi_server::service_manager=info,rust_iscsi_server::session=info,rust_iscsi_server::session::login=warn,rust_iscsi_server::session::scsi_handler=warn,rust_iscsi_server::writeback_gamedisk=info,rust_iscsi_server::writeback_imagedisk=info")))
+        .with_ansi(false)
+        .with_writer({
+            let state = log_state.clone();
+            move || LogWriter { state: state.clone(), console: cfg!(debug_assertions) }
+        })
         .init();
 
     info!("Memulai Rust iSCSI Server...");
@@ -69,57 +146,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = "config.toml".to_string();
     let clients_path = "clients.toml".to_string();
 
-    // Auto-create config.toml if missing
-    if !std::path::Path::new(&config_path).exists() {
-        info!("config.toml tidak ditemukan. Membuat template default...");
-        let default_config = r#"[server]
-  address        = "0.0.0.0"
-  port           = 3300
-  read_cache_gb  = 2
-
-[dhcp]
-  enabled        = false
-  start_ip       = "192.168.137.100"
-  end_ip         = "192.168.137.200"
-  subnet_mask    = "255.255.255.0"
-  router         = "192.168.137.1"
-  dns            = "8.8.8.8"
-  next_server    = "192.168.137.1"
-  tftp_dir       = "pxe"
-  pxe_default    = "sb-custom"
-
-[gamedisk_target]
-  target_iqn     = "iqn.2024-01.com.tmdebug:gamedisks"
-  discovery      = true
-
-# [[gamedisk]]
-#   physical_disk    = '\\.\PhysicalDrive1'
-#   block_size       = 512
-#   vendor_id        = "TM"
-#   product_id       = "GameDisk-1"
-#   product_revision = "1.00"
-
-[windows]
-  target_iqn_prefix   = "iqn.2024-01.com.tmdebug:vhd-"
-  vhd_dir             = 'C:\vhd'
-  block_size          = 512
-  vendor_id           = "RUSTISCS"
-  product_id          = "WindowsBoot"
-  product_revision    = "1.00"
-  discovery           = false
-  super_client_ip     = ""
-  super_client_action = "none"
-
-[writeback]
-  writeback_dirs          = ['C:\writeback']
-  max_cache_per_client_gb = 10
-  max_write_speed_mbps    = 20
-
-[image_manager]
-  # windows_11 = 'C:\vhd\windows_11.vhd'
-"#;
-        if let Err(e) = std::fs::write(&config_path, default_config) {
+    match config::ensure_config_file(&config_path) {
+        Ok(true) => info!("config.toml tidak ditemukan. Template default dibuat."),
+        Ok(false) => {}
+        Err(e) => {
             error!("Gagal membuat {}: {}", config_path, e);
+            return Err(e.into());
         }
     }
 
@@ -186,11 +218,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut gamedisk_backends_map: HashMap<u8, Arc<Backend>> = HashMap::new();
     for (i, gd_cfg) in config.gamedisk.iter().enumerate() {
         let lun_id = i as u8;
-        info!("Membuka storage backend raw: {}", gd_cfg.physical_disk);
+        let gd_path = config::gamedisk_path(gd_cfg);
+        info!("Membuka storage backend raw: {}", gd_path);
 
         let ram_cache_mb = gd_cfg.ram_cache_mb.unwrap_or(0);
         match Backend::new_raw_mb(
-            &gd_cfg.physical_disk,
+            &gd_path,
             gd_cfg.block_size,
             &gd_cfg.vendor_id,
             &gd_cfg.product_id,
@@ -199,10 +232,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ) {
             Ok(b) => {
                 gamedisk_backends_map.insert(lun_id, Arc::new(b));
-                info!("Berhasil memuat Gamedisk LUN {}: {}", lun_id, gd_cfg.physical_disk);
+                info!("Berhasil memuat Gamedisk LUN {}: {}", lun_id, gd_path);
             }
             Err(e) => {
-                error!("Gagal menginisialisasi storage backend gamedisk ({}): {}", gd_cfg.physical_disk, e);
+                error!("Gagal menginisialisasi storage backend gamedisk ({}): {}", gd_path, e);
                 error!("Silakan perbaiki konfigurasi gamedisk di halaman Disk Management.");
             }
         }
@@ -258,17 +291,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Tunggu sinyal interrupt Ctrl+C untuk graceful shutdown
-    match tokio::signal::ctrl_c().await {
-        Ok(()) => {
-            info!("Menerima sinyal shutdown (Ctrl+C). Menghentikan seluruh layanan secara graceful...");
-            service_manager.stop_all().await;
-            info!("Server Simple-Iscsi telah berhenti dengan aman.");
+    // Ctrl+C hanya untuk mode console/debug. Di release tray-only, proses tetap hidup
+    // sampai user memilih Keluar dari tray.
+    let sm_ctrl = service_manager.clone();
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                info!("Menerima sinyal shutdown (Ctrl+C). Menghentikan seluruh layanan secara graceful...");
+                sm_ctrl.stop_all().await;
+                std::process::exit(0);
+            }
+            Err(e) => {
+                info!("Ctrl+C tidak tersedia (mode tray): {}", e);
+            }
         }
-        Err(e) => {
-            error!("Gagal mendengarkan sinyal shutdown: {}", e);
-        }
-    }
-
+    });
+    std::future::pending::<()>().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogState;
+
+    #[test]
+    fn log_state_rotates_at_max_size() {
+        let dir = std::env::temp_dir().join(format!("simpleiscsi_log_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("server.log");
+
+        let mut state = LogState::open(path.clone()).unwrap();
+        state.max_size = 32;
+        state.max_files = 3;
+        state.write_all(&[b'a'; 20]).unwrap();
+        state.write_all(&[b'b'; 20]).unwrap();
+
+        assert!(path.exists());
+        assert!(std::path::Path::new(&format!("{}.1", path.display())).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

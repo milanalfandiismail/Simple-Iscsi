@@ -25,36 +25,15 @@ pub fn get_system_vhds(config: &SharedConfig) -> String {
 }
 
 pub fn post_system_select_vhd() -> String {
-    let ps_script = r#"
-Add-Type -AssemblyName System.Windows.Forms
-$form = New-Object System.Windows.Forms.Form
-$form.TopMost = $true
-$form.ShowInTaskbar = $false
-$form.WindowState = 'Minimized'
-$dialog = New-Object System.Windows.Forms.OpenFileDialog
-$dialog.Filter = "VHD Disk Image|*.vhd;*.vhdx"
-$dialog.Title = "Pilih File VHD"
-$result = $dialog.ShowDialog($form)
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-    Write-Output $dialog.FileName
-}
-    "#;
+    let path = crate::native_picker::pick_file("Pilih File VHD", &["vhd", "vhdx"])
+        .map(|p| p.to_string_lossy().to_string());
 
-    let output = std::process::Command::new("powershell")
-        .arg("-NoProfile")
-        .arg("-Command")
-        .arg(ps_script)
-        .output();
-
-    let mut path_str: Option<String> = None;
-    if let Ok(out) = output {
-        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !stdout.is_empty() {
-            path_str = Some(stdout);
-        }
-    }
-
-    build_response(200, "OK", "application/json", &json!({ "path": path_str }).to_string())
+    build_response(
+        200,
+        "OK",
+        "application/json",
+        &json!({ "path": path }).to_string(),
+    )
 }
 
 pub fn get_vhd(config: &SharedConfig) -> String {

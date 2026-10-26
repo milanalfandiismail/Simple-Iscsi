@@ -1,5 +1,5 @@
 #!ipxe
-
+:start
 echo
 echo    ==========================================
 echo
@@ -18,7 +18,7 @@ echo    ==========================================
 echo
 echo        Mencoba boot via snponly.efi...
 echo
-sanboot ${168:string}:000 || goto fallback
+sanboot --no-describe ${168:string}:000 || goto fallback
 exit
 
 :fallback
@@ -27,4 +27,16 @@ echo    ==========================================
 echo        snponly gagal, fallback ipxe.efi...
 echo    ==========================================
 sleep 2
-chain --replace ipxe.efi
+chain --replace ipxe.efi || goto boot_failed
+
+:boot_failed
+echo
+echo  ==========================================
+echo   BOOT GAGAL
+echo   Periksa VHD Mapping dan Writeback di Dashboard.
+echo   Pastikan port iSCSI 3260/3300 dan IP server benar.
+echo  ==========================================
+echo
+echo  Tekan Enter untuk mencoba lagi...
+prompt
+goto start
