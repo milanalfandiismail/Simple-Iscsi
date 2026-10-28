@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$VhdPath,
     [Parameter(Mandatory=$true)][string]$MountDrive,
-    [string]$DriverSource = (Join-Path $PSScriptRoot '..\CCBootPNPX.sys')
+    [string]$DriverSource = (Join-Path $PSScriptRoot '..\lab\ccboot\drivers\CCBootPNPX.sys')
 )
 
 $ErrorActionPreference = 'Stop'

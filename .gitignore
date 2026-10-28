@@ -58,3 +58,6 @@ CCBoot*
 
 # Documentation & Internal Research
 /docs/
+
+# Local lab artifacts (CCBoot binaries, drivers, registry exports)
+/lab/
