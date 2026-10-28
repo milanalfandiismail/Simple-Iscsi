@@ -121,7 +121,13 @@ pub fn init_child_vhd(
         }
         if disk_type != 4 {
             let win = config.windows.as_ref().unwrap();
-            let shared = get_or_create_image_cache(&base_path, win.ram_cache_mb.unwrap_or(0));
+            // ImageDisk ikut cache server.read_cache_gb kalau ram_cache_mb tidak diisi/0.
+            let cache_mb = win
+                .ram_cache_mb
+                .filter(|mb| *mb > 0)
+                .unwrap_or_else(|| config.server.read_cache_gb.saturating_mul(1024));
+            info!("ImageDisk read cache: {} MB ({})", cache_mb, base_path);
+            let shared = get_or_create_image_cache(&base_path, cache_mb);
             let backend = Backend::new_vhd_with_shared_cache(
                 &base_path,
                 win.block_size,

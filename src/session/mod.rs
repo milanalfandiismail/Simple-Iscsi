@@ -386,6 +386,11 @@ impl Session {
         });
         context.stats.record_session_start(&context.client_ip);
 
+        // Snapshot untuk log per sesi (read/write MB)
+        let sess_read0 = context.stats.bytes_read.load(std::sync::atomic::Ordering::Relaxed);
+        let sess_write0 = context.stats.bytes_written.load(std::sync::atomic::Ordering::Relaxed);
+        let sess_t0 = std::time::Instant::now();
+
         // 4. Spawn Writer Task
         let context_writer = Arc::downgrade(&context);
         let writer_handle = tokio::spawn(async move {
@@ -520,6 +525,10 @@ impl Session {
         }
 
         // Wait for writer task to finish processing any pending packets
+        let sess_read = context.stats.bytes_read.load(std::sync::atomic::Ordering::Relaxed).saturating_sub(sess_read0);
+        let sess_write = context.stats.bytes_written.load(std::sync::atomic::Ordering::Relaxed).saturating_sub(sess_write0);
+        let sess_secs = sess_t0.elapsed().as_secs();
+
         let client_ip_cleanup = context.client_ip.clone();
         let config_cleanup = context.config.clone();
         drop(context); // Drop the last sender in this thread to notify the receiver
@@ -538,6 +547,8 @@ impl Session {
         debug!("Sesi berakhir (logout/disconnect) — membersihkan gamedisk cache.");
         drop(client_caches);
 
+        info!("Sesi selesai: durasi={}s read={:.1}MB write={:.2}MB",
+              sess_secs, sess_read as f64 / 1048576.0, sess_write as f64 / 1048576.0);
         info!("Koneksi dengan client {} selesai.", peer_addr);
         Ok(())
     }

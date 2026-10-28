@@ -82,7 +82,7 @@ impl SessionContext {
                 if let Some(cache) = cache_opt {
                     cache.write_stream(lba, 0, &write_buf)?;
                     if fua {
-                        cache.flush()?;
+                        /* FUA diabaikan: overlay writeback dibuang saat sesi selesai */
                     }
                 } else {
                     backend.write_blocks(lba, num_blocks, &write_buf)?;

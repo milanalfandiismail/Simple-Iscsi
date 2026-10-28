@@ -20,7 +20,8 @@
 8. [BAB 8: Analisis Kinerja, Audit Optimasi, & Matriks Troubleshooting (10 MB/s ke 900+ Mbps)](#bab-8-analisis-kinerja-audit-optimasi--matriks-troubleshooting-10-mbs-ke-900-mbps)
 9. [BAB 9: Arsitektur & Panduan Konversi Native Driverless iSCSI (Aturan Emas Slot 0000 & NetCfgInstanceId)](#bab-9-arsitektur--panduan-konversi-native-driverless-iscsi)
 10. [BAB 10: Kompatibilitas Driver Klien Pihak Ketiga (Mode CCBootPNPX & CCacheX)](#10-kompatibilitas-driver-klien-pihak-ketiga-mode-ccbootpnpx--ccachex)
-11. [BAB 11: Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)](#11-lisensi--atribusi-komponen-pihak-ketiga-third-party-licenses)
+11. [BAB 11: Windows Boot Manager (bootmgfw.efi) & Boot Lambat Windows 11 24H2 ke Atas](#11-windows-boot-manager-bootmgfwefi--boot-lambat-pada-windows-11-24h2-ke-atas)
+12. [BAB 12: Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)](#12-lisensi--atribusi-komponen-pihak-ketiga-third-party-licenses)
 
 ---
 
@@ -1127,7 +1128,211 @@ sequenceDiagram
 
 ---
 
-## 11. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
+## 11. Windows Boot Manager (bootmgfw.efi) & Boot Lambat Windows 11 24H2 ke Atas
+
+> [!IMPORTANT]
+> **Temuan lapangan (2026-10-27):** pada Windows 11 26H2, fase iPXE → logo Windows bisa
+> macet **±7 menit**. Penyebabnya **bukan** kernel loader, cache server, registry, maupun
+> BCD — melainkan **revisi file `bootmgfw.efi` / `bootx64.efi`**. Menurunkan kedua file itu
+> ke revisi lebih lama (25H2 atau 23H2) memulihkan boot menjadi ±35 detik.
+
+### 11.1 Gejala
+
+| Fase | Perilaku |
+|---|---|
+| DHCP → TFTP → iPXE | normal, `Registered SAN device 0x80` muncul |
+| **`Booting from SAN device 0x80` → logo Windows** | **macet ±7 menit** ← masalah di sini |
+| Logo Windows → desktop | normal (fase ini memakai `msiscsi` Windows sendiri) |
+
+Karena fase setelah logo normal, server iSCSI, jaringan, dan VHD terbukti sanggup
+mengirim data cepat. Yang lambat hanya pembacaan lewat `EFI_BLOCK_IO` milik iPXE,
+yaitu fase yang dijalankan oleh Windows Boot Manager.
+
+### 11.2 Data versi file loader
+
+| File | Asal | Versi | Ukuran | SHA-256 (16 awal) | Hasil |
+|---|---|---|---|---|---|
+| `bootmgfw.efi` / `bootx64.efi` | 26H2 (image) | 10.0.**28000.367** | 3.087.200 | `25D8869E3C79083A` | **lambat ±7 menit** |
+| | 25H2 | 10.0.**28000.352** | 3.086.728 | `B6F5FF8A5F605840` | cepat |
+| | 23H2 | 10.0.**22631** | ±2,9 MB | — | cepat |
+| `winload.efi` | 26H2 (asli) | 10.0.**26100.9549** | 3.400.032 | `BCF8402DDF495BDD` | normal |
+| | 25H2 | 10.0.**26100.9168** | 3.348.608 | `5B36477FCF3F235C` | normal |
+| | 23H2 | 10.0.**22621.2792** | 1.997.440 | `CED283B53779E9D7` | ❌ gagal boot |
+
+Beda `28000.367` vs `28000.352` hanya **472 byte** — 15 revisi Cumulative Update dalam
+build yang sama, tapi efeknya 12× lebih lambat pada jalur SAN.
+
+Semua versi di atas tersedia siap-pakai di **`Boot Manager\<VERSI>\`** — tiap folder
+berisi tepat dua file (`bootmgfw.efi` + `bootx64.efi`) plus `README.md` berisi tabel versi,
+hash, dan cara pakainya.
+
+### 11.3 Aturan kompatibilitas loader
+
+| File | Lokasi | Boleh diganti antar versi? |
+|---|---|---|
+| `bootx64.efi` | `\EFI\Boot\` | ✅ isinya identik dengan `bootmgfw.efi` |
+| `bootmgfw.efi` | `\EFI\Microsoft\Boot\` | ✅ toleran lintas versi (baca BCD → panggil winload) |
+| `winload.efi` | `\Windows\System32\` | ⚠️ **hanya dalam branch yang sama** (26100 ↔ 26100) |
+| `ntoskrnl.exe`, `hal.dll` | `\Windows\System32\` | ❌ bukan loader — ganti berarti ganti OS |
+| `msiscsi.sys`, `tcpip.sys`, driver NIC | `\Windows\System32\drivers\` | ❌ dipakai fase setelah logo |
+
+```
+bootmgfw.efi  →  bebas, selama masih Microsoft-signed asli
+winload.efi   →  WAJIB satu branch dengan kernel
+```
+
+Memaksakan `winload` lintas feature update (mis. 22621 pada kernel 26100) menghasilkan
+`Preparing Automatic Repair`, atau `0xc0000001` / `0xc0000221` / `0xc0000428` /
+`INACCESSIBLE_BOOT_DEVICE`.
+
+### 11.4 Matriks percobaan (server selalu di-restart, cache kosong)
+
+| # | `bootmgfw` + `bootx64` | `winload` | Hasil |
+|---|---|---|---|
+| 1 | 28000.367 | 26100.9549 | **±7 menit** |
+| 2 | 28000.352 | 26100.9549 | **cepat** (sesi iSCSI 35–36 detik) |
+| 3 | 28000.352 | 26100.9168 | **cepat** |
+| 4 | 28000.352 | 22621.2792 | ❌ Automatic Repair |
+| 5 | 22631 (23H2) | 26100.9549 | **lancar** |
+| 6 | 28000.367 (dipulihkan) | 26100.9549 | **lambat lagi** |
+
+Satu-satunya variabel yang berkorelasi dengan lambat/cepat adalah versi `bootmgfw`/`bootx64`.
+
+### 11.5 Prosedur penggantian (di host, VHD offline)
+
+```powershell
+# 1. Hentikan server dan LEPAS VHD dari VMware (kalau ter-attach, mount akan gagal)
+Get-Process rust-iscsi-server -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# 2. Mount
+$vhd = 'I:\VHD\W11-26H2-26300.9550-lannn-0.0.1 - Copy.vhd'
+Mount-DiskImage -ImagePath $vhd -NoDriveLetter
+
+# 3. Beri huruf: Z = ESP (FAT32), T = partisi Windows (NTFS)
+$d   = (Get-DiskImage -ImagePath $vhd | Get-Disk).Number
+$esp = (Get-Partition -DiskNumber $d | Where-Object Type -eq 'System').PartitionNumber
+$os  = (Get-Partition -DiskNumber $d | Where-Object Type -eq 'Basic').PartitionNumber
+Set-Partition -DiskNumber $d -PartitionNumber $esp -NewDriveLetter Z
+Set-Partition -DiskNumber $d -PartitionNumber $os  -NewDriveLetter T
+
+# 4. Ganti dua file ESP (FAT32, tidak perlu takeown)
+$src = 'Boot Manager\25H2'      # atau 'Boot Manager\23H2'
+Copy-Item "$src\bootmgfw.efi" 'Z:\EFI\Microsoft\Boot\bootmgfw.efi' -Force
+Copy-Item "$src\bootx64.efi"  'Z:\EFI\Boot\bootx64.efi'            -Force
+
+# 5. Selesai
+Dismount-DiskImage -ImagePath $vhd
+```
+
+`winload.efi` **tidak perlu disentuh**. Kalau suatu saat perlu diganti, file itu milik
+`NT SERVICE\TrustedInstaller`, jadi harus `takeown` + `icacls` dulu (lihat
+`docs/sanboot-windows-24h2plus-bootmgfw.md` §8).
+
+### 11.6 Rollback
+
+Salinan boot manager tersimpan di folder **`Boot Manager\`** (root repo, tidak di-track git):
+
+| Folder | Isi | Versi | Status |
+|---|---|---|---|
+| **`Boot Manager\23H2\`** | `bootmgfw.efi` + `bootx64.efi` | 22621.2792 | cepat |
+| **`Boot Manager\25H2\`** | `bootmgfw.efi` + `bootx64.efi` | 28000.352 | cepat |
+| **`Boot Manager\26H2\`** | `bootmgfw.efi` + `bootx64.efi` | 28000.367 | lambat (untuk rollback pabrik) |
+
+`README.md` di folder itu memuat tabel versi, hash, dan prosedur pakai.
+
+`winload.efi` **tidak diarsipkan di repo** — file aslinya selalu ada di dalam VHD:
+
+| Asal | Cara mengambil | Versi |
+|---|---|---|
+| image 26H2 sendiri | mount VHD → `T:\Windows\System32\winload.efi` | 26100.9549 |
+| VHD 25H2 (`LANNN_25H2_26200_9168_...VHD`) | mount → `\Windows\System32\winload.efi` | 26100.9168 |
+| `I:\VHD\winload.efi` (file lepas) | sudah tersedia | 22621.2792 |
+
+Tangga cadangan yang disarankan:
+
+```
+22631 (23H2)  →  28000.352 (25H2)  →  28000.367 (26H2, hindari)
+```
+
+### 11.7 Dugaan yang sudah dicoret
+
+| Dugaan | Bukti penolakan |
+|---|---|
+| Read path server lambat | fase logo → desktop memakai server & jaringan yang sama, dan cepat |
+| Cache RAM server kurang | `read_cache_gb` 2 → 4 tidak mengubah gejala |
+| `TCP_NODELAY` / buffer soket | sudah aktif (`server.rs:72`, `session/mod.rs:179`, buffer 2 MB) |
+| Read-ahead server | sudah 256 KB per chunk (`backend.rs:397`) |
+| Ukuran baca 512 byte | 140 MB dibaca dengan **< 4096 perintah READ** → rata-rata ≥ 35 KB |
+| Registry (driver `Start=0`, VBS/HVCI, Memory Mgmt, Lsa, dll) | diff hive `SYSTEM` dua image: selisih kecil, tidak menjelaskan 12× |
+| BCD | BCD live bersih: tanpa `debug`, `debugtype Local`, satu entry |
+| Isi `\Windows\Boot`, `CodeIntegrity`, `drivers` | identik (302 vs 302 file; 8 vs 8 CIP policy) |
+| `TryGetChunkSize` di `winload` 9549 | hasil REA: jalur *container image* (`Cim::ImageReader`), bukan `BlockSize` device |
+| Dua proses server (port terpecah) | **bug nyata**, sudah diperbaiki — tapi bukan penyebab 7 menit |
+
+### 11.8 Jebakan operasional
+
+1. **Salah target VHD.** Image yang di-boot adalah nilai `[image_manager]` di `config.toml`.
+   Perubahan ke file lain tidak berpengaruh sama sekali — ini yang membuat tiga percobaan
+   awal sia-sia. Selalu cek `config.toml` dulu.
+2. **VHD terkunci.** `Mount-DiskImage` gagal bila VHD sedang dipakai server **atau**
+   ter-attach di VMware.
+3. **Dua penulis = image rusak.** Jangan attach VHD yang sama di VMware sementara server
+   juga menyajikannya lewat iSCSI.
+4. **Huruf `Y:` ditolak** Windows host (`access path is already in use`) — pakai `Z:` dan `T:`.
+5. **`FileVersion` bisa menipu** setelah file ditimpa (metadata di-cache). Verifikasi dengan
+   **SHA-256**.
+
+### 11.9 Windows Update
+
+`bootmgfw.efi` dan `winload.efi` ikut diupdate Cumulative Update. Setelah update:
+
+- `bootmgfw` bisa kembali ke `28000.367` → lambat lagi
+- `sfc /scannow` dan `DISM /RestoreHealth` akan menganggap file pengganti "rusak" dan
+  mengembalikannya
+
+Selalu simpan salinan versi cepat beserta hash-nya, dan cek dengan:
+
+```powershell
+(Get-FileHash 'Z:\EFI\Microsoft\Boot\bootmgfw.efi').Hash
+[System.Diagnostics.FileVersionInfo]::GetVersionInfo('Z:\EFI\Microsoft\Boot\bootmgfw.efi').FileVersion
+```
+
+### 11.10 Keamanan & anti-cheat
+
+| Syarat | Status |
+|---|---|
+| Secure Boot ON | ✅ `bootmgfw` lama tetap boot → tidak dicabut `dbx` di firmware ini |
+| TPM 2.0 | ✅ |
+| File EFI Microsoft-signed asli | ✅ (tidak dipatch / di-repack) |
+| Bukan VM | ❌ anticheat seperti Vanguard menolak berjalan di hypervisor |
+
+Mengganti `bootmgfw`/`bootx64` **tidak merusak rantai signature**, jadi tidak menimbulkan
+risiko ban. Yang berbahaya justru mem-patch atau me-re-sign file EFI — itu akan ditolak
+Secure Boot. `dbx` juga bisa berubah setelah update firmware; gejalanya `Security Violation`.
+
+### 11.11 Referensi internal
+
+Dokumentasi panjang (data mentah, kronologi 18 langkah, perintah lengkap):
+`docs/sanboot-windows-24h2plus-bootmgfw.md` (lokal, `docs/` gitignored).
+
+Debug yang berguna:
+
+```powershell
+# cek build OS di dalam VHD
+[System.Diagnostics.FileVersionInfo]::GetVersionInfo('T:\Windows\System32\ntoskrnl.exe').FileVersion
+
+# cek BCD offline
+bcdedit /store 'Z:\EFI\Microsoft\Boot\BCD' /enum all
+
+# cari semua bootmgfw beserta versinya
+Get-ChildItem C:\ -Filter bootmgfw.efi -Recurse -File -ErrorAction SilentlyContinue |
+  ForEach-Object { $_.FullName + ' | ' +
+    [System.Diagnostics.FileVersionInfo]::GetVersionInfo($_.FullName).FileVersion }
+```
+
+---
+
+## 12. Lisensi & Atribusi Komponen Pihak Ketiga (Third-Party Licenses)
 
 Simple-Iscsi menyertakan beberapa file binary bootloader jaringan yang telah dikompilasi sebelumnya (*pre-compiled binaries*) di dalam folder `pxe/` untuk memfasilitasi UEFI PXE Network Booting:
 

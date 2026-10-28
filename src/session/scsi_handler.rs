@@ -107,6 +107,15 @@ impl SessionContext {
                  u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32)
             };
             let total_bytes = (num_blocks as usize) * (backend.block_size() as usize);
+            // TEMP DIAG: pola READ untuk audit fase boot (hapus setelah selesai)
+            {
+                use std::sync::atomic::{AtomicU64, Ordering};
+                static DIAG_N: AtomicU64 = AtomicU64::new(0);
+                let n = DIAG_N.fetch_add(1, Ordering::Relaxed) + 1;
+                if n <= 40 || n % 2000 == 0 {
+                    info!("READ #{} lba={} blocks={} bytes={}", n, lba, num_blocks, total_bytes);
+                }
+            }
             let backend_clone = backend.clone();
             let itt = req.initiator_task_tag;
 

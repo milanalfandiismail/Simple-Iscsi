@@ -1,6 +1,20 @@
 use crate::backend::Backend;
 use crate::writeback_gamedisk::ClientCache;
-use tracing::warn;
+use tracing::{info, warn};
+
+// TEMP DIAG: histogram ukuran READ untuk diagnosis fase boot. Hapus setelah selesai.
+use std::sync::atomic::{AtomicU64, Ordering};
+static DIAG_READS: AtomicU64 = AtomicU64::new(0);
+static DIAG_HIST: [AtomicU64; 16] = [const { AtomicU64::new(0) }; 16];
+pub(crate) fn diag_record_read(nb: u32) {
+    let idx = if nb == 0 { 0 } else { (32 - nb.leading_zeros()).min(15) as usize };
+    DIAG_HIST[idx].fetch_add(1, Ordering::Relaxed);
+    let n = DIAG_READS.fetch_add(1, Ordering::Relaxed) + 1;
+    if n == 1 || n % 256 == 0 {
+        let hist: Vec<u64> = DIAG_HIST.iter().map(|c| c.load(Ordering::Relaxed)).collect();
+        info!("READ diag: total={} hist[1,2,4,8,16,32,64,128,256,512,1k,2k,4k,8k,16k,32k blok]={:?}", n, hist);
+    }
+}
 
 /// Representasi hasil eksekusi SCSI command.
 pub enum ScsiResult {
@@ -48,6 +62,7 @@ pub fn handle_scsi_command(
 fn handle_read_16(cdb: &[u8], backend: &Backend, cache: Option<&ClientCache>, block_size: u64) -> ScsiResult {
     let lba = u64::from_be_bytes(cdb[2..10].try_into().unwrap());
     let num_blocks = u32::from_be_bytes(cdb[10..14].try_into().unwrap());
+    diag_record_read(num_blocks);
     let total_bytes = (num_blocks as u64) * block_size;
     let mut data = Vec::with_capacity(total_bytes as usize);
     unsafe { data.set_len(total_bytes as usize); }
@@ -212,6 +227,7 @@ fn handle_service_action_in_16(cdb: &[u8], backend: &Backend, block_size: u64) -
 fn handle_read_10(cdb: &[u8], backend: &Backend, cache: Option<&ClientCache>, block_size: u64) -> ScsiResult {
     let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as u64;
     let num_blocks = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as u32;
+    diag_record_read(num_blocks);
     let total_bytes = (num_blocks as u64) * block_size;
     let mut data = Vec::with_capacity(total_bytes as usize);
     unsafe { data.set_len(total_bytes as usize); }
