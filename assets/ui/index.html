@@ -473,7 +473,7 @@
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Gateway (Router)</label>
-                                        <input type="text" id="set-dhcp-gateway" list="network-ips-datalist" placeholder="10.10.10.1" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
+                                        <input type="text" id="set-dhcp-gateway" placeholder="10.10.10.1" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
                                     </div>
                                 </div>
                                 <div>
@@ -508,7 +508,7 @@
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Default PXE Bootloader</label>
-                                    <input type="text" id="set-pxe-default" list="tftp-folders-list" placeholder="sb-custom" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
+                                    <input type="text" id="set-pxe-default" autocomplete="off" placeholder="sb-custom" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600 transition-colors">
                                 </div>
                             </div>
                         </div>
@@ -548,7 +548,6 @@
                     </div>
                 </form>
 
-                <datalist id="network-ips-datalist"></datalist>
             </section>
 
             <!-- TAB: LOGS -->
@@ -738,14 +737,15 @@
                         <input type="text" id="client-dns" placeholder="e.g. 8.8.8.8" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/60 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none transition-colors">
                     </div>
                     <div>
-                        <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">iSCSI Boot Server IP (Multi-NIC / Next Server)</label>
+                        <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">iSCSI Boot Server IP</label>
                         <select id="client-next-server" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/60 text-zinc-900 dark:text-zinc-100 focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none transition-colors"></select>
+                        <p class="text-[10.5px] text-zinc-500 dark:text-zinc-400 mt-1 leading-normal">Multi-NIC / Next Server (opsional)</p>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                     <div>
                         <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">PXE Bootloader Folder</label>
-                        <input type="text" id="client-pxe" list="tftp-folders-list" placeholder="e.g. sb-custom" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/60 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none transition-colors">
+                        <input type="text" id="client-pxe" autocomplete="off" placeholder="e.g. sb-custom" class="w-full px-3 py-2 text-xs sm:text-sm rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/60 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none transition-colors">
                     </div>
                     <div>
                         <label class="block text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">Boot Image VHD</label>
@@ -1193,8 +1193,6 @@
 
     <!-- TOAST NOTIFICATION CONTAINER -->
     <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
-
-    <datalist id="tftp-folders-list"></datalist>
 
     <!-- Main Logic Script -->
     <script src="index.js"></script>

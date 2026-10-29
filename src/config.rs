@@ -624,6 +624,7 @@ mod tests {
         assert_eq!(cfg.gamedisk_target.product_id, "GameDisk");
         assert_eq!(cfg.gamedisk_target.product_revision, "1.00");
         assert!(cfg.gamedisk.is_empty());
+        assert!(cfg.writeback.writeback_dirs.is_empty());
     }
 
     #[test]

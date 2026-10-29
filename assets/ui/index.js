@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initContextMenus();
     initClientTableEvents();
     initClientPreferences();
+    initPxeCombos();
 
     // Initial Data Sequence
     await loadInitialData();
@@ -431,7 +432,6 @@ function populateNetworkDropdowns() {
     const dhcpNext = document.getElementById('set-dhcp-next');
     const clientNext = document.getElementById('client-next-server');
     const nicSelect = document.getElementById('add-nic-ip-input');
-    const datalist = document.getElementById('network-ips-datalist');
 
     const currentServer = serverSelect ? serverSelect.value : '';
     const currentDhcp = dhcpNext ? dhcpNext.value : '';
@@ -442,7 +442,6 @@ function populateNetworkDropdowns() {
     if (dhcpNext) { dhcpNext.innerHTML = ''; dhcpNext.add(new Option('Pilih IP...', '')); }
     if (clientNext) { clientNext.innerHTML = ''; clientNext.add(new Option('Auto / Global', '')); }
     if (nicSelect) { nicSelect.innerHTML = ''; nicSelect.add(new Option('Pilih IP NIC...', '')); }
-    if (datalist) datalist.innerHTML = '';
 
     availableNetworkIps.forEach(ip => {
         if (ip !== '0.0.0.0') {
@@ -450,11 +449,6 @@ function populateNetworkDropdowns() {
             if (dhcpNext) dhcpNext.add(new Option(ip, ip));
             if (clientNext) clientNext.add(new Option(ip, ip));
             if (nicSelect) nicSelect.add(new Option(ip, ip));
-        }
-        if (datalist) {
-            const opt = document.createElement('option');
-            opt.value = ip;
-            datalist.appendChild(opt);
         }
     });
 
@@ -950,7 +944,7 @@ const BULK_FIELDS = [
     { key: 'gateway', label: 'Gateway', type: 'text', placeholder: '192.168.1.1' },
     { key: 'dns', label: 'DNS', type: 'text', placeholder: '1.1.1.1' },
     { key: 'next_server', label: 'Next Server', type: 'text', placeholder: '192.168.1.2' },
-    { key: 'pxe', label: 'PXE Folder', type: 'text', placeholder: 'sb-custom', list: 'tftp-folders-list' },
+    { key: 'pxe', label: 'PXE Folder', type: 'text', placeholder: 'sb-custom' },
     { key: 'image_manager', label: 'Boot Image', type: 'select' },
     { key: 'bootfile_uefi', label: 'Bootfile UEFI', type: 'text', placeholder: 'ipxe.efi' },
     { key: 'bootfile_legacy', label: 'Bootfile Legacy', type: 'text', placeholder: 'undionly.kpxe' },
@@ -968,11 +962,10 @@ function bulkInputHtml(f) {
     if (f.type === 'select') {
         return '<select data-bulk-input class="ui-input w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" disabled>' + f.options.map(o => '<option value="' + o[0] + '">' + o[1] + '</option>').join('') + '</select>';
     }
-    const extra = f.list ? ' list="' + f.list + '"' : '';
     const min = f.min !== undefined ? ' min="' + f.min + '"' : '';
     const max = f.max !== undefined ? ' max="' + f.max + '"' : '';
     const step = f.step !== undefined ? ' step="' + f.step + '"' : '';
-    return '<input data-bulk-input type="' + f.type + '" placeholder="' + (f.placeholder || '') + '"' + extra + min + max + step + ' class="ui-input w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" disabled>';
+    return '<input data-bulk-input type="' + f.type + '" placeholder="' + (f.placeholder || '') + '"' + min + max + step + ' class="ui-input w-full px-2.5 py-1.5 text-xs rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" disabled>';
 }
 
 function openClientBulkEditModal() {
@@ -990,8 +983,7 @@ function openClientBulkEditModal() {
         + (f.clearable === false ? '' : '<label class="flex items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"><input type="checkbox" data-bulk-clear class="rounded border-zinc-300 dark:border-zinc-700" disabled>Kosongkan</label>')
         + '</div>'
     ).join('');
-    fields.querySelectorAll('[data-bulk-key]').forEach(row => {
-        const toggle = row.querySelector('[data-bulk-toggle]');
+    fields.querySelectorAll('[data-bulk-key]').forEach(row => {        const toggle = row.querySelector('[data-bulk-toggle]');
         const input = row.querySelector('[data-bulk-input]');
         const clear = row.querySelector('[data-bulk-clear]');
         toggle.addEventListener('change', () => {
@@ -1005,11 +997,13 @@ function openClientBulkEditModal() {
             input.disabled = clear.checked || !toggle.checked;
         });
     });
+    attachPxeCombo(fields.querySelector('[data-bulk-key="pxe"] input[data-bulk-input]'));
     const modal = document.getElementById('client-bulk-edit-modal');
     if (modal) modal.style.display = 'flex';
 }
 
 function closeClientBulkEditModal() {
+    closePxeCombo();
     const modal = document.getElementById('client-bulk-edit-modal');
     if (modal) modal.style.display = 'none';
 }
@@ -1225,6 +1219,7 @@ async function openClientCrudModal(client = null) {
 }
 
 function closeClientCrudModal() {
+    closePxeCombo();
     document.getElementById('client-crud-modal').style.display = 'none';
 }
 
@@ -2270,9 +2265,105 @@ async function saveConfigJsonFull() {
 }
 
 // TFTP Bootloader Folders
+let pxeComboPanel = null;
+let pxeComboInput = null;
+let pxeComboItems = [];
+let pxeComboIndex = -1;
+
+function closePxeCombo() {
+    if (pxeComboPanel) pxeComboPanel.remove();
+    pxeComboPanel = null;
+    pxeComboInput = null;
+    pxeComboItems = [];
+    pxeComboIndex = -1;
+}
+
+function renderPxeCombo() {
+    if (!pxeComboPanel || !pxeComboInput) return;
+    const term = pxeComboInput.value.trim().toLowerCase();
+    pxeComboItems = (tftpFoldersCache || []).filter(f => !term || String(f).toLowerCase().includes(term));
+    if (pxeComboIndex >= pxeComboItems.length) pxeComboIndex = pxeComboItems.length - 1;
+    pxeComboPanel.innerHTML = pxeComboItems.length
+        ? pxeComboItems.map((f, i) => '<div data-pxe-idx="' + i + '" class="px-3 py-1.5 text-xs cursor-pointer ' + (i === pxeComboIndex ? 'bg-zinc-100 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800') + '">' + escapeHtml(f) + '</div>').join('')
+        : '<div class="px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400">Tidak ada folder cocok. Nilai manual tetap dipakai.</div>';
+}
+
+function openPxeCombo(input) {
+    if (!input) return;
+    if (pxeComboPanel && pxeComboInput === input) { renderPxeCombo(); return; }
+    closePxeCombo();
+    pxeComboInput = input;
+    pxeComboPanel = document.createElement('div');
+    pxeComboPanel.className = 'fixed z-[100] max-h-56 overflow-auto rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg py-1';
+    pxeComboPanel.style.zIndex = '10000';
+    const r = input.getBoundingClientRect();
+    pxeComboPanel.style.left = r.left + 'px';
+    pxeComboPanel.style.top = (r.bottom + 4) + 'px';
+    pxeComboPanel.style.width = r.width + 'px';
+    document.body.appendChild(pxeComboPanel);
+    pxeComboPanel.addEventListener('mousedown', (e) => {
+        const row = e.target.closest('[data-pxe-idx]');
+        if (!row || !pxeComboInput) return;
+        e.preventDefault();
+        const val = pxeComboItems[Number(row.getAttribute('data-pxe-idx'))];
+        if (val !== undefined) {
+            pxeComboInput.value = val;
+            pxeComboInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        closePxeCombo();
+    });
+    renderPxeCombo();
+}
+
+function attachPxeCombo(input) {
+    if (!input || input.dataset.pxeCombo === '1') return;
+    input.dataset.pxeCombo = '1';
+    input.removeAttribute('list');
+    input.addEventListener('focus', () => openPxeCombo(input));
+    input.addEventListener('click', () => openPxeCombo(input));
+    input.addEventListener('input', () => {
+        if (pxeComboInput !== input) openPxeCombo(input);
+        else { pxeComboIndex = -1; renderPxeCombo(); }
+    });
+    input.addEventListener('keydown', (e) => {
+        if (!pxeComboPanel || pxeComboInput !== input) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (pxeComboItems.length) { pxeComboIndex = (pxeComboIndex + 1) % pxeComboItems.length; renderPxeCombo(); }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (pxeComboItems.length) { pxeComboIndex = pxeComboIndex <= 0 ? pxeComboItems.length - 1 : pxeComboIndex - 1; renderPxeCombo(); }
+        } else if (e.key === 'Enter') {
+            if (pxeComboIndex >= 0 && pxeComboItems[pxeComboIndex] !== undefined) {
+                e.preventDefault();
+                input.value = pxeComboItems[pxeComboIndex];
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                closePxeCombo();
+            }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closePxeCombo();
+        }
+    });
+}
+
+function initPxeCombos() {
+    attachPxeCombo(document.getElementById('set-pxe-default'));
+    attachPxeCombo(document.getElementById('client-pxe'));
+}
+
+document.addEventListener('mousedown', (e) => {
+    if (!pxeComboPanel) return;
+    if (pxeComboPanel.contains(e.target) || e.target === pxeComboInput) return;
+    closePxeCombo();
+});
+window.addEventListener('resize', closePxeCombo);
+window.addEventListener('scroll', (e) => {
+    if (pxeComboPanel && !pxeComboPanel.contains(e.target)) closePxeCombo();
+}, true);
+
 async function loadTftpFolders() {
     const folders = await apiGet('/api/system/tftp_folders');
-    const datalist = document.getElementById('tftp-folders-list');
     const tbody = document.getElementById('tftp-folders-tbody');
     tftpFoldersCache = Array.isArray(folders) ? folders : [];
 
@@ -2286,15 +2377,6 @@ async function loadTftpFolders() {
         } else {
             hint.textContent = 'Folder harus di dalam TFTP root: ' + rootInfo.absolute + ' (contoh: ' + rootInfo.absolute + '\\sb-custom)';
         }
-    }
-
-    if (datalist) {
-        datalist.innerHTML = '';
-        tftpFoldersCache.forEach(f => {
-            const opt = document.createElement('option');
-            opt.value = f;
-            datalist.appendChild(opt);
-        });
     }
 
     if (!tbody) return;
