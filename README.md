@@ -157,7 +157,7 @@ cargo test
 ## 📄 Lisensi & Atribusi Pihak Ketiga
 
 - **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](LICENSE) © 2026 **Milan Alfandi Ismail**. Ketentuan lisensi lengkap dapat dilihat pada file [`LICENSE`](LICENSE).
-- **Komponen Bootloader (`pxe/`):** Berisi binary pihak ketiga [iPXE](https://github.com/ipxe/ipxe) (GPLv2) dan [Shim](https://github.com/rhboot/shim) (BSD-2-Clause) yang diagregasikan secara independen (*mere aggregation*). Rincian lisensi lengkap lihat [`pxe/LICENSE.md`](pxe/LICENSE.md).
+- **Komponen Bootloader (`pxe/`):** Berisi binary resmi pihak ketiga yang diunduh dari [iPXE Releases](https://github.com/ipxe/ipxe/releases) (GPLv2 & BSD-2-Clause) yang diagregasikan secara independen (*mere aggregation*). Rincian lisensi lengkap lihat [`pxe/LICENSE.md`](pxe/LICENSE.md).
 
 ---
 
