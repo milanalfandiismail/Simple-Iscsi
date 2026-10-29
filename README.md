@@ -154,10 +154,22 @@ cargo test
 
 ---
 
-## 📄 Lisensi & Atribusi Pihak Ketiga
+## 📄 Lisensi & Atribusi Pihak Ketiga (Third-Party Licenses)
 
-- **Simple-Iscsi:** Seluruh kode sumber server dan helper didistribusikan di bawah lisensi [**MIT License**](LICENSE) © 2026 **Milan Alfandi Ismail**. Ketentuan lisensi lengkap dapat dilihat pada file [`LICENSE`](LICENSE).
-- **Komponen Bootloader (`pxe/`):** Berisi binary resmi pihak ketiga yang diunduh dari [iPXE Releases](https://github.com/ipxe/ipxe/releases) (GPLv2 & BSD-2-Clause) yang diagregasikan secara independen (*mere aggregation*). Rincian lisensi lengkap lihat [`pxe/LICENSE.md`](pxe/LICENSE.md).
+Simple-Iscsi menyertakan beberapa file binary bootloader jaringan resmi yang telah dikompilasi sebelumnya (*pre-compiled binaries*) di dalam folder `pxe/` untuk memfasilitasi UEFI PXE Network Booting:
+
+| Komponen | Binary Terkait | Pemilik Hak Cipta & Proyek Asal | Lisensi | Sumber Rilis |
+| :--- | :--- | :--- | :--- | :--- |
+| **Simple-Iscsi Core** | `rust-iscsi-server.exe`, `helper-svc.exe` | © 2026 Milan Alfandi Ismail | **MIT License** | Repositori ini ([`LICENSE`](LICENSE)) |
+| **iPXE Bootloader** | `ipxe.efi`, `ipxe-full.efi` | © Michael Brown & Kontributor iPXE | **GNU GPL v2** | [GitHub iPXE Releases](https://github.com/ipxe/ipxe/releases) |
+| **UEFI Secure Boot Shim** | `ipxe-shim.efi` | © Red Hat, Inc. (`rhboot/shim`), dikompilasi & dirilis oleh Proyek iPXE | **BSD 2-Clause** | [GitHub iPXE Releases](https://github.com/ipxe/ipxe/releases) |
+
+### Hubungan Lisensi (*Mere Aggregation*)
+Server Simple-Iscsi (Rust) bertindak sebagai penyedia layanan independen (DHCP, TFTP, dan iSCSI target daemon). Binary bootloader dieksekusi di sisi klien firmware UEFI dan hanya berinteraksi dengan server Simple-Iscsi melalui protokol jaringan standar tanpa melakukan linking pustaka langsung. Sesuai dengan Bagian 2 Lisensi GNU GPL v2 dan klausul BSD 2-Clause, distribusi ini berstatus **agregasi murni (*mere aggregation*)**, sehingga lisensi basis kode utama Simple-Iscsi tetap murni di bawah **MIT License**.
+
+Rincian teks lisensi lengkap dapat dilihat pada:
+- [`pxe/COPYING.GPLv2`](pxe/COPYING.GPLv2) (Lisensi GNU GPLv2 untuk iPXE)
+- [`pxe/LICENSE.md`](pxe/LICENSE.md) (Dokumentasi lisensi pihak ketiga PXE & teks BSD 2-Clause)
 
 ---
 
