@@ -1162,9 +1162,9 @@ yaitu fase yang dijalankan oleh Windows Boot Manager.
 Beda `28000.367` vs `28000.352` hanya **472 byte** — 15 revisi Cumulative Update dalam
 build yang sama, tapi efeknya 12× lebih lambat pada jalur SAN.
 
-Semua versi di atas tersedia siap-pakai di **`Boot Manager\<VERSI>\`** — tiap folder
-berisi tepat dua file (`bootmgfw.efi` + `bootx64.efi`) plus `README.md` berisi tabel versi,
-hash, dan cara pakainya.
+Panduan lengkap ekstraksi mandiri dan hash referensi tersedia di **`Boot Manager/README.md`**.
+Pengguna dapat mengekstrak file `bootmgfw.efi` dan `bootx64.efi` dari ISO Windows resmi
+(prinsip *Bring Your Own Boot Manager*).
 
 ### 11.3 Aturan kompatibilitas loader
 
@@ -1230,7 +1230,7 @@ Dismount-DiskImage -ImagePath $vhd
 
 ### 11.6 Rollback
 
-Salinan boot manager tersimpan di folder **`Boot Manager\`** (root repo, tidak di-track git):
+Panduan ekstraksi mandiri tersimpan di folder **`Boot Manager/`** (root repo, binary tidak di-track git):
 
 | Folder | Isi | Versi | Status |
 |---|---|---|---|

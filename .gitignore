@@ -61,3 +61,7 @@ CCBoot*
 
 # Local lab artifacts (CCBoot binaries, drivers, registry exports)
 /lab/
+
+# Microsoft Windows Boot Manager binaries (Bring Your Own File - Proprietary Microsoft)
+/Boot Manager/*/
+!/Boot Manager/README.md
