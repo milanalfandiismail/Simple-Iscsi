@@ -1,4 +1,4 @@
-use crate::pdu::{self, Pdu, OP_SCSI_RESP, OP_DATA_IN, OP_R2T};
+use crate::pdu::{self, Pdu, OP_SCSI_RESP, OP_DATA_IN, OP_R2T, OP_NOP_IN};
 use crate::scsi_gamedisk::ScsiResult;
 use crate::session::{SessionContext, WriterMessage};
 use tokio::io::AsyncWriteExt;
@@ -15,7 +15,12 @@ pub async fn write_message(
         WriterMessage::Pdu(mut pdu) => {
             // Assign sequence numbers to target-to-initiator response PDUs
             pdu.cmd_sn = *stat_sn;
-            *stat_sn = stat_sn.wrapping_add(1);
+            // RFC 7143 Section 11.20:
+            // Target-initiated NOP-In ping (ITT == 0xFFFFFFFF) MUST NOT advance StatSN.
+            let is_target_nop_in = pdu.opcode == OP_NOP_IN && pdu.initiator_task_tag == 0xFFFFFFFF;
+            if !is_target_nop_in {
+                *stat_sn = stat_sn.wrapping_add(1);
+            }
             pdu.exp_stat_sn = context.exp_cmd_sn.load(std::sync::atomic::Ordering::Relaxed);
             pdu.max_cmd_sn = context.max_cmd_sn.load(std::sync::atomic::Ordering::Relaxed);
             
@@ -264,5 +269,52 @@ impl SessionContext {
             }
         }
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_target_nop_in_does_not_advance_stat_sn() {
+        let mut stat_sn = 42u32;
+
+        // 1. Target-initiated NOP-In ping (ITT == 0xFFFFFFFF) -> stat_sn harus TETAP (RFC 7143 11.20)
+        let ping = Pdu {
+            opcode: OP_NOP_IN,
+            initiator_task_tag: 0xFFFFFFFF,
+            ..Pdu::default()
+        };
+        let is_target_nop_in = ping.opcode == OP_NOP_IN && ping.initiator_task_tag == 0xFFFFFFFF;
+        if !is_target_nop_in {
+            stat_sn = stat_sn.wrapping_add(1);
+        }
+        assert_eq!(stat_sn, 42, "StatSN tidak boleh bertambah saat NOP-In ping target");
+
+        // 2. Initiator-initiated NOP-In response (ITT != 0xFFFFFFFF) -> stat_sn harus NAIK
+        let resp = Pdu {
+            opcode: OP_NOP_IN,
+            initiator_task_tag: 1234,
+            ..Pdu::default()
+        };
+        let is_target_nop_in = resp.opcode == OP_NOP_IN && resp.initiator_task_tag == 0xFFFFFFFF;
+        if !is_target_nop_in {
+            stat_sn = stat_sn.wrapping_add(1);
+        }
+        assert_eq!(stat_sn, 43, "StatSN harus bertambah saat NOP-In balasan");
+
+        // 3. Response PDU biasa (misal SCSI_RESP) -> stat_sn harus NAIK
+        let scsi_resp = Pdu {
+            opcode: OP_SCSI_RESP,
+            initiator_task_tag: 5678,
+            ..Pdu::default()
+        };
+        let is_target_nop_in = scsi_resp.opcode == OP_NOP_IN && scsi_resp.initiator_task_tag == 0xFFFFFFFF;
+        if !is_target_nop_in {
+            stat_sn = stat_sn.wrapping_add(1);
+        }
+        assert_eq!(stat_sn, 44, "StatSN harus bertambah untuk SCSI Response");
     }
 }
